@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+env/
+
+# Secrets / local env
+.env
+.env.local
+*.pem
+*.key
+
+# Editors / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# deepeval cache (per-developer)
+.deepeval/
+
+# Generated convenience copy of the latest briefing
+# (briefings/YYYY-MM-DD.md is the audit-tracked copy)
+WEEKLY_SIGNAL.md
+
+# Lab skill's scratch workspaces (outside repo, but symlinks happen)
+ai-lab-experiments/
+
+# Runtime scratch — dead-letter queue, lab task queue, etc.
+.scratch/
+
+# Local screenshots / debugging artifacts (operator-only)
+screenshots/
+
+# Mem0 sqlite WAL files (commit the .db, not the journal)
+memory/*.db-journal
+memory/*.db-wal
+memory/*.db-shm

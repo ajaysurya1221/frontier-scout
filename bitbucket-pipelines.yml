@@ -1,0 +1,197 @@
+image: python:3.11
+
+definitions:
+  caches:
+    pip: ~/.cache/pip
+
+pipelines:
+
+  # Verdict-quality gate + secret scan on every pull request.
+  # Requires ANTHROPIC_API_KEY + OPENAI_API_KEY as repository variables.
+  pull-requests:
+    '**':
+      - step:
+          name: Secret scan (detect-secrets)
+          script:
+            - pip install detect-secrets
+            - >
+              detect-secrets scan --all-files --force-use-all-plugins
+              --exclude-files '\.git/|\.pytest_cache/|memory/chroma/|costs\.jsonl|quality-log\.jsonl|briefings/|archive/'
+              > .secrets-scan-result.json
+            - >
+              python -c "import json,sys; r=json.load(open('.secrets-scan-result.json'));
+              n=sum(len(v) for v in r.get('results',{}).values());
+              print(f'detect-secrets found {n} potential secrets');
+              sys.exit(1 if n>0 else 0)"
+      - step:
+          name: Verdict Quality Gate
+          caches: [pip]
+          script:
+            - pip install -r requirements.txt
+            - pytest tests/test_validators.py -v --tb=short
+            - pytest tests/test_verdict_quality.py -v --tb=short -m "not live"
+
+  # Custom pipelines — triggered by Schedules (Repository Settings → Pipelines →
+  # Schedules) or manually via the Bitbucket UI / REST API.
+  #
+  # Each pipeline is a SINGLE step: it installs deps, runs the script, then
+  # commits generated artifacts back via HTTPS using BB_TOKEN.
+  # BB_TOKEN: Bitbucket API token with Repositories → Write scope.
+  #   Profile → Personal settings → API tokens → Create token
+  #
+  # Round 3: push-back is FAIL-CLOSED. "nothing to commit" is OK; any push
+  # error fails the step so the operator sees a red pipeline.
+  custom:
+
+    # Schedule: Monday 03:30 UTC (09:00 IST)
+    scout:
+      - step:
+          name: Scout
+          caches: [pip]
+          script:
+            - pip install -r requirements.txt
+            - python scripts/scout.py
+            - git config user.name  "AI Telemetry"
+            - git config user.email "bot@example.local"
+            - git remote set-url origin "https://x-token-auth:${BB_TOKEN}@bitbucket.org/${BITBUCKET_WORKSPACE}/${BITBUCKET_REPO_SLUG}.git"
+            - git add WEEKLY_SIGNAL.md briefings/ archive/ costs.jsonl memory/ tech-radar.md skills-log.md quality-log.jsonl .scratch/ 2>/dev/null || true
+            - |
+              if git diff --staged --quiet; then
+                echo "Nothing to commit — OK"
+              else
+                git commit -m "scout $(date -u +%Y-%m-%d)"
+                git push origin HEAD:${BITBUCKET_BRANCH:-main}
+              fi
+            # S3 mirror — makes the Mem0 store + briefings + radar readable to
+            # the Slack-interactivity Lambda. Skipped silently if S3_MIRROR_BUCKET
+            # isn't set (e.g. for workspaces using webhook-only Slack).
+            - |
+              if [ -n "${S3_MIRROR_BUCKET:-}" ]; then
+                pip install awscli >/dev/null
+                aws s3 sync memory/    "s3://${S3_MIRROR_BUCKET}/${S3_MIRROR_PREFIX:-}memory/" --delete
+                aws s3 sync briefings/ "s3://${S3_MIRROR_BUCKET}/${S3_MIRROR_PREFIX:-}briefings/"
+                aws s3 cp tech-radar.md      "s3://${S3_MIRROR_BUCKET}/${S3_MIRROR_PREFIX:-}tech-radar.md"
+                aws s3 cp costs.jsonl        "s3://${S3_MIRROR_BUCKET}/${S3_MIRROR_PREFIX:-}costs.jsonl"
+                aws s3 cp quality-log.jsonl  "s3://${S3_MIRROR_BUCKET}/${S3_MIRROR_PREFIX:-}quality-log.jsonl"
+                echo "S3 mirror updated"
+              else
+                echo "S3_MIRROR_BUCKET not set — skipping mirror"
+              fi
+
+    # Schedule: Daily 02:30 UTC (08:00 IST)
+    pulse:
+      - step:
+          name: Pulse
+          caches: [pip]
+          script:
+            - pip install -r requirements.txt
+            - python scripts/pulse.py
+            - git config user.name  "AI Telemetry"
+            - git config user.email "bot@example.local"
+            - git remote set-url origin "https://x-token-auth:${BB_TOKEN}@bitbucket.org/${BITBUCKET_WORKSPACE}/${BITBUCKET_REPO_SLUG}.git"
+            - git add pulse-log.md pulse-state.json archive/pulse/ costs.jsonl quality-log.jsonl .scratch/ 2>/dev/null || true
+            - |
+              if git diff --staged --quiet; then
+                echo "Nothing to commit — OK"
+              else
+                git commit -m "pulse $(date -u +%Y-%m-%d)"
+                git push origin HEAD:${BITBUCKET_BRANCH:-main}
+              fi
+            # S3 mirror — same as Scout, lighter payload (Pulse only touches
+            # Mem0 occasionally and the cost/quality ledgers).
+            - |
+              if [ -n "${S3_MIRROR_BUCKET:-}" ]; then
+                pip install awscli >/dev/null
+                aws s3 sync memory/    "s3://${S3_MIRROR_BUCKET}/${S3_MIRROR_PREFIX:-}memory/" --delete
+                aws s3 cp costs.jsonl       "s3://${S3_MIRROR_BUCKET}/${S3_MIRROR_PREFIX:-}costs.jsonl"
+                aws s3 cp quality-log.jsonl "s3://${S3_MIRROR_BUCKET}/${S3_MIRROR_PREFIX:-}quality-log.jsonl"
+              fi
+
+    # Schedule: 1st of month, 09:00 UTC
+    synthesizer:
+      - step:
+          name: Synthesizer
+          caches: [pip]
+          script:
+            - pip install -r requirements.txt
+            - python scripts/synthesizer.py
+            - git config user.name  "AI Telemetry"
+            - git config user.email "bot@example.local"
+            - git remote set-url origin "https://x-token-auth:${BB_TOKEN}@bitbucket.org/${BITBUCKET_WORKSPACE}/${BITBUCKET_REPO_SLUG}.git"
+            - git add MONTHLY_SYNTHESIS.md costs.jsonl quality-log.jsonl 2>/dev/null || true
+            - |
+              if git diff --staged --quiet; then
+                echo "Nothing to commit — OK"
+              else
+                git commit -m "synthesis $(date -u +%Y-%m)"
+                git push origin HEAD:${BITBUCKET_BRANCH:-main}
+              fi
+
+    # Schedule: Sunday 12:00 UTC
+    cost-report:
+      - step:
+          name: Cost Report
+          caches: [pip]
+          script:
+            - pip install slack-sdk requests pydantic
+            - python scripts/cost_report.py
+
+    # Triggered by Slack Workflow Builder when a teammate reacts 🧪.
+    # See docs/slack-reaction-trigger.md for the full Slack → Bitbucket wiring.
+    # Variables (passed in the trigger payload):
+    #   TOOL — tool name from the original Slack message
+    #   URL  — link to the original message / source
+    #   USER — Slack user who reacted
+    lab-from-slack:
+      - variables:
+          - name: TOOL
+          - name: URL
+          - name: USER
+      - step:
+          name: Queue lab from Slack reaction
+          script:
+            - python scripts/lab_from_slack.py "$TOOL" "$URL" "$USER"
+            - git config user.name  "AI Telemetry"
+            - git config user.email "bot@example.local"
+            - git remote set-url origin "https://x-token-auth:${BB_TOKEN}@bitbucket.org/${BITBUCKET_WORKSPACE}/${BITBUCKET_REPO_SLUG}.git"
+            - git add .scratch/labs/ 2>/dev/null || true
+            - |
+              if git diff --staged --quiet; then
+                echo "Nothing to commit — OK"
+              else
+                git commit -m "lab queued $TOOL"
+                git push origin HEAD:${BITBUCKET_BRANCH:-main}
+              fi
+
+    # Triggered by the Slack interactivity Lambda when a teammate clicks the
+    # 📚 Full evaluation button on a verdict card. Replies in the originating
+    # Slack thread with a deep Sonnet-generated verdict.
+    evaluate-from-slack:
+      - variables:
+          - name: TOOL
+          - name: URL
+          - name: USER
+          - name: THREAD_TS
+          - name: CHANNEL_ID
+      - step:
+          name: Deep evaluation from Slack button
+          caches: [pip]
+          script:
+            - pip install -r requirements.txt
+            - python scripts/evaluate_from_slack.py
+
+    # Deploy the Slack interactivity Lambda. Manual trigger only — operator
+    # runs this whenever the Lambda code in lambda/ changes.
+    # Required pipeline variables (Repository → Variables):
+    #   AWS_ACCESS_KEY_ID        (Secured)
+    #   AWS_SECRET_ACCESS_KEY    (Secured)
+    #   AWS_REGION               e.g. us-east-1
+    #   LAMBDA_FUNCTION_NAME     e.g. ai-telemetry-slack
+    #   LAMBDA_DEPLOY_BUCKET     optional, only if zip > 50MB
+    deploy-lambda:
+      - step:
+          name: Deploy Lambda (Slack interactivity backend)
+          image: python:3.11
+          script:
+            - pip install awscli >/dev/null
+            - bash lambda/deploy.sh

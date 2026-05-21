@@ -1,0 +1,19 @@
+# Lambda runtime dependencies. Keep this list minimal — every additional
+# package inflates the deployment zip and cold-start time.
+#
+# Bundled in the deploy zip (~1 MB):
+slack-sdk>=3.27.0
+#
+# NOT bundled (already in Lambda runtime):
+#   boto3 — comes pre-installed in the AWS Lambda Python runtime
+#
+# NOT bundled (intentional — too large for direct zip):
+#   chromadb — needs ~80 MB of native deps (onnxruntime, tokenizers, etc.)
+#   Bundle it via a Lambda Layer if you want true /recall semantic search.
+#   Without it, /recall returns a graceful "semantic search unavailable"
+#   message and /radar falls back to tech-radar.md grep.
+#
+# To add the chromadb layer:
+#   1. Build a layer zip in a manylinux2014_x86_64 environment (Docker)
+#   2. Publish: aws lambda publish-layer-version --layer-name ai-telemetry-chromadb ...
+#   3. Attach to function: aws lambda update-function-configuration --layers <arn>

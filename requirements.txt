@@ -1,0 +1,21 @@
+# Core LLM client + caching support
+anthropic>=0.45.0
+
+# Source fetchers
+feedparser>=6.0.11
+requests>=2.32.0
+beautifulsoup4>=4.12.0
+
+# Semantic memory (self-hosted, Chroma file-backed)
+mem0ai>=0.1.30
+chromadb>=0.5.0
+
+# Slack — official SDK only, no third-party apps
+slack-sdk>=3.27.0
+
+# Round 3: deterministic policy gates around LLM output
+pydantic>=2.0
+
+# Verdict quality CI (used in tests/, not at runtime)
+deepeval>=1.0.0
+pytest>=8.0.0
