@@ -1,4 +1,4 @@
-# AI Telemetry — Weekly Briefing · 2026-05-21
+# Frontier Scout — Weekly Briefing · 2026-05-21
 > Scanned **377** items · **350** considered after dedup + Mem0 prior-filter · **6** verdicts after RLAIF judge pass. Run cost **$0.3100** (cached). Judge confidence: **high**.
 
 > _Tight upstream pass — vetoed two noise items, promoted one stack-direct trending repo. SOC2 calls are conservative and well-reasoned._
@@ -43,7 +43,7 @@
 
 ### 📌 [DeepSeek-V4-Pro](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro) — 🔴 HOLD — 2026-05-21 — 🧠 Frontier Models — ❌ SOC2-blocked
 **What**: DeepSeek open-weight frontier model, MIT license, 3.8M downloads on HuggingFace.
-**Why it matters**: Chinese AI lab with documented data-residency ambiguity and ongoing US regulatory scrutiny. Prior versions had telemetry questions never fully resolved.
+**Why it matters**: Chinese AI lab with documented data-residency ambiguity and ongoing compliance scrutiny. Prior versions had telemetry questions never fully resolved.
 **Adoption cost**: N/A — blocked on SOC2 and compliance grounds regardless of self-hosting posture.
 **Next action**: Hold indefinitely. Revisit only if legal counsel explicitly clears it.
 **Readiness**: `▰▰▰▰▱` 4/5

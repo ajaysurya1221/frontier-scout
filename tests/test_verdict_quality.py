@@ -1,7 +1,7 @@
 """
 Verdict quality gate — uses deepeval to score Scout's verdicts against known truths.
 
-Runs on every PR via the Bitbucket pull-request pipeline. Live tests (those that
+Runs on every PR via GitHub Actions. Live tests (those that
 hit Anthropic) are gated behind the `live` marker — invoke with `-m live` to
 run them.
 
@@ -20,21 +20,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning, module="deepeval.*")
 
-from deepeval import assert_test
-from deepeval.metrics import GEval
-from deepeval.test_case import LLMTestCase, LLMTestCaseParams
-
 # Mark the entire file as 'live' — all tests here require ANTHROPIC_API_KEY
 # and make real API calls. CI runs them via `pytest -m live` only on PRs.
 pytestmark = [
     pytest.mark.live,
     pytest.mark.skipif(
-        not os.environ.get("ANTHROPIC_API_KEY"),
-        reason="ANTHROPIC_API_KEY not set",
-    ),
-    pytest.mark.skipif(
-        not os.environ.get("OPENAI_API_KEY"),
-        reason="OPENAI_API_KEY not set; DeepEval GEval uses OpenAI by default",
+        not os.environ.get("ANTHROPIC_API_KEY") or not os.environ.get("OPENAI_API_KEY"),
+        reason="ANTHROPIC_API_KEY and OPENAI_API_KEY are required for live verdict quality tests",
     ),
 ]
 
@@ -44,10 +36,10 @@ pytestmark = [
 GOLDEN = [
     # ADOPT — proven, SOC2-attested, already in stack
     {"tool": "LangGraph",         "verdict": "adopt", "soc2": "safe"},
-    # rationale: backbone of the reference agent platform; LangChain investment; LangSmith SOC2 path.
+    # rationale: backbone of the example agent stack; LangChain investment; LangSmith SOC2 path.
 
     {"tool": "LangSmith",         "verdict": "adopt", "soc2": "safe"},
-    # rationale: official observability; SOC2 Type II; already adopted in the reference stack.
+    # rationale: official observability; SOC2 Type II; already adopted in many LangChain teams.
 
     {"tool": "ccusage",           "verdict": "adopt", "soc2": "safe"},
     # rationale: read-only cost telemetry; no PII surface; trivial integration.
@@ -77,7 +69,7 @@ GOLDEN = [
     {"tool": "Claude Code",       "verdict": "adopt", "soc2": "conditional"},
     # rationale (Round 3 update): SOC2 status is conditional pending the
     # `.claudeignore` + secret-scanning + regulated-data exclusion controls
-    # that teams must put in place to use this safely on regulated data. The model
+    # that the team must put in place to use this safely on sensitive data. The model
     # was right; the prior "safe" golden was wrong policy. Verdict stays
     # ADOPT because we *are* using it.
 
@@ -111,7 +103,7 @@ def _generate_verdict(tool: str) -> dict:
             "content": (
                 f"Emit a verdict for the tool '{tool}'. "
                 f"Apply the standard evaluation rubric. Use realistic stack context — "
-                f"The target team builds regulated document intelligence on Python/FastAPI/LangGraph/AWS."
+                f"The team builds AI-native software on Python/FastAPI/LangGraph/AWS."
             ),
         }],
     )
@@ -119,9 +111,13 @@ def _generate_verdict(tool: str) -> dict:
     return tool_use.input["verdicts"][0]
 
 
-METRIC = None
-if os.environ.get("OPENAI_API_KEY"):
-    METRIC = GEval(
+@pytest.mark.parametrize("case", GOLDEN, ids=[g["tool"] for g in GOLDEN])
+def test_verdict_quality(case):
+    from deepeval import assert_test
+    from deepeval.metrics import GEval
+    from deepeval.test_case import LLMTestCase, LLMTestCaseParams
+
+    metric = GEval(
         name="Verdict Correctness",
         criteria=(
             "The verdict should: (1) match the expected adopt/trial/assess/hold label, "
@@ -135,10 +131,6 @@ if os.environ.get("OPENAI_API_KEY"):
         ],
         threshold=0.7,
     )
-
-
-@pytest.mark.parametrize("case", GOLDEN, ids=[g["tool"] for g in GOLDEN])
-def test_verdict_quality(case):
     actual = _generate_verdict(case["tool"])
     test_case = LLMTestCase(
         input=f"Evaluate: {case['tool']}",
@@ -154,8 +146,7 @@ def test_verdict_quality(case):
     assert actual["soc2"] == case["soc2"], (
         f"{case['tool']}: got soc2={actual['soc2']}, expected={case['soc2']}"
     )
-    assert METRIC is not None
-    assert_test(test_case, [METRIC])
+    assert_test(test_case, [metric])
 
 
 # The incident-as-ADOPT regression lives in tests/test_validators.py — it

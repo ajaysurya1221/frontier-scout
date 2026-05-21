@@ -1,0 +1,40 @@
+name: Evaluate From Slack
+
+on:
+  workflow_dispatch:
+    inputs:
+      TOOL:
+        required: true
+      URL:
+        required: false
+      USER:
+        required: false
+      THREAD_TS:
+        required: false
+      CHANNEL_ID:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_CHANNEL_ID: ${{ inputs.CHANNEL_ID || secrets.SLACK_CHANNEL_ID }}
+      TOOL: ${{ inputs.TOOL }}
+      URL: ${{ inputs.URL }}
+      USER: ${{ inputs.USER }}
+      THREAD_TS: ${{ inputs.THREAD_TS }}
+      CHANNEL_ID: ${{ inputs.CHANNEL_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python scripts/evaluate_from_slack.py
+

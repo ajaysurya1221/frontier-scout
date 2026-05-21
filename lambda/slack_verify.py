@@ -6,7 +6,7 @@ https://api.slack.com/authentication/verifying-requests-from-slack
 The Lambda Function URL is a public HTTPS endpoint. Anyone on the internet
 can POST to it. We MUST verify every request actually originates from
 Slack before doing anything else — otherwise an attacker can impersonate
-a Slack workflow and trigger arbitrary Bitbucket pipelines.
+a Slack workflow and trigger arbitrary GitHub Actions workflows.
 
 Verification:
   1. Slack sends headers:

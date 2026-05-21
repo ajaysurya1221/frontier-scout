@@ -4,8 +4,8 @@ Operator preflight check — run before enabling scheduled pipelines.
 
 Validates that everything the production pipeline needs is actually wired:
 env vars present, Slack scopes correct, Slack webhook reachable, Lambda URL
-rejecting unsigned requests, Bitbucket trigger credentials valid, and S3
-mirror writable.
+rejecting unsigned requests, GitHub Actions trigger credentials valid, and
+optional S3 mirror writable.
 
 Exits non-zero on any failure so it can gate CI or a manual check.
 
@@ -155,35 +155,34 @@ def check_lambda_url(url: str) -> int:
     return 1
 
 
-def check_bitbucket_trigger() -> int:
-    """Verify Bitbucket API credentials can list pipelines (read-only probe)."""
-    print("\n=== Bitbucket trigger credentials ===")
-    workspace = os.environ.get("BB_WORKSPACE", "")
-    repo = os.environ.get("BB_REPO", "")
-    token = os.environ.get("BB_TOKEN", "")
-    if not (workspace and repo and token):
-        warn("BB_WORKSPACE / BB_REPO / BB_TOKEN incomplete — skipping probe")
+def check_github_actions_trigger() -> int:
+    """Verify GitHub credentials can list Actions workflows."""
+    print("\n=== GitHub Actions trigger credentials ===")
+    repo = os.environ.get("GH_REPO") or os.environ.get("GITHUB_REPOSITORY", "")
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN", "")
+    if not (repo and token):
+        warn("GH_REPO/GH_TOKEN missing — Slack buttons will not be able to dispatch workflows")
         return 0
     try:
         import requests
-        from base64 import b64encode
     except ImportError:
-        fail("requests not installed — can't probe Bitbucket")
+        fail("requests not installed — can't probe GitHub")
         return 1
-    url = f"https://api.bitbucket.org/2.0/repositories/{workspace}/{repo}/pipelines/?pagelen=1"
+    url = f"https://api.github.com/repos/{repo}/actions/workflows"
     headers = {
-        "Authorization": "Basic " + b64encode(f"x-token-auth:{token}".encode()).decode(),
+        "Authorization": f"Bearer {token}",
         "Accept": "application/json",
+        "X-GitHub-Api-Version": "2022-11-28",
     }
     try:
         r = requests.get(url, headers=headers, timeout=8)
     except Exception as e:  # noqa: BLE001
-        fail(f"Bitbucket API unreachable: {e}")
+        fail(f"GitHub API unreachable: {e}")
         return 1
     if r.status_code == 200:
-        ok(f"Bitbucket API reachable — token works against {workspace}/{repo}")
+        ok(f"GitHub Actions reachable — token works against {repo}")
         return 0
-    fail(f"Bitbucket API returned {r.status_code} (expected 200). Token or workspace/repo wrong.")
+    fail(f"GitHub API returned {r.status_code} (expected 200). Token or repo wrong.")
     info(f"body: {r.text[:200]!r}")
     return 1
 
@@ -234,24 +233,65 @@ def check_validators_import() -> int:
     return 0
 
 
+def check_slack_post() -> int:
+    """Fire a real test post to the configured Slack target.
+
+    The single most useful probe — answers "would a real Scout run actually
+    deliver to my channel?" in 1 second without spending Anthropic tokens.
+    Catches: rotated webhooks, archived channels, missing bot scopes,
+    bot-not-in-channel, channel ID typos.
+    """
+    print("\n=== Slack delivery probe ===")
+    here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, here)
+    try:
+        import slack_post
+    except ImportError as e:
+        fail(f"can't import slack_post: {e}")
+        return 1
+
+    test_blocks = [
+        {"type": "section", "text": {"type": "mrkdwn",
+            "text": ":wave: *Frontier Scout preflight* — if you see this, the Slack delivery path works."}},
+        {"type": "context", "elements": [{"type": "mrkdwn",
+            "text": f"posted at {os.environ.get('USER', 'preflight')} · "
+                    f"target: {'bot+channel' if os.environ.get('SLACK_BOT_TOKEN','').startswith('xoxb-') else 'webhook'}"}]},
+    ]
+    # Ensure DRY_RUN doesn't swallow the post during preflight
+    os.environ.pop("DRY_RUN", None)
+    try:
+        slack_post.post(test_blocks, max_retries=1)
+        ok("test post delivered — check your channel")
+        return 0
+    except Exception as e:
+        fail(f"test post failed: {e}")
+        info("common causes: webhook rotated/revoked, channel archived, "
+             "bot not invited, SLACK_CHANNEL_ID typo, missing scope")
+        return 1
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="AI Telemetry preflight check")
+    parser = argparse.ArgumentParser(description="Frontier Scout preflight check")
     parser.add_argument("--skip-aws", action="store_true", help="skip S3 + Lambda probes")
     parser.add_argument("--skip-lambda", action="store_true", help="skip Lambda URL probe")
+    parser.add_argument("--slack-test", action="store_true",
+                        help="actually POST a test message to the configured Slack target")
     parser.add_argument("--lambda-url", default=os.environ.get("LAMBDA_URL", ""),
                         help="Lambda Function URL to probe (else $LAMBDA_URL)")
     args = parser.parse_args()
 
-    print("🩺  AI Telemetry preflight\n")
+    print("🩺  Frontier Scout preflight\n")
     fails = 0
     fails += check_env_vars()
     fails += check_dependencies()
     fails += check_validators_import()
-    fails += check_bitbucket_trigger()
+    fails += check_github_actions_trigger()
     if not args.skip_aws:
         fails += check_s3_mirror()
         if not args.skip_lambda:
             fails += check_lambda_url(args.lambda_url)
+    if args.slack_test:
+        fails += check_slack_post()
 
     print()
     if fails == 0:

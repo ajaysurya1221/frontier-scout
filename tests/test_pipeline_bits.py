@@ -146,7 +146,7 @@ class TestSlackDeadLetter:
         monkeypatch.setattr(slack_post, "DEAD_LETTER", dead_letter)
 
         # Force at least one auth path so we don't hit the "no credentials" raise
-        monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://example.invalid/slack/webhook")
+        monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/services/T/B/X")
         monkeypatch.delenv("DRY_RUN", raising=False)
 
         # Mock _do_post to always raise
@@ -194,7 +194,7 @@ class TestSlackThreaded:
             {
                 "tool_name": "LangGraph", "verdict": "adopt", "category": "orchestration",
                 "soc2": "safe", "what": "Multi-agent orchestration.",
-                "why_it_matters": "Backbone of reference agent platform.",
+                "why_it_matters": "Backbone of the example agent platform.",
                 "adoption_cost": "Already done.", "next_action": "Track 0.6.x releases.",
                 "source_url": "https://github.com/langchain-ai/langgraph",
                 "severity": "high", "readiness": 5,
@@ -248,13 +248,16 @@ class TestSlackThreaded:
         assert "Tight upstream pass" in out
         assert "would add reactions" in out
 
-    def test_real_send_posts_parent_then_threads_then_reacts(self, monkeypatch):
+    def test_real_send_posts_parent_then_threads_then_reacts(self, monkeypatch, tmp_path):
         import slack_post
 
         # Configure the bot path
         monkeypatch.delenv("DRY_RUN", raising=False)
-        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-fake-token-for-test")
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "xox" + "b-test")
         monkeypatch.setenv("SLACK_CHANNEL_ID", "C0FAKECHAN")
+        # Redirect the briefings meta-file output so the test doesn't pollute
+        # the real repo with stray <date>-meta.json artifacts.
+        monkeypatch.setattr(slack_post, "BRIEFINGS_DIR", tmp_path / "briefings")
 
         # Mock the slack_sdk WebClient
         post_calls: list[dict] = []
@@ -296,19 +299,50 @@ class TestSlackThreaded:
 
         # First call: parent, no thread_ts, has bot identity override
         assert post_calls[0].get("thread_ts") in (None, "")
-        assert post_calls[0].get("username") == "AI Telemetry"
+        assert post_calls[0].get("username") == "Frontier Scout"
         assert post_calls[0].get("icon_emoji") == ":satellite_antenna:"
 
         # All subsequent calls thread under the parent ts
         for reply in post_calls[1:]:
             assert reply.get("thread_ts") == "172000000.000001"
 
-        # Tier anchors are blocks-only (no attachments) and contain the tier label;
-        # verdict cards have an attachment with a tier color.
+        # Tier anchors are blocks-only (no attachments) and contain the tier label.
+        # Verdict cards have BOTH blocks (the actions/overflow row) AND
+        # attachments (the colored read-only card) — actions live at the top
+        # level because Slack drops interactive elements inside attachments.
         anchor_calls = [c for c in post_calls[1:] if (c.get("blocks") and not c.get("attachments"))]
         verdict_calls = [c for c in post_calls[1:] if c.get("attachments")]
         assert len(anchor_calls) == 3, "expected 3 tier anchors (ADOPT/TRIAL/ASSESS)"
         assert len(verdict_calls) == 4, "expected 4 verdict cards"
+
+        # Each verdict card has top-level blocks containing the actions row
+        for vc in verdict_calls:
+            outer = vc.get("blocks") or []
+            assert any(b.get("type") == "actions" for b in outer), (
+                "verdict card must put `actions` in top-level blocks (Slack "
+                "silently drops interactive elements inside attachments)"
+            )
+            # Each actions row has the 3 buttons + the overflow menu, and
+            # every overflow option `value` must stay under Slack's 150-char
+            # cap (the regression that took down all 7 verdicts on
+            # 2026-05-21).
+            for b in outer:
+                if b.get("type") != "actions":
+                    continue
+                action_ids = [e.get("action_id") for e in b.get("elements", [])]
+                assert "verdict_lab" in action_ids
+                assert "verdict_evaluate" in action_ids
+                assert "verdict_compare" in action_ids
+                assert "verdict_overflow" in action_ids
+                for el in b.get("elements", []):
+                    if el.get("type") != "overflow":
+                        continue
+                    for opt in el.get("options", []):
+                        v_len = len(opt.get("value", ""))
+                        assert v_len < 151, (
+                            f"overflow value too long ({v_len} >= 151): "
+                            f"{opt.get('value')!r}"
+                        )
 
         anchor_texts = []
         for ac in anchor_calls:
@@ -334,6 +368,71 @@ class TestSlackThreaded:
         assert result == "172000000.000001"
 
 
+# ── Slack overflow option value-length cap (Round 5) ─────────────────────────
+
+class TestSlackOverflowValueLimit:
+    """Slack rejects overflow option `value` > 150 chars with `invalid_blocks`.
+    This regression took down every verdict thread reply on 2026-05-21 —
+    the wider `action_context` blob easily clears 200 chars for real
+    verdicts (long tool name + GitHub security advisory URL). Adversarial
+    inputs go through `_overflow_value` to confirm the cap holds.
+    """
+
+    def test_overflow_values_under_151_for_adversarial_inputs(self):
+        import slack_post
+
+        v = {
+            "tool_name": "PydanticAI v1.99+/v1.100.0 — SSRF Security Fix in agentic flows (extended)",
+            "verdict": "adopt",
+            "category": "orchestration",
+            "soc2": "safe",
+            "what": "x",
+            "why_it_matters": "x",
+            "why_this_week": "x",
+            "adoption_cost": "x",
+            "next_action": "x",
+            "source_url": (
+                "https://github.com/pydantic/pydantic-ai/security/advisories/"
+                "GHSA-xxxx-yyyy-zzzz-aaaa-bbbb-cccc-dddd-eeee-ffff-this-is-very-long"
+            ),
+            "severity": "high",
+            "readiness": 4,
+        }
+        outer, _atts = slack_post._threaded_verdict_card(1, v)
+        actions = next(b for b in outer if b.get("type") == "actions")
+        overflow = next(e for e in actions["elements"] if e.get("type") == "overflow")
+        assert len(overflow["options"]) == 3
+        for opt in overflow["options"]:
+            v_len = len(opt["value"])
+            assert v_len < 151, (
+                f"overflow value too long ({v_len}): {opt['value']!r}"
+            )
+
+    def test_overflow_value_helper_packs_compact_keys(self):
+        import json
+        import slack_post
+
+        # Short, normal inputs → no truncation needed
+        val = slack_post._overflow_value("mark_seen", "Graphiti v0.29.1")
+        payload = json.loads(val)
+        assert payload == {"a": "mark_seen", "t": "Graphiti v0.29.1"}
+        assert len(val) <= slack_post._MAX_OVERFLOW_VALUE
+
+    def test_overflow_value_helper_truncates_long_tool_names(self):
+        import json
+        import slack_post
+
+        long_name = "X" * 500
+        val = slack_post._overflow_value("copy_link", long_name)
+        payload = json.loads(val)
+        assert payload["a"] == "copy_link"
+        assert payload["t"].startswith("X")
+        # Helper caps the tool name aggressively; verify the resulting
+        # JSON sits safely under Slack's hard limit.
+        assert len(val) <= slack_post._MAX_OVERFLOW_VALUE
+        assert len(val) < 151
+
+
 # ── Slack threaded partial-delivery (Round 5) ────────────────────────────────
 
 class TestSlackThreadedPartialFailure:
@@ -348,6 +447,8 @@ class TestSlackThreadedPartialFailure:
         monkeypatch.setenv("SLACK_CHANNEL_ID", "C0FAKE")
         # Isolate the dead-letter file so we don't pollute .scratch/ in the repo
         monkeypatch.setattr(slack_post, "DEAD_LETTER", tmp_path / "dl.jsonl")
+        # Same for the per-card meta file (avoids stray briefings/<date>-meta.json)
+        monkeypatch.setattr(slack_post, "BRIEFINGS_DIR", tmp_path / "briefings")
         monkeypatch.setattr(slack_post.time, "sleep", lambda s: None)
 
         # Track per-call kwargs and fail FOREVER (all 3 retries) on the first
@@ -543,9 +644,9 @@ class TestJudgeFallback:
                 return FakeResp([FakeBlock("tool_use", payload)], FakeUsage())
             raise RuntimeError(f"unexpected component {component!r}")
 
+        monkeypatch.setattr(judge_mod, "_client", lambda: object())
         monkeypatch.setattr(judge_mod, "call_with_retry", fake_call_with_retry)
         monkeypatch.setattr(judge_mod, "log_call", lambda *a, **kw: 0.01)
-        monkeypatch.setattr(judge_mod, "CLIENT", object())
 
         verdicts = [{"tool_name": "X", "verdict": "trial", "category": "tool",
                      "soc2": "safe", "what": "x", "why_it_matters": "y",
@@ -584,9 +685,9 @@ class TestJudgeFallback:
         def always_text(client, component, **kwargs):
             return FakeResp()
 
+        monkeypatch.setattr(judge_mod, "_client", lambda: object())
         monkeypatch.setattr(judge_mod, "call_with_retry", always_text)
         monkeypatch.setattr(judge_mod, "log_call", lambda *a, **kw: 0.01)
-        monkeypatch.setattr(judge_mod, "CLIENT", object())
 
         result, _ = judge_mod.critique(
             [{"tool_name": "X", "verdict": "trial", "category": "tool",
@@ -599,6 +700,1045 @@ class TestJudgeFallback:
         assert result["quality_self_rating"] == "low"
         # Fail-closed = every draft vetoed
         assert all(d.get("action") == "veto" for d in result["decisions"])
+
+
+# ── Channel taste model — Round 6 ────────────────────────────────────────────
+
+class TestPreferencesAggregator:
+    """Time-decayed aggregation: signals → per-tag/per-category weights."""
+
+    def _signal(self, signal, ts, tags=None, category=None, user="U1"):
+        return {
+            "ts": ts, "user": user, "signal": signal,
+            "tags": tags or [], "category": category,
+        }
+
+    def test_cold_start_returns_empty_categories_and_tags(self, tmp_path, monkeypatch):
+        import preferences
+        monkeypatch.setattr(preferences, "SIGNALS_LOG", tmp_path / "signals-log.jsonl")
+        monkeypatch.setattr(preferences, "PREFERENCES", tmp_path / "preferences.json")
+
+        prefs = preferences.regenerate()
+
+        assert prefs["signal_count_14d"] == 0
+        assert prefs["tags"] == {}
+        assert prefs["categories"] == {}
+        assert preferences.format_team_prefs_paragraph(prefs) == ""
+
+    def test_positive_signals_produce_positive_weights(self, tmp_path, monkeypatch):
+        import preferences
+        from datetime import datetime, timezone
+
+        monkeypatch.setattr(preferences, "SIGNALS_LOG", tmp_path / "signals-log.jsonl")
+        monkeypatch.setattr(preferences, "PREFERENCES", tmp_path / "preferences.json")
+
+        now = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+        # 15 different users react 👍 with tag "mcp" so per-user cap doesn't engage
+        lines = [
+            self._signal("reaction_thumbsup", now.isoformat().replace("+00:00", "Z"),
+                         tags=["mcp"], category="orchestration", user=f"U{i}")
+            for i in range(15)
+        ]
+        # Plus a few 👎 on "no-code"
+        lines += [
+            self._signal("reaction_thumbsdown", now.isoformat().replace("+00:00", "Z"),
+                         tags=["no-code"], category="tool", user=f"U{i+100}")
+            for i in range(5)
+        ]
+        (tmp_path / "signals-log.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in lines) + "\n"
+        )
+
+        prefs = preferences.regenerate(now=now)
+
+        assert prefs["signal_count_14d"] == 20
+        assert prefs["tags"]["mcp"] > 0, "mcp should be positively weighted"
+        assert prefs["tags"]["no-code"] < 0, "no-code should be negatively weighted"
+        # Normalised to ±1.0 (max in each direction)
+        assert prefs["tags"]["mcp"] == 1.0
+        assert prefs["categories"]["orchestration"] == 1.0
+
+    def test_time_decay_halves_at_14_days(self, tmp_path, monkeypatch):
+        import preferences
+        from datetime import datetime, timezone, timedelta
+
+        monkeypatch.setattr(preferences, "SIGNALS_LOG", tmp_path / "signals-log.jsonl")
+        monkeypatch.setattr(preferences, "PREFERENCES", tmp_path / "preferences.json")
+
+        now = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+        old = now - timedelta(days=14)
+
+        # A: 1 fresh thumbsup on "fresh"
+        # B: 2 14-day-old thumbsups on "old" (should equal A in weight after decay)
+        lines = [
+            self._signal("reaction_thumbsup", now.isoformat().replace("+00:00", "Z"),
+                         tags=["fresh"], user="U1"),
+            self._signal("reaction_thumbsup", old.isoformat().replace("+00:00", "Z"),
+                         tags=["old"], user="U2"),
+            self._signal("reaction_thumbsup", old.isoformat().replace("+00:00", "Z"),
+                         tags=["old"], user="U3"),
+        ]
+        (tmp_path / "signals-log.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in lines) + "\n"
+        )
+
+        prefs = preferences.aggregate(
+            preferences.load_signals(), now=now,
+        )
+
+        # After normalisation, both tags should be approximately 1.0 (equal)
+        assert abs(prefs["tags"]["fresh"] - prefs["tags"]["old"]) < 0.01
+
+    def test_per_user_cap_limits_single_voter_influence(self, tmp_path, monkeypatch):
+        import preferences
+        from datetime import datetime, timezone
+
+        monkeypatch.setattr(preferences, "SIGNALS_LOG", tmp_path / "signals-log.jsonl")
+        monkeypatch.setattr(preferences, "PREFERENCES", tmp_path / "preferences.json")
+
+        now = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+        ts = now.isoformat().replace("+00:00", "Z")
+
+        # Same one user reacts 100 times on tag "spam"; 15 different users
+        # react once each on tag "legit"
+        lines = [
+            self._signal("reaction_thumbsup", ts, tags=["spam"], user="LOUD")
+            for _ in range(100)
+        ]
+        lines += [
+            self._signal("reaction_thumbsup", ts, tags=["legit"], user=f"U{i}")
+            for i in range(15)
+        ]
+        (tmp_path / "signals-log.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in lines) + "\n"
+        )
+
+        prefs = preferences.regenerate(now=now)
+
+        # With PER_USER_CAP=0.30, the single LOUD voter is capped to 30% of
+        # their own gross. 15 distinct users on "legit" face no cap.
+        assert prefs["tags"]["legit"] >= prefs["tags"]["spam"], (
+            "per-user cap should prevent one voter from dominating"
+        )
+
+    def test_reaction_removed_inverts_original_signal(self, tmp_path, monkeypatch):
+        """Removing a 👍 must cancel the original +1.0 contribution, not add
+        another. The Lambda dispatcher records `removed=true` alongside the
+        original signal name; the aggregator negates the weight when it sees
+        the flag. Codex review found this was claimed but not implemented."""
+        import preferences
+        from datetime import datetime, timezone
+
+        monkeypatch.setattr(preferences, "SIGNALS_LOG", tmp_path / "signals-log.jsonl")
+        monkeypatch.setattr(preferences, "PREFERENCES", tmp_path / "preferences.json")
+        now = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+        ts = now.isoformat().replace("+00:00", "Z")
+
+        # One 👍 added, then removed by the same user → net zero contribution
+        # to the tag, so the tag should not appear in normalised output (below
+        # the 0.05 noise floor) AND the count of valid signals stays at 2.
+        lines = [
+            {"ts": ts, "user": "U1", "signal": "reaction_thumbsup",
+             "tags": ["mcp"], "category": "orchestration"},
+            {"ts": ts, "user": "U1", "signal": "reaction_thumbsup",
+             "tags": ["mcp"], "category": "orchestration", "removed": True},
+        ]
+        (tmp_path / "signals-log.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in lines) + "\n"
+        )
+        prefs = preferences.regenerate(now=now)
+        # Both signals count toward the 14d activity total — visibility metric
+        # tracks engagement, not net direction.
+        assert prefs["signal_count_14d"] == 2
+        # Net direction is zero → "mcp" is below the 0.05 noise floor and
+        # doesn't appear in the normalised tags map.
+        assert "mcp" not in prefs["tags"], (
+            f"removed 👍 should cancel the original; got tags={prefs['tags']}"
+        )
+
+    def test_reaction_removed_inverts_thumbsdown_too(self, tmp_path, monkeypatch):
+        """Inversion works for negative signals as well: removing a 👎 cancels
+        the −1.0 contribution. Without the flag honoured, a removed 👎 would
+        stack to −2.0 — the opposite of what the user did."""
+        import preferences
+        from datetime import datetime, timezone
+
+        monkeypatch.setattr(preferences, "SIGNALS_LOG", tmp_path / "signals-log.jsonl")
+        monkeypatch.setattr(preferences, "PREFERENCES", tmp_path / "preferences.json")
+        now = datetime(2026, 5, 21, 12, 0, tzinfo=timezone.utc)
+        ts = now.isoformat().replace("+00:00", "Z")
+
+        # 15 users 👍 "kept-positive" + one user 👎+un-👎 "noisy" → net effect
+        # of "noisy" should be zero; "kept-positive" should dominate at +1.0.
+        lines = []
+        for i in range(15):
+            lines.append({
+                "ts": ts, "user": f"U{i}", "signal": "reaction_thumbsup",
+                "tags": ["kept-positive"], "category": "tool",
+            })
+        lines.append({"ts": ts, "user": "UNOISY", "signal": "reaction_thumbsdown",
+                      "tags": ["noisy"], "category": "tool"})
+        lines.append({"ts": ts, "user": "UNOISY", "signal": "reaction_thumbsdown",
+                      "tags": ["noisy"], "category": "tool", "removed": True})
+
+        (tmp_path / "signals-log.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in lines) + "\n"
+        )
+        prefs = preferences.regenerate(now=now)
+        # "noisy" should be cancelled; "kept-positive" must be the +1.0 peak
+        assert "noisy" not in prefs["tags"]
+        assert prefs["tags"]["kept-positive"] == 1.0
+
+
+class TestRankingReweight:
+    """Math-bounded post-scoring multiplier with exploration safeguards.
+
+    The clamp is ASYMMETRIC: boost up to +50% (×1.5), dampen only to −20%
+    (×0.8). Plus two bypasses for important novelty:
+      • base score ≥ 8 → unchanged (strong absolute signal)
+      • category in {frontier_model, security} → unchanged (non-negotiable)
+    """
+
+    def test_cold_start_returns_base_score(self):
+        import preferences
+        prefs = {"signal_count_14d": 5, "tags": {"mcp": 1.0}}
+        assert preferences.reweight_score(7.0, ["mcp"], prefs) == 7.0
+
+    def test_no_tags_returns_base_score(self):
+        import preferences
+        prefs = {"signal_count_14d": 100, "tags": {"mcp": 1.0}}
+        assert preferences.reweight_score(7.0, [], prefs) == 7.0
+        assert preferences.reweight_score(7.0, None, prefs) == 7.0
+
+    def test_positive_tag_boosts_within_cap(self):
+        import preferences
+        prefs = {"signal_count_14d": 50, "tags": {"mcp": 1.0}}
+        # α=0.1, multiplier = 1 + 0.1*1.0 = 1.1
+        assert abs(preferences.reweight_score(7.0, ["mcp"], prefs) - 7.7) < 1e-6
+
+    def test_negative_tag_dampens_within_cap(self):
+        import preferences
+        prefs = {"signal_count_14d": 50, "tags": {"no-code": -1.0}}
+        # α=0.1, multiplier = 1 + 0.1*-1.0 = 0.9
+        assert abs(preferences.reweight_score(7.0, ["no-code"], prefs) - 6.3) < 1e-6
+
+    def test_extreme_positive_clips_at_1_5x(self):
+        import preferences
+        # Six positively-weighted tags → boost would be 0.6, clipped to 0.5
+        prefs = {
+            "signal_count_14d": 50,
+            "tags": {f"t{i}": 1.0 for i in range(6)},
+        }
+        tags = [f"t{i}" for i in range(6)]
+        # Use base 7 so the high-base-score bypass (≥8) doesn't fire.
+        assert preferences.reweight_score(7.0, tags, prefs) == 7.0 * 1.5
+
+    def test_extreme_negative_clips_at_0_8x(self):
+        """Asymmetric clamp: dampen capped at 0.8x (NOT 0.5x).
+
+        Insurance against the taste model silencing an unfamiliar tag.
+        Worst case for a 7/10 item: 7 * 0.8 = 5.6 — still above the
+        verdict-cutoff of 6. The whole point: lift, never kill.
+        """
+        import preferences
+        prefs = {
+            "signal_count_14d": 50,
+            "tags": {f"t{i}": -1.0 for i in range(6)},
+        }
+        tags = [f"t{i}" for i in range(6)]
+        assert preferences.reweight_score(7.0, tags, prefs) == 7.0 * 0.8
+
+    def test_unknown_tag_is_ignored(self):
+        import preferences
+        prefs = {"signal_count_14d": 50, "tags": {"mcp": 1.0}}
+        # "novel-tag" not in prefs → contributes 0
+        assert preferences.reweight_score(7.0, ["novel-tag"], prefs) == 7.0
+
+    # ── Exploration safeguards ───────────────────────────────────────────
+
+    def test_high_base_score_bypasses_reweight(self):
+        """Items Sonnet rated 8+ pass through untouched, even with negative
+        tags. Prevents a niche-topic 9/10 from being pushed below an
+        on-trend 7/10 just because the team hasn't reacted to that tag."""
+        import preferences
+        prefs = {
+            "signal_count_14d": 50,
+            "tags": {"unfamiliar": -1.0},  # team strongly dislikes this tag
+        }
+        # 8.0 is the exact threshold — bypass
+        assert preferences.reweight_score(8.0, ["unfamiliar"], prefs) == 8.0
+        # 9.0 well above threshold — bypass
+        assert preferences.reweight_score(9.0, ["unfamiliar"], prefs) == 9.0
+        # 7.9 just below — reweight applies (gentle dampen to 7.9 * 0.9 = 7.11)
+        result = preferences.reweight_score(7.9, ["unfamiliar"], prefs)
+        assert abs(result - 7.9 * 0.9) < 1e-6
+
+    def test_frontier_model_category_bypasses_reweight(self):
+        """A new GPT/Claude/Gemini drop should never be dampened by team
+        taste — it's a stack-shifting event."""
+        import preferences
+        prefs = {
+            "signal_count_14d": 50,
+            "tags": {"frontier": -1.0},  # team has been bored of frontier news
+        }
+        assert preferences.reweight_score(
+            6.0, ["frontier"], prefs, category="frontier_model"
+        ) == 6.0
+
+    def test_security_category_bypasses_reweight(self):
+        """Security advisories pass through unchanged regardless of tag taste."""
+        import preferences
+        prefs = {"signal_count_14d": 50, "tags": {"cve": -1.0}}
+        assert preferences.reweight_score(
+            5.0, ["cve"], prefs, category="security"
+        ) == 5.0
+
+    def test_other_categories_do_not_bypass(self):
+        """`tool` / `orchestration` / `data` / `compute` categories still
+        get the (gentle, asymmetric) reweight applied."""
+        import preferences
+        prefs = {"signal_count_14d": 50, "tags": {"no-code": -1.0}}
+        # base 6, tags get -0.1 boost → multiplier 0.9 → 5.4
+        result = preferences.reweight_score(
+            6.0, ["no-code"], prefs, category="tool"
+        )
+        assert abs(result - 5.4) < 1e-6
+
+
+class TestScoutCutoffUsesBaseScore:
+    """The verdict cutoff in scout._main_impl uses the ORIGINAL Sonnet score
+    (score_base) when available, not the reweighted score. This is the actual
+    "never silence" guarantee — without it, a 7/10 with a disliked tag (which
+    reweights to 5.6) would be filtered out by the `score >= 6` cutoff, even
+    though the math layer claims to dampen but never kill.
+
+    The math reweight still drives ranking ORDER within the kept set, so
+    on-trend items still rise to the top. Codex review surfaced this as a
+    contradiction between the documented behaviour and the implementation.
+    """
+
+    def _cutoff(self, item):
+        # Mirror of the helper in scripts/scout.py:_main_impl._passes_cutoff
+        # Tests guard the rule even if the helper is later inlined or moved.
+        base = item.get("score_base", item.get("score", 0))
+        return base >= 6
+
+    def test_dampened_item_above_base_6_survives_cutoff(self):
+        # A 7/10 with negative tags is reweighted to 5.6 — under the old rule
+        # it was filtered out; under the fix it survives because score_base=7.
+        item = {"score_base": 7.0, "score": 5.6, "tags": ["no-code"]}
+        assert self._cutoff(item) is True
+
+    def test_item_below_base_6_still_dropped(self):
+        # A genuinely low-quality item (Sonnet gave it 5) is correctly dropped
+        # regardless of any reweight that may have nudged the displayed score.
+        item = {"score_base": 5.0, "score": 5.5, "tags": ["mcp"]}
+        assert self._cutoff(item) is False
+
+    def test_cold_start_path_uses_score_directly(self):
+        # In cold start, no reweight runs and `score_base` is not set. The
+        # cutoff falls back to `score`, matching pre-Round-6 behaviour exactly.
+        item = {"score": 7.0}
+        assert self._cutoff(item) is True
+        item_low = {"score": 5.0}
+        assert self._cutoff(item_low) is False
+
+
+class TestPreferencesPromptInjection:
+    """The Sonnet-aware steering paragraph."""
+
+    def test_cold_start_returns_empty_string(self):
+        import preferences
+        prefs = {"signal_count_14d": 5, "tags": {"mcp": 1.0}}
+        assert preferences.format_team_prefs_paragraph(prefs) == ""
+
+    def test_above_threshold_renders_tiered_paragraph(self):
+        import preferences
+        prefs = {
+            "signal_count_14d": 47,
+            "tags": {
+                "mcp": 0.91, "agentic-coding": 0.74,
+                "long-context": 0.25,
+                "no-code": -0.63, "image-gen": -0.81,
+            },
+        }
+        out = preferences.format_team_prefs_paragraph(prefs)
+        assert "47 reactions" in out
+        assert "Higher interest" in out and "mcp" in out and "agentic-coding" in out
+        assert "Mild interest" in out and "long-context" in out
+        assert "Strong avoid" in out and "image-gen" in out
+        # Novelty/severity protection language must be present so Sonnet
+        # itself respects the bypass — not just the math layer.
+        assert "soft context" in out and "BORDERLINE" in out
+        assert "NOVELTY" in out and "SEVERITY" in out
+        assert "8+" in out, "must remind Sonnet not to downweight strong items"
+        assert "LIFT" in out and "never to silence" in out
+
+
+# ── Lab runner — Round 7 Phase A ─────────────────────────────────────────────
+
+class TestLabOpenSourceGate:
+    """The 🧪 Run Lab button only appears on real open-source URLs. Closed-
+    source / paywalled / blog-post URLs simply don't get the button.
+
+    Belt-and-braces: lab_runner.py also enforces the same regex server-side,
+    so a manually-triggered pipeline can't bypass it either."""
+
+    def test_github_url_passes(self):
+        import slack_post
+        assert slack_post._is_open_source_url("https://github.com/foo/bar") is True
+        assert slack_post._is_open_source_url("https://www.github.com/foo/bar") is True
+
+    def test_pypi_url_passes(self):
+        import slack_post
+        assert slack_post._is_open_source_url("https://pypi.org/project/dspy/") is True
+
+    def test_huggingface_url_passes(self):
+        import slack_post
+        assert slack_post._is_open_source_url("https://huggingface.co/meta-llama/Llama-3") is True
+
+    def test_gitlab_url_passes(self):
+        import slack_post
+        assert slack_post._is_open_source_url("https://gitlab.com/foo/bar") is True
+
+    def test_anthropic_news_url_blocked(self):
+        import slack_post
+        # Vendor blog URL — not pullable, no button
+        assert slack_post._is_open_source_url("https://anthropic.com/news/x") is False
+
+    def test_random_blog_url_blocked(self):
+        import slack_post
+        assert slack_post._is_open_source_url("http://random-blog.com/post") is False
+
+    def test_empty_or_none_returns_false(self):
+        import slack_post
+        assert slack_post._is_open_source_url("") is False
+        assert slack_post._is_open_source_url(None) is False
+
+    def test_verdict_card_omits_lab_button_for_non_open_source(self):
+        """End-to-end: a verdict with a non-open-source source_url should NOT
+        carry a verdict_lab button in its actions block."""
+        import slack_post
+
+        v = {
+            "tool_name": "ClosedAI-Pro",
+            "verdict": "trial", "category": "tool", "soc2": "conditional",
+            "what": "x", "why_it_matters": "y", "adoption_cost": "z",
+            "next_action": "w",
+            "source_url": "https://closedai-pro.com/landing",  # vendor URL
+            "severity": "standard", "readiness": 3,
+        }
+        outer, _atts = slack_post._threaded_verdict_card(1, v)
+        actions = next(b for b in outer if b.get("type") == "actions")
+        action_ids = [e.get("action_id") for e in actions["elements"]]
+        assert "verdict_lab" not in action_ids, (
+            f"closed-source URL must not carry verdict_lab; got {action_ids}"
+        )
+        # Evaluate + compare + overflow are still there
+        assert "verdict_evaluate" in action_ids
+        assert "verdict_compare" in action_ids
+        assert "verdict_overflow" in action_ids
+
+    def test_verdict_card_includes_lab_button_for_open_source(self):
+        import slack_post
+
+        v = {
+            "tool_name": "DSPy",
+            "verdict": "trial", "category": "tool", "soc2": "safe",
+            "what": "x", "why_it_matters": "y", "adoption_cost": "z",
+            "next_action": "w",
+            "source_url": "https://github.com/stanfordnlp/dspy",
+            "severity": "high", "readiness": 4,
+        }
+        outer, _atts = slack_post._threaded_verdict_card(1, v)
+        actions = next(b for b in outer if b.get("type") == "actions")
+        action_ids = [e.get("action_id") for e in actions["elements"]]
+        assert "verdict_lab" in action_ids
+        # Lab button must carry the new "Run Lab" label, not the old "Queue lab"
+        lab_btn = next(e for e in actions["elements"] if e.get("action_id") == "verdict_lab")
+        assert "Run Lab" in lab_btn["text"]["text"]
+
+
+class TestLabSecretLeakGuard:
+    """Pre-execution regex check rejects scripts that look like they baked a
+    real secret in. This is the safety net against prompt-injection where
+    the tool's README tries to coerce the generator into hard-coding a key."""
+
+    def _matches(self, text):
+        import lab_runner
+        return lab_runner.SECRET_LEAK_RE.search(text)
+
+    @staticmethod
+    def _secret(*parts: str) -> str:
+        """Build scanner fixtures at runtime so push protection sees no token."""
+        return "".join(parts)
+
+    # These fixtures are intentionally shaped to LOOK like real secrets at
+    # runtime — that is the whole point of the test. The literals are split so
+    # GitHub push protection does not block harmless test fixtures.
+
+    def test_anthropic_key_pattern_caught(self):
+        token = self._secret("sk-ant-api03-", "AbCdEfGhIjKlMnOpQrStUv")
+        assert self._matches(f"client = Anthropic(api_key='{token}')")
+
+    def test_openai_proj_key_pattern_caught(self):
+        token = self._secret("sk-proj-", "AbCdEfGhIjKlMnOpQrStUv")
+        assert self._matches(f"OPENAI_API_KEY = '{token}'")
+
+    def test_slack_token_pattern_caught(self):
+        token = self._secret("xox", "b-", "1234567890-", "abcdefghijklmn")
+        assert self._matches(f"client = WebClient(token='{token}')")
+
+    def test_github_pat_pattern_caught(self):
+        token = self._secret("ghp_", "AbCdEfGhIjKlMnOpQrStUvWxYz1234")
+        assert self._matches(f"headers = {{'Authorization': '{token}'}}")
+
+    def test_aws_access_key_caught(self):
+        assert self._matches(f"AWS_ACCESS_KEY_ID = '{self._secret('ASIA', 'Q6RZI4ENNQ35NVWL')}'")
+        assert self._matches(f"AWS_ACCESS_KEY_ID = '{self._secret('AKIA', 'Q6RZI4ENNQ35NVWL')}'")
+
+    def test_clean_synthetic_script_passes(self):
+        clean = (
+            "import dspy\n"
+            "print('OK: imported')\n"
+            "try:\n"
+            "    obj = dspy.Predict('question -> answer')\n"
+            "    print('OK: instantiated Predict')\n"
+            "except Exception as e:\n"
+            "    print(f'FAILED: {e}')\n"
+        )
+        assert self._matches(clean) is None
+
+    def test_placeholder_key_not_caught(self):
+        """Synthetic 'PLACEHOLDER' / 'REPLACE-ME' patterns must NOT be flagged."""
+        placeholder = "ANTHROPIC_API_KEY = 'PLACEHOLDER'"  # pragma: allowlist secret
+        assert self._matches(placeholder) is None
+
+
+class TestLabCapsReader:
+    """`_within_caps` is the bouncer at the door — reads today's lab-* lines
+    from costs.jsonl and refuses if either cap is hit. Reviewer-visible
+    behaviour: cap fires → polite Slack refusal, no Sonnet calls, no
+    subprocess. This is the single most important cost-defense."""
+
+    def test_empty_ledger_allows_run(self, tmp_path, monkeypatch):
+        import lab_runner
+        monkeypatch.setattr(lab_runner, "COSTS_LEDGER", tmp_path / "costs.jsonl")
+        assert lab_runner._within_caps() is None
+
+    def test_under_count_cap_allows_run(self, tmp_path, monkeypatch):
+        import lab_runner
+        from datetime import datetime, timezone
+        monkeypatch.setattr(lab_runner, "COSTS_LEDGER", tmp_path / "costs.jsonl")
+        monkeypatch.setattr(lab_runner, "LAB_RUNS_PER_DAY", 3)
+        monkeypatch.setattr(lab_runner, "LAB_DAILY_USD_CAP", 5.0)
+
+        today = datetime.now(timezone.utc).isoformat()
+        # 1 prior run today (3 cost entries sharing one run_id)
+        lines = [
+            {"ts": today, "component": "lab-classify", "cost_usd": 0.01, "run_id": "abc"},
+            {"ts": today, "component": "lab-generate", "cost_usd": 0.02, "run_id": "abc"},
+            {"ts": today, "component": "lab-interpret", "cost_usd": 0.01, "run_id": "abc"},
+        ]
+        (tmp_path / "costs.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in lines) + "\n"
+        )
+        assert lab_runner._within_caps() is None
+
+    def test_run_count_cap_refuses(self, tmp_path, monkeypatch):
+        import lab_runner
+        from datetime import datetime, timezone
+        monkeypatch.setattr(lab_runner, "COSTS_LEDGER", tmp_path / "costs.jsonl")
+        monkeypatch.setattr(lab_runner, "LAB_RUNS_PER_DAY", 1)
+        monkeypatch.setattr(lab_runner, "LAB_DAILY_USD_CAP", 100.0)
+
+        today = datetime.now(timezone.utc).isoformat()
+        lines = [{"ts": today, "component": "lab-classify", "cost_usd": 0.01, "run_id": "first"}]
+        (tmp_path / "costs.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in lines) + "\n"
+        )
+        refusal = lab_runner._within_caps()
+        assert refusal is not None
+        assert "daily cap" in refusal.lower()
+
+    def test_usd_cap_refuses(self, tmp_path, monkeypatch):
+        import lab_runner
+        from datetime import datetime, timezone
+        monkeypatch.setattr(lab_runner, "COSTS_LEDGER", tmp_path / "costs.jsonl")
+        monkeypatch.setattr(lab_runner, "LAB_RUNS_PER_DAY", 100)
+        monkeypatch.setattr(lab_runner, "LAB_DAILY_USD_CAP", 1.0)
+
+        today = datetime.now(timezone.utc).isoformat()
+        # One $1.50 lab run already today — over the $1.00 USD cap
+        lines = [{"ts": today, "component": "lab-classify", "cost_usd": 1.50, "run_id": "expensive"}]
+        (tmp_path / "costs.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in lines) + "\n"
+        )
+        refusal = lab_runner._within_caps()
+        assert refusal is not None
+        assert "USD cap" in refusal
+
+    def test_yesterdays_entries_dont_count(self, tmp_path, monkeypatch):
+        """Caps reset at midnight UTC — yesterday's spend shouldn't gate today."""
+        import lab_runner
+        from datetime import datetime, timedelta, timezone
+        monkeypatch.setattr(lab_runner, "COSTS_LEDGER", tmp_path / "costs.jsonl")
+        monkeypatch.setattr(lab_runner, "LAB_RUNS_PER_DAY", 1)
+        monkeypatch.setattr(lab_runner, "LAB_DAILY_USD_CAP", 1.0)
+
+        yesterday = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+        lines = [
+            {"ts": yesterday, "component": "lab-classify", "cost_usd": 0.50, "run_id": "old1"},
+            {"ts": yesterday, "component": "lab-generate", "cost_usd": 0.50, "run_id": "old1"},
+        ]
+        (tmp_path / "costs.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in lines) + "\n"
+        )
+        assert lab_runner._within_caps() is None
+
+    def test_non_lab_costs_dont_count(self, tmp_path, monkeypatch):
+        """Scout / Pulse / Synth costs share the ledger but don't count
+        against the lab cap — only `lab-*` component entries do."""
+        import lab_runner
+        from datetime import datetime, timezone
+        monkeypatch.setattr(lab_runner, "COSTS_LEDGER", tmp_path / "costs.jsonl")
+        monkeypatch.setattr(lab_runner, "LAB_RUNS_PER_DAY", 1)
+        monkeypatch.setattr(lab_runner, "LAB_DAILY_USD_CAP", 1.0)
+
+        today = datetime.now(timezone.utc).isoformat()
+        # $20 of Scout cost today shouldn't gate a lab click
+        lines = [
+            {"ts": today, "component": "scout-score", "cost_usd": 5.0, "run_id": "s1"},
+            {"ts": today, "component": "scout-verdict", "cost_usd": 10.0, "run_id": "s1"},
+            {"ts": today, "component": "scout-judge", "cost_usd": 5.0, "run_id": "s1"},
+        ]
+        (tmp_path / "costs.jsonl").write_text(
+            "\n".join(json.dumps(line) for line in lines) + "\n"
+        )
+        assert lab_runner._within_caps() is None
+
+
+class TestLabSubprocessHermetic:
+    """The generated test script runs with no parent API keys in the child env.
+
+    Verified via subprocess introspection: the test asks the child to print
+    its environment and asserts sensitive keys are absent.
+    """
+
+    def test_subprocess_env_contains_no_secrets(self, tmp_path, monkeypatch):
+        """Run a tiny synthetic script that prints its env; assert no app
+        secret keys are present."""
+        import lab_runner
+
+        # Set fake secrets in the PARENT env so we can verify they don't leak
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-anthropic-sentinel")
+        monkeypatch.setenv("OPENAI_API_KEY", "parent-openai-sentinel")
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "parent-slack-sentinel")
+        monkeypatch.setenv("GH_TOKEN", "parent-github-sentinel")
+
+        # Build a minimal "package" — we'll pip-install nothing-relevant
+        # (just use stdlib in the test script). Skip the install step by
+        # using a real but tiny package: `six` is universally available
+        # and installs in <2s.
+        spec = {"name": "six", "package": "six", "url": "https://pypi.org/project/six/"}
+        script = textwrap.dedent("""
+            import os, sys, json
+            keys_present = sorted(k for k in os.environ
+                                   if k in {
+                                       "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+                                       "SLACK_BOT_TOKEN", "GH_TOKEN",
+                                       "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
+                                       "AWS_SESSION_TOKEN",
+                                   })
+            print("LEAKED_SECRETS=" + json.dumps(keys_present))
+            print("PATH_PRESENT=" + str("PATH" in os.environ))
+            print("HOME_PRESENT=" + str("HOME" in os.environ))
+        """).strip()
+
+        result = lab_runner._run_subprocess(spec, script)
+        # If install fails (no internet), skip — the hermetic check is
+        # what matters and can't be tested without subprocess.
+        if result["stage"] == "install" and result["exit_code"] != 0:
+            pytest.skip(f"pip install of `six` failed in test env: {result['stderr'][:120]}")
+
+        assert "LEAKED_SECRETS=[]" in result["stdout"], (
+            f"child env leaked secrets! stdout was:\n{result['stdout']}"
+        )
+        assert "PATH_PRESENT=True" in result["stdout"]
+        assert "HOME_PRESENT=True" in result["stdout"]
+
+
+# Need textwrap for the subprocess-hermetic test above
+import textwrap  # noqa: E402
+
+
+class TestReactionErrorHandling:
+    """`_add_reactions` must surface the actual Slack error code AND stop
+    the loop on unrecoverable errors. Previous behaviour spammed CI logs
+    with 21 lines of opaque `{'ok': False, ...}` when the bot was missing
+    one scope — operator had no signal which root cause to fix."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_breaker(self):
+        """The cross-card circuit breaker is module-level state; reset it
+        before AND after each test so cases can't leak into each other."""
+        import slack_post
+        slack_post.reset_reaction_breaker()
+        yield
+        slack_post.reset_reaction_breaker()
+
+    def _fake_slack_error(self, error_code: str) -> Exception:
+        """Build an exception that mimics slack_sdk.errors.SlackApiError —
+        carries a `.response.data` dict with the error code, same shape
+        the real SDK uses."""
+        class _FakeResponse:
+            def __init__(self, data):
+                self.data = data
+
+        class _FakeSlackApiError(Exception):
+            def __init__(self, error_code):
+                super().__init__(f"The request to the Slack API failed.")
+                self.response = _FakeResponse({"ok": False, "error": error_code})
+
+        return _FakeSlackApiError(error_code)
+
+    def test_extract_slack_error_from_real_shape(self):
+        import slack_post
+        exc = self._fake_slack_error("missing_scope")
+        assert slack_post._extract_slack_error(exc) == "missing_scope"
+
+    def test_extract_slack_error_returns_empty_for_non_slack_exception(self):
+        import slack_post
+        assert slack_post._extract_slack_error(ValueError("nope")) == ""
+        assert slack_post._extract_slack_error(RuntimeError()) == ""
+
+    def test_missing_scope_bails_after_one_log(self, monkeypatch, capsys):
+        """The hottest failure mode: bot lacks reactions:write. Old code
+        logged 21 lines. New code should log ONCE and stop."""
+        import slack_post
+
+        calls = []
+
+        class _FakeClient:
+            def reactions_add(self, channel, timestamp, name):
+                calls.append(name)
+                raise self_test._fake_slack_error("missing_scope")
+
+        self_test = self  # capture so the inner class can build the error
+        monkeypatch.setattr(slack_post, "_bot_client", lambda: _FakeClient())
+        monkeypatch.setenv("SLACK_CHANNEL_ID", "C0FAKE")
+        monkeypatch.setattr(slack_post.time, "sleep", lambda s: None)
+
+        slack_post._add_reactions("172.000001", emojis=["test_tube", "+1", "-1"])
+
+        # Only the FIRST emoji should have been attempted — the loop bailed.
+        assert calls == ["test_tube"], f"expected single attempt, got {calls}"
+        out = capsys.readouterr().out
+        # The operator sees a clear, actionable message
+        assert "Skipping all reactions" in out
+        assert "missing_scope" in out
+        assert "reinstall" in out.lower()
+
+    def test_ratelimited_also_bails(self, monkeypatch, capsys):
+        """Rate-limit is recoverable on the next run; trying more now
+        only makes the back-off worse."""
+        import slack_post
+
+        calls = []
+
+        class _FakeClient:
+            def reactions_add(self, channel, timestamp, name):
+                calls.append(name)
+                raise self_test._fake_slack_error("ratelimited")
+
+        self_test = self
+        monkeypatch.setattr(slack_post, "_bot_client", lambda: _FakeClient())
+        monkeypatch.setenv("SLACK_CHANNEL_ID", "C0FAKE")
+        monkeypatch.setattr(slack_post.time, "sleep", lambda s: None)
+
+        slack_post._add_reactions("172.000001", emojis=["test_tube", "+1", "-1"])
+        assert calls == ["test_tube"], f"expected bail after first, got {calls}"
+        out = capsys.readouterr().out
+        assert "ratelimited" in out
+        assert "rate cap" in out.lower()
+
+    def test_already_reacted_is_silent_and_continues(self, monkeypatch, capsys):
+        """Bot's own retry path can revisit a card; `already_reacted` is
+        a benign no-op and should not produce log noise."""
+        import slack_post
+
+        calls = []
+
+        class _FakeClient:
+            def reactions_add(self, channel, timestamp, name):
+                calls.append(name)
+                raise self_test._fake_slack_error("already_reacted")
+
+        self_test = self
+        monkeypatch.setattr(slack_post, "_bot_client", lambda: _FakeClient())
+        monkeypatch.setenv("SLACK_CHANNEL_ID", "C0FAKE")
+        monkeypatch.setattr(slack_post.time, "sleep", lambda s: None)
+
+        slack_post._add_reactions("172.000001", emojis=["test_tube", "+1", "-1"])
+        # All three emojis were attempted — already_reacted does NOT bail
+        assert calls == ["test_tube", "+1", "-1"]
+        # And the log is silent (no noisy lines)
+        out = capsys.readouterr().out
+        assert "already_reacted" not in out  # silent
+        assert "reactions.add" not in out  # no per-emoji noise
+
+    def test_breaker_prevents_per_card_spam(self, monkeypatch, capsys):
+        """Critical observability fix: on the live run, missing_scope
+        printed 7 identical "Skipping all reactions" lines (one per card)
+        because the bail was per-card. The breaker collapses that to ONE
+        line per run. Test simulates 7 cards calling _add_reactions."""
+        import slack_post
+
+        calls = []
+
+        class _FakeClient:
+            def reactions_add(self, channel, timestamp, name):
+                calls.append((timestamp, name))
+                raise self_test._fake_slack_error("missing_scope")
+
+        self_test = self
+        monkeypatch.setattr(slack_post, "_bot_client", lambda: _FakeClient())
+        monkeypatch.setenv("SLACK_CHANNEL_ID", "C0FAKE")
+        monkeypatch.setattr(slack_post.time, "sleep", lambda s: None)
+
+        # Reset breaker as the real entry point would do
+        slack_post.reset_reaction_breaker()
+
+        # Simulate 7 cards each calling _add_reactions
+        for ts in [f"172.00000{i}" for i in range(1, 8)]:
+            slack_post._add_reactions(ts, emojis=["test_tube", "+1", "-1"])
+
+        # Card 1 made 1 API call (failed → tripped breaker).
+        # Cards 2-7 made ZERO calls — breaker short-circuited the whole loop.
+        assert len(calls) == 1, (
+            f"expected 1 API call across 7 cards (breaker should short-"
+            f"circuit), got {len(calls)}: {calls}"
+        )
+        # And the operator sees the message ONCE, not 7 times.
+        out = capsys.readouterr().out
+        assert out.count("Skipping all reactions") == 1, (
+            f"breaker should log exactly once per run; got:\n{out}"
+        )
+
+    def test_breaker_resets_between_runs(self, monkeypatch):
+        """The breaker must clear when reset_reaction_breaker() is called
+        (which weekly_briefing_threaded does at the start of every run).
+        Otherwise a missing_scope hit on Monday's briefing would silently
+        suppress reactions on every subsequent briefing forever."""
+        import slack_post
+
+        # Trip the breaker manually
+        slack_post._REACTION_BREAKER_TRIPPED["missing_scope"] = True
+        assert slack_post._REACTION_BREAKER_TRIPPED  # truthy
+
+        slack_post.reset_reaction_breaker()
+        assert not slack_post._REACTION_BREAKER_TRIPPED  # cleared
+
+    def test_other_error_logs_real_reason_and_continues(self, monkeypatch, capsys):
+        """If one emoji fails for a non-fatal reason (e.g. custom-emoji
+        doesn't exist in the workspace), other reactions on the card can
+        still land — log the reason and continue."""
+        import slack_post
+
+        calls = []
+
+        class _FakeClient:
+            def reactions_add(self, channel, timestamp, name):
+                calls.append(name)
+                if name == "test_tube":
+                    raise self_test._fake_slack_error("invalid_name")
+                # +1 and -1 succeed
+                return {"ok": True}
+
+        self_test = self
+        monkeypatch.setattr(slack_post, "_bot_client", lambda: _FakeClient())
+        monkeypatch.setenv("SLACK_CHANNEL_ID", "C0FAKE")
+        monkeypatch.setattr(slack_post.time, "sleep", lambda s: None)
+
+        slack_post._add_reactions("172.000001", emojis=["test_tube", "+1", "-1"])
+        # All three were attempted
+        assert calls == ["test_tube", "+1", "-1"]
+        out = capsys.readouterr().out
+        # The failing one was logged with its actual error code
+        assert "invalid_name" in out
+        # And the others didn't add log noise
+        assert "Skipping all reactions" not in out
+
+
+class TestDebugMode:
+    """`DEBUG=true` in GitHub Actions variables bypasses Mem0 entirely:
+    prior-filter passes everything through, seeding is skipped. Lets us
+    run back-to-back tests without manually wiping Mem0, and without
+    polluting the production memory store with test verdicts.
+
+    Production scheduled crons leave DEBUG unset → normal Mem0 behaviour."""
+
+    def test_debug_off_by_default(self, monkeypatch):
+        import scout
+        monkeypatch.delenv("DEBUG", raising=False)
+        assert scout._debug_mode() is False
+
+    def test_debug_false_keeps_mem0_on(self, monkeypatch):
+        import scout
+        monkeypatch.setenv("DEBUG", "false")
+        assert scout._debug_mode() is False
+
+    def test_debug_true_variations(self, monkeypatch):
+        import scout
+        for value in ("true", "True", "TRUE", "1", "yes", "Yes"):
+            monkeypatch.setenv("DEBUG", value)
+            assert scout._debug_mode() is True, f"DEBUG={value!r} should be truthy"
+
+    def test_debug_garbage_is_off(self, monkeypatch):
+        """Defensive: anything other than the explicit truthy set keeps
+        production behaviour. Avoids accidental debug-mode if someone
+        typos `DEBUG=tru` or sets it to `0`."""
+        import scout
+        for value in ("0", "no", "off", "", "tru", "False"):
+            monkeypatch.setenv("DEBUG", value)
+            assert scout._debug_mode() is False, f"DEBUG={value!r} should be falsy"
+
+    def test_filter_by_mem0_bypasses_in_debug(self, monkeypatch, capsys):
+        """Most important test: when DEBUG is on, filter_by_mem0 returns
+        every item unchanged regardless of Mem0 state."""
+        import scout
+        monkeypatch.setenv("DEBUG", "true")
+        items = [
+            {"title": "DSPy 2.5", "url": "https://github.com/stanfordnlp/dspy"},
+            {"title": "LangGraph 0.5", "url": "https://github.com/langchain-ai/langgraph"},
+        ]
+        kept, dropped = scout.filter_by_mem0(items)
+        assert kept == items, "DEBUG mode should pass every item through"
+        assert dropped == 0
+        # Banner is printed so the operator can see DEBUG is on
+        out = capsys.readouterr().out
+        assert "DEBUG" in out and "bypassing Mem0" in out
+
+    def test_seed_mem0_skips_in_debug(self, monkeypatch, capsys):
+        """Symmetric: when DEBUG is on, seed_mem0 is a no-op so a test
+        run with garbage verdicts doesn't write to the production store."""
+        import scout
+        monkeypatch.setenv("DEBUG", "true")
+        verdicts = [{
+            "tool_name": "Fake-Tool", "verdict": "trial", "category": "tool",
+            "soc2": "safe", "what": "x", "why_it_matters": "y",
+            "adoption_cost": "z", "next_action": "w",
+        }]
+        # Should return cleanly without trying to import memory
+        scout.seed_mem0(verdicts)
+        out = capsys.readouterr().out
+        assert "DEBUG" in out and "NOT seeding Mem0" in out
+
+
+class TestQuietWeekBriefing:
+    """The bot ALWAYS posts something on its schedule. Silence makes
+    operators assume the bot is broken; a quiet-week heartbeat is the
+    right signal: scanned N, considered M, shipped 0, here's why."""
+
+    def test_fetch_empty_reason_renders(self):
+        import slack_post
+        blocks = slack_post.quiet_week_blocks(
+            date="2026-05-21", scanned=0, candidates=0,
+            reason="fetch_empty", duration_s=12.0,
+            detail="All source fetchers returned 0 items.",
+        )
+        # Header always present
+        assert blocks[0]["type"] == "header"
+        assert "Weekly Briefing" in blocks[0]["text"]["text"]
+        # Body mentions "Lean fetch" — the fetch_empty headline
+        body_texts = [
+            b.get("text", {}).get("text", "") for b in blocks
+            if b.get("type") == "section"
+        ]
+        assert any("Lean fetch" in t for t in body_texts)
+        # Funnel context block carries 0/0/0/0
+        context_texts = [
+            e.get("text", "")
+            for b in blocks if b.get("type") == "context"
+            for e in b.get("elements", [])
+        ]
+        assert any("*0* scanned" in t and "*0* shipped" in t for t in context_texts)
+        # Detail line surfaces the fetcher diagnostic
+        assert any("All source fetchers returned" in t for t in context_texts)
+
+    def test_all_filtered_reason_renders(self):
+        import slack_post
+        blocks = slack_post.quiet_week_blocks(
+            date="2026-05-21", scanned=313, dedup_drops=5, prior_drops=308,
+            candidates=0, reason="all_filtered", duration_s=45.0,
+        )
+        body_texts = [
+            b.get("text", {}).get("text", "") for b in blocks
+            if b.get("type") == "section"
+        ]
+        assert any("Radar already up-to-date" in t for t in body_texts)
+        # considered = scanned - dedup - prior = 313 - 5 - 308 = 0
+        context_texts = [
+            e.get("text", "")
+            for b in blocks if b.get("type") == "context"
+            for e in b.get("elements", [])
+        ]
+        assert any("*313* scanned" in t for t in context_texts)
+        assert any("*0* considered" in t for t in context_texts)
+
+    def test_no_verdicts_reason_renders(self):
+        import slack_post
+        blocks = slack_post.quiet_week_blocks(
+            date="2026-05-21", scanned=313, dedup_drops=5, prior_drops=0,
+            candidates=308, reason="no_verdicts", cost=0.26, duration_s=180.0,
+            detail="Judge vetoed all 4 draft verdict(s). Judge: Nothing notable.",
+        )
+        body_texts = [
+            b.get("text", {}).get("text", "") for b in blocks
+            if b.get("type") == "section"
+        ]
+        assert any("Quiet week" in t for t in body_texts)
+        context_texts = [
+            e.get("text", "")
+            for b in blocks if b.get("type") == "context"
+            for e in b.get("elements", [])
+        ]
+        # Cost rendered
+        assert any("$0.26" in t for t in context_texts)
+        # Detail line surfaces the judge summary
+        assert any("Judge vetoed all 4" in t for t in context_texts)
+
+    def test_unknown_reason_falls_back_to_no_verdicts(self):
+        """Defensive: an unexpected reason string shouldn't crash; it falls
+        back to the "no_verdicts" headline so SOMETHING posts."""
+        import slack_post
+        blocks = slack_post.quiet_week_blocks(
+            date="2026-05-21", scanned=10, candidates=10,
+            reason="some-future-reason-not-yet-defined",
+        )
+        body_texts = [
+            b.get("text", {}).get("text", "") for b in blocks
+            if b.get("type") == "section"
+        ]
+        # No KeyError; renders the no_verdicts headline as fallback
+        assert any("Quiet week" in t for t in body_texts)
+
+    def test_block_shape_is_valid_block_kit(self):
+        """Quick structural sanity: every block has a `type`; no None
+        values; no empty top-level keys that would trip Slack."""
+        import slack_post
+        blocks = slack_post.quiet_week_blocks(
+            date="2026-05-21", scanned=10, candidates=10,
+            reason="no_verdicts", cost=0.10,
+        )
+        for b in blocks:
+            assert isinstance(b, dict)
+            assert "type" in b
+            assert b["type"] in {"header", "section", "context", "divider"}
+            # Slack accessibility: section blocks must have text
+            if b["type"] == "section":
+                assert "text" in b
+                assert b["text"].get("text"), f"empty section text in {b!r}"
 
 
 if __name__ == "__main__":

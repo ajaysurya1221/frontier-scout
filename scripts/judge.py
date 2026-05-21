@@ -31,12 +31,11 @@ THINKING_BUDGET = 4000  # tokens
 
 
 def _client() -> anthropic.Anthropic:
-    """Create the Anthropic client only when a live judge call is actually made."""
     global CLIENT
     if CLIENT is None:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required for live judge calls")
+            raise RuntimeError("ANTHROPIC_API_KEY is required for the judge pass")
         CLIENT = anthropic.Anthropic(api_key=api_key)
     return CLIENT
 
@@ -224,6 +223,9 @@ def apply_judge_decisions(
             "source_url": item.get("url", ""),
             "severity": m.get("severity", "high"),
             "readiness": int(m.get("readiness", 3)),
+            # Carry topic tags from the source item so the channel taste
+            # model (preferences.py) can attribute reactions to topics.
+            "tags": list(item.get("tags") or []),
             "_judge_reason": "promoted from missed pool",
             "_promoted_by_judge": True,
         })

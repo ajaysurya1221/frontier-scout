@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Telemetry — Weekly Scout (v3).
+Frontier Scout — Weekly Scout (v3).
 
 Runs every Monday 09:00 IST. Surfaces high-signal AI/ML developments from the
 past 7 days across ~47 source streams (first-party labs + curated newsletters +
@@ -40,6 +40,7 @@ import feedparser
 import requests
 
 from cost_tracker import log_call
+import preferences
 from prompts import cached_system_blocks
 from tools import SCORE_ITEMS_TOOL, VERDICT_TOOL
 import judge as judge_mod
@@ -76,16 +77,15 @@ SOURCE_QUOTAS = {
 }
 assert sum(SOURCE_QUOTAS.values()) <= MAX_ITEMS, "quotas exceed MAX_ITEMS"
 
-USER_AGENT = "ai-telemetry/2.0 (+https://github.com/YOUR_ORG/ai-telemetry)"
+USER_AGENT = "frontier-scout/2.0 (+https://github.com/ajaysurya1221/frontier-scout)"
 
 
 def _client() -> anthropic.Anthropic:
-    """Create the Anthropic client only when a live pipeline call is made."""
     global CLIENT
     if CLIENT is None:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required for Scout model calls")
+            raise RuntimeError("ANTHROPIC_API_KEY is required to run Scout")
         CLIENT = anthropic.Anthropic(api_key=api_key)
     return CLIENT
 
@@ -119,7 +119,7 @@ RSS_FEEDS = [
 ]
 
 GITHUB_REPOS = [
-    # Existing watchlist (frameworks the configured team uses or evaluates)
+    # Existing watchlist (frameworks a typical AI-native team uses or evaluates)
     ("langchain-ai/langchain",             "LangChain"),
     ("langchain-ai/langgraph",             "LangGraph"),
     ("anthropics/claude-plugins-official", "Claude Code Plugins"),
@@ -515,8 +515,30 @@ def dedupe(items: list[dict]) -> tuple[list[dict], int]:
     return out, len(items) - len(out)
 
 
+def _debug_mode() -> bool:
+    """Return True when the operator wants the run to NOT touch Mem0.
+
+    Set `DEBUG=true` in GitHub Actions variables (or in local shell) to:
+      • bypass the Mem0 prior-filter — every fetched item reaches scoring,
+        even if a previous run already evaluated it. Avoids empty briefings
+        during back-to-back test runs on the same week's items.
+      • skip Mem0 seeding — debug verdicts don't pollute the production
+        memory store, so flipping `DEBUG=false` afterward returns the bot
+        to its pre-debug state with no manual wipe.
+
+    Production (scheduled crons): leave `DEBUG` unset, or set `DEBUG=false`.
+    The default is OFF — Mem0 works normally.
+
+    Accepted truthy values: "true", "1", "yes" (case-insensitive).
+    """
+    return os.environ.get("DEBUG", "").strip().lower() in {"true", "1", "yes"}
+
+
 def filter_by_mem0(items: list[dict]) -> tuple[list[dict], int]:
     """Drop items where Mem0 has a verdict ≤30 days old. Best-effort."""
+    if _debug_mode():
+        print("🐛 DEBUG mode: bypassing Mem0 prior-filter (all items pass through)")
+        return items, 0
     try:
         from memory import is_available, mem
     except Exception:
@@ -540,7 +562,20 @@ def filter_by_mem0(items: list[dict]) -> tuple[list[dict], int]:
 # ── Intelligence Pipeline ─────────────────────────────────────────────────────
 
 def score_items(items: list[dict]) -> tuple[list[dict], float]:
-    """Sonnet pass 1: score 0-10 relevance, tag category. Forced via tool use."""
+    """Sonnet pass 1: score 0-10 relevance, tag category + topic tags.
+
+    Forced via tool use. Two preference-aware extensions:
+
+      (a) Sonnet-aware: when the team-preferences signal is above the
+          cold-start threshold, a short "Team preferences" paragraph is
+          appended to the user message so Sonnet uses it as soft context.
+      (b) Math-bounded: after Sonnet returns raw 0-10 scores, each item's
+          score is multiplied by a tag-weighted multiplier clipped to
+          [0.5x, 1.5x]. See scripts/preferences.py for the math.
+
+    Both branches no-op in cold start, so behaviour is identical to today
+    until ≥10 signals accumulate in the last 14 days.
+    """
     if not items:
         return [], 0.0
 
@@ -550,6 +585,19 @@ def score_items(items: list[dict]) -> tuple[list[dict], float]:
         before = len(items)
         items = stratified_cap(items)
         print(f"⚠️  {before} items — stratified cap to {len(items)} across source groups")
+
+    # Channel taste model — Round 6.
+    # Regenerate from the committed signals-log.jsonl so weights reflect the
+    # latest reactions even if preferences.json is stale.
+    prefs = preferences.regenerate()
+    prefs_paragraph = preferences.format_team_prefs_paragraph(prefs)
+    if prefs_paragraph:
+        print(f"  📈 Tuned by {prefs['signal_count_14d']} signals "
+              f"({prefs['reaction_count_14d']} reactions, "
+              f"{prefs['lab_count_14d']} lab queues) over the last 14d")
+    else:
+        print(f"  📈 Cold start: {prefs['signal_count_14d']} signals < threshold "
+              f"{preferences.COLD_START_THRESHOLD} — Sonnet scores unsteered")
 
     # Wrap items in <source_data> tags so the system prompt's
     # prompt-injection clause has a target it can refer to. The model is
@@ -564,22 +612,43 @@ def score_items(items: list[dict]) -> tuple[list[dict], float]:
         for i, item in enumerate(items)
     )
 
+    user_content = f"Score these {len(items)} items.\n\n{batch}"
+    if prefs_paragraph:
+        # Append AFTER the data — keeps the model's primary attention on the
+        # items, with the team preferences as a closing soft-context cue.
+        user_content += (
+            "\n\n---\n"
+            f"{prefs_paragraph}"
+        )
+
+    # max_tokens sized for the WORST case: 250 items × ~40 tokens per entry
+    # (index + score + category + up to 3 tags) ≈ 10000 tokens, with headroom.
+    # Round 6 added the `tags` field; without raising this cap, the score pass
+    # truncated at 8000 and most items got default score=0 → empty briefings.
     resp = call_with_retry(
         _client(),
         "scout-score",
         model=MODEL,
-        max_tokens=8000,
+        max_tokens=16000,
         system=cached_system_blocks(),
         tools=[SCORE_ITEMS_TOOL],
         tool_choice={"type": "tool", "name": "score_items"},
         messages=[{
             "role": "user",
-            "content": f"Score these {len(items)} items.\n\n{batch}",
+            "content": user_content,
         }],
     )
     cost = log_call("scout-score", MODEL, resp.usage)
     print(f"  Score pass: {resp.usage.input_tokens} in + {resp.usage.output_tokens} out "
           f"(cache_read={getattr(resp.usage, 'cache_read_input_tokens', 0)}) = ${cost:.4f}")
+    # Loud warning if we ever hit the new ceiling — that's a signal the items
+    # batch grew bigger than the model can fit, NOT silent truncation.
+    if resp.usage.output_tokens >= 16000:
+        print(
+            "  ⚠️  Score pass hit max_tokens=16000 — output may be truncated. "
+            "Items with default score=0 likely never got scored. "
+            "Consider lowering MAX_ITEMS or raising max_tokens further."
+        )
 
     tool_use = next(b for b in resp.content if b.type == "tool_use")
     for entry in tool_use.input.get("scores", []) or []:
@@ -587,12 +656,63 @@ def score_items(items: list[dict]) -> tuple[list[dict], float]:
         if 0 <= i < len(items):
             items[i]["score"] = entry["score"]
             items[i]["category"] = entry["category"]
+            items[i]["tags"] = [
+                t.lower() for t in (entry.get("tags") or []) if isinstance(t, str) and t
+            ]
 
     for item in items:
         item.setdefault("score", 0)
         item.setdefault("category", "tool")
+        item.setdefault("tags", [])
+
+    # Math-bounded post-scoring reweight. No-op in cold start.
+    # Three safeguards inside reweight_score() prevent the taste model from
+    # silencing important novelty:
+    #   • base score ≥ 8 → bypass entirely (strong absolute signal wins)
+    #   • category in {frontier_model, security} → bypass (non-negotiable)
+    #   • asymmetric clamp [0.8x, 1.5x] → can lift, never kill
+    if prefs.get("signal_count_14d", 0) >= preferences.COLD_START_THRESHOLD:
+        for item in items:
+            item["score_base"] = item["score"]
+            item["score"] = preferences.reweight_score(
+                float(item["score"]), item["tags"], prefs,
+                category=item.get("category"),
+            )
 
     return sorted(items, key=lambda x: x["score"], reverse=True), cost
+
+
+def _attach_tags(verdicts: list[dict], scored_items: list[dict]) -> list[dict]:
+    """Backfill `tags` onto each verdict by matching to its scored source item.
+
+    Scout's score pass tags each item; the verdict pass (generate_verdicts)
+    doesn't echo the tags through. Without this enrichment, the channel
+    taste model can't attribute reactions to topics.
+
+    Matching strategy, in order of preference:
+      1. exact URL match (verdict.source_url == item.url)
+      2. tool_name substring (case-insensitive) in item.title
+      3. leave existing tags as-is (e.g. already-tagged judge promotions)
+    """
+    if not verdicts:
+        return verdicts
+    by_url = {(item.get("url") or ""): item for item in scored_items if item.get("url")}
+    for v in verdicts:
+        if v.get("tags"):
+            # Already populated (e.g. judge-promoted misses) — don't clobber.
+            continue
+        url = v.get("source_url") or ""
+        match = by_url.get(url)
+        if match is None:
+            tool_lc = (v.get("tool_name") or "").lower().strip()
+            if tool_lc:
+                for item in scored_items:
+                    title_lc = (item.get("title") or "").lower()
+                    if tool_lc and tool_lc in title_lc:
+                        match = item
+                        break
+        v["tags"] = list((match or {}).get("tags") or [])
+    return verdicts
 
 
 def generate_verdicts(top: list[dict]) -> tuple[list[dict], float]:
@@ -658,7 +778,7 @@ def write_briefing(verdicts: list[dict], scanned: int, candidates: int, total_co
         len(RSS_FEEDS) + len(GITHUB_REPOS) + len(ARXIV_CATS) + len(TRENDING_LANGS) + 4
     )
     lines = [
-        f"# AI Telemetry — Weekly Briefing · {today}",
+        f"# Frontier Scout — Weekly Briefing · {today}",
         f"> Scanned **{scanned}** items across **{n_sources}** sources. "
         f"**{candidates}** unique candidates after dedup + Mem0 prior-filter. "
         f"**{len(verdicts)}** verdicts after RLAIF judge pass. "
@@ -699,6 +819,12 @@ def write_briefing(verdicts: list[dict], scanned: int, candidates: int, total_co
 
 def seed_mem0(verdicts: list[dict]) -> None:
     """Best-effort write to Mem0. Silently skip if not configured."""
+    if _debug_mode():
+        print(
+            f"🐛 DEBUG mode: NOT seeding Mem0 with {len(verdicts)} verdicts "
+            "(debug runs don't pollute production memory)"
+        )
+        return
     try:
         from memory import is_available, mem
     except Exception as e:
@@ -725,11 +851,54 @@ def seed_mem0(verdicts: list[dict]) -> None:
             print(f"  Mem0 write failed for {v.get('tool_name', '?')}: {e}")
 
 
+# ── Heartbeat briefing (the "always post" floor) ─────────────────────────────
+
+def _post_quiet_week(
+    *,
+    date: str,
+    scanned: int,
+    dedup_drops: int,
+    prior_drops: int,
+    candidates: int,
+    reason: str,
+    cost: float = 0.0,
+    duration_s: float | None = None,
+    detail: str = "",
+) -> None:
+    """Best-effort post of the quiet-week heartbeat briefing.
+
+    Wraps every Slack failure path so an empty pipeline run still produces
+    a visible Slack post — silence makes operators assume the bot is broken.
+    On any unexpected exception, we log loudly and continue (the run still
+    "completed"; we just couldn't tell anyone).
+    """
+    try:
+        blocks = slack_post.quiet_week_blocks(
+            date=date, scanned=scanned, dedup_drops=dedup_drops,
+            prior_drops=prior_drops, candidates=candidates,
+            reason=reason, cost=cost, duration_s=duration_s, detail=detail,
+        )
+        slack_post.post(blocks)
+        print("📣 Posted heartbeat briefing to Slack")
+    except Exception as e:  # noqa: BLE001
+        # Heartbeat failure is non-fatal — the pipeline still "succeeded"
+        # in the sense that there was nothing to publish. Log loudly so
+        # the operator can investigate from pipeline output.
+        print(f"⚠️  Heartbeat Slack post failed: {type(e).__name__}: {e}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def _main_impl():
     start = time.time()
     print(f"🔍 Scout v3 — scanning since {CUTOFF.strftime('%Y-%m-%d')}\n")
+    if _debug_mode():
+        print(
+            "🐛 DEBUG MODE — Mem0 prior-filter bypassed AND Mem0 seeding skipped.\n"
+            "   This run will not deduplicate against previous runs and will\n"
+            "   not write any new verdicts to the production memory store.\n"
+            "   Unset DEBUG (or set DEBUG=false) for the scheduled cron.\n"
+        )
 
     # Fetch in parallel; arXiv sequentially (rate limit)
     with ThreadPoolExecutor(max_workers=16) as ex:
@@ -752,8 +921,15 @@ def _main_impl():
 
     scanned_count = len(all_items)
     print(f"📥 {scanned_count} items from past 7 days across all sources")
+    today = datetime.now().strftime("%Y-%m-%d")
     if scanned_count == 0:
-        print("Nothing new this week.")
+        print("Nothing new this week — posting heartbeat briefing.")
+        _post_quiet_week(
+            date=today, scanned=0, dedup_drops=0, prior_drops=0,
+            candidates=0, reason="fetch_empty",
+            duration_s=time.time() - start,
+            detail="All source fetchers returned 0 items. Check arXiv / RSS / GitHub feed health.",
+        )
         quality_logger.log_run("scout", items_scanned=0, total_cost_usd=0.0)
         return
 
@@ -767,7 +943,12 @@ def _main_impl():
 
     candidates_count = len(all_items)
     if candidates_count == 0:
-        print("Everything was either duplicate or already in Mem0.")
+        print("Everything was either duplicate or already in Mem0 — posting heartbeat briefing.")
+        _post_quiet_week(
+            date=today, scanned=scanned_count, dedup_drops=dedup_drops,
+            prior_drops=mem0_drops, candidates=0, reason="all_filtered",
+            duration_s=time.time() - start,
+        )
         quality_logger.log_run(
             "scout", items_scanned=scanned_count, dedup_drops=dedup_drops,
             mem0_prior_drops=mem0_drops, candidates=0,
@@ -776,7 +957,17 @@ def _main_impl():
 
     print(f"\n🧠 Scoring {candidates_count} candidates with Sonnet 4.6 (cached system prompt)...")
     scored, score_cost = score_items(all_items)
-    top = [item for item in scored if item.get("score", 0) >= 6][:12]
+    # The cutoff uses Sonnet's ORIGINAL score (score_base) when the taste-model
+    # reweight was applied, so the multiplier can only influence ranking among
+    # the kept items — never push a borderline item below the verdict
+    # threshold. This is the actual "never silence" guarantee: an item Sonnet
+    # rated ≥6 survives the cutoff regardless of team-tag preferences. The
+    # reweighted `score` still drives the [:12] ordering, so on-trend items
+    # rise to the top within the kept set.
+    def _passes_cutoff(item: dict) -> bool:
+        base = item.get("score_base", item.get("score", 0))
+        return base >= 6
+    top = [item for item in scored if _passes_cutoff(item)][:12]
     if not top:
         print("No items scored ≥6. Lowering to top 4.")
         top = scored[:4]
@@ -787,6 +978,12 @@ def _main_impl():
     print(f"\n⚖️  Judge pass — Opus 4.7 with extended thinking ({len(draft_verdicts)} drafts)...")
     judge_result, judge_cost = judge_mod.critique(draft_verdicts, scored)
     final_verdicts = judge_mod.apply_judge_decisions(draft_verdicts, scored, judge_result)
+
+    # Backfill topic tags from the scored item onto each kept verdict. Match
+    # primarily by source_url, falling back to a tool_name-in-title substring.
+    # Tags drive the channel taste model (scripts/preferences.py) — without
+    # this hop, reactions land with empty tags and the bandit can't learn.
+    final_verdicts = _attach_tags(final_verdicts, scored)
     n_vetoed = sum(1 for d in judge_result.get("decisions", []) if d.get("action") == "veto")
     n_retiered = sum(1 for d in judge_result.get("decisions", []) if d.get("action") == "retier")
     n_promoted = len(judge_result.get("missed", []))
@@ -810,7 +1007,32 @@ def _main_impl():
     total_cost = score_cost + verdict_cost + judge_cost
 
     if not final_verdicts:
-        print("⚠️  All drafts vetoed or dropped by policy. Nothing to publish.")
+        print("⚠️  All drafts vetoed or dropped by policy — posting heartbeat briefing.")
+        # Build a human-readable detail line from whatever upstream context
+        # we have. If the judge had a summary, surface it — operators want
+        # to know WHY this week was empty, not just that it was.
+        judge_summary = judge_result.get("judge_summary", "") or ""
+        if dropped_by_policy:
+            detail = (
+                f"Judge produced {len(draft_verdicts)} draft(s); "
+                f"policy gates dropped all {len(dropped_by_policy)}."
+            )
+        elif n_vetoed >= len(draft_verdicts) and draft_verdicts:
+            detail = f"Judge vetoed all {n_vetoed} draft verdict(s)."
+        elif len(draft_verdicts) == 0:
+            detail = "Verdict pass emitted 0 drafts (model rated nothing worth shipping)."
+        else:
+            detail = "No verdicts survived to publish."
+        if judge_summary:
+            detail += f" Judge: {judge_summary}"
+        _post_quiet_week(
+            date=datetime.now().strftime("%Y-%m-%d"),
+            scanned=scanned_count, dedup_drops=dedup_drops,
+            prior_drops=mem0_drops, candidates=candidates_count,
+            reason="no_verdicts", cost=total_cost,
+            duration_s=time.time() - start,
+            detail=detail,
+        )
         quality_logger.log_run(
             "scout", items_scanned=scanned_count, dedup_drops=dedup_drops,
             mem0_prior_drops=mem0_drops, candidates=candidates_count,
@@ -838,14 +1060,19 @@ def _main_impl():
     # Route: bot token + channel ID → threaded format (parent TL;DR + per-verdict
     # thread cards + auto-reactions). Otherwise fall back to single-message
     # (webhook-compatible).
-    use_threaded = (
-        os.environ.get("SLACK_BOT_TOKEN", "").startswith("xoxb-")
-        and bool(os.environ.get("SLACK_CHANNEL_ID"))
+    bot_token_set = os.environ.get("SLACK_BOT_TOKEN", "").startswith("xoxb-")
+    channel_id_set = bool(os.environ.get("SLACK_CHANNEL_ID"))
+    webhook_set = bool(os.environ.get("SLACK_WEBHOOK_URL"))
+    use_threaded = bot_token_set and channel_id_set
+    print(
+        f"  Slack env detected: bot_token={'✅' if bot_token_set else '❌'}  "
+        f"channel_id={'✅' if channel_id_set else '❌'}  "
+        f"webhook_url={'✅' if webhook_set else '❌'}"
     )
     delivery_meta: dict = {}
     try:
         if use_threaded:
-            print("  → threaded format (bot token detected)")
+            print("  → threaded format (bot token + channel ID detected)")
             slack_post.weekly_briefing_threaded(
                 date=today,
                 scanned=scanned_count,

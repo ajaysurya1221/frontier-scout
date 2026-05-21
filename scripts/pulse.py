@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Telemetry — Daily Tier-S Pulse (v3).
+Frontier Scout — Daily Tier-S Pulse (v3).
 
 Polls high-signal sources every day. Posts to Slack ONLY when a new release
 scores ≥8 (major drop) AND survives the RLAIF judge. Silent days stay silent.
@@ -40,16 +40,15 @@ PULSE_ARCHIVE = REPO_ROOT / "archive" / "pulse"
 MAX_PULSE_ITEMS = 50
 TIER_S_THRESHOLD = 8  # loosened from v1's 9 — v1 was too strict, missed real drops
 
-USER_AGENT = "ai-telemetry/2.0 (+https://github.com/YOUR_ORG/ai-telemetry)"
+USER_AGENT = "frontier-scout/2.0 (+https://github.com/ajaysurya1221/frontier-scout)"
 
 
 def _client() -> anthropic.Anthropic:
-    """Create the Anthropic client only when a live Pulse call is made."""
     global CLIENT
     if CLIENT is None:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required for Pulse model calls")
+            raise RuntimeError("ANTHROPIC_API_KEY is required to run Pulse")
         CLIENT = anthropic.Anthropic(api_key=api_key)
     return CLIENT
 

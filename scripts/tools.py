@@ -65,7 +65,27 @@ SCORE_ITEMS_TOOL = {
                                 "security",
                             ],
                         },
+                        "tags": {
+                            "type": "array",
+                            "description": (
+                                "OPTIONAL: 0–3 short kebab-case topic tags describing the item "
+                                "(e.g. 'mcp', 'agentic-coding', 'evals', 'long-context', "
+                                "'rag', 'fine-tuning', 'vector-search'). Used by the channel "
+                                "taste model (preferences.json) to learn what the team cares "
+                                "about. Prefer specific over generic; reuse existing tags "
+                                "when in doubt. Lowercase, hyphen-separated, no spaces. "
+                                "Skip tags (return []) if running tight on output tokens "
+                                "— scores remain the priority."
+                            ),
+                            "items": {"type": "string"},
+                            "minItems": 0,
+                            "maxItems": 3,
+                        },
                     },
+                    # Tags are intentionally NOT required: at high item counts the
+                    # required-tag output bloats past max_tokens and Sonnet
+                    # truncates the entire `scores` array. Score + category are
+                    # load-bearing; tags are nice-to-have for the taste model.
                     "required": ["index", "score", "category"],
                 },
             },
@@ -119,7 +139,7 @@ VERDICT_TOOL = {
                         },
                         "why_it_matters": {
                             "type": "string",
-                            "description": "Specific to the configured stack and compliance-sensitive workflow domain.",
+                            "description": "Specific to the configured stack and security/compliance bar.",
                         },
                         "adoption_cost": {
                             "type": "string",
@@ -386,7 +406,7 @@ EVALUATE_TOOLS = [
     {
         "name": "search_radar_memory",
         "description": (
-            "Query Mem0 over past AI Telemetry verdicts. Use to check if this tool (or "
+            "Query Mem0 over past Frontier Scout verdicts. Use to check if this tool (or "
             "an alternative) has been evaluated before."
         ),
         "input_schema": {

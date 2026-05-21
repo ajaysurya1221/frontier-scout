@@ -194,5 +194,100 @@ class TestRadarQuery:
         assert ":warning:" in body["text"]
 
 
+# ── GitHub mirror ────────────────────────────────────────────────────────────
+
+class TestGitHubMirror:
+    def test_missing_env_returns_false(self, monkeypatch):
+        import github_mirror
+        for v in ("GH_REPO", "GITHUB_REPOSITORY"):
+            monkeypatch.delenv(v, raising=False)
+        assert github_mirror.ensure_mirror_from_github() is False
+
+    def test_warm_cache_skips_download(self, monkeypatch, tmp_path):
+        """If FRESHNESS_MARKER is fresh, no HTTP call is made."""
+        import github_mirror
+        monkeypatch.setattr(github_mirror, "LOCAL_MIRROR", tmp_path / "mirror")
+        monkeypatch.setattr(github_mirror, "FRESHNESS_MARKER", tmp_path / "mirror" / ".github-synced-at")
+        monkeypatch.setenv("GH_REPO", "owner/repo")
+        monkeypatch.setenv("GH_TOKEN", "tok")  # pragma: allowlist secret
+
+        # Pre-warm
+        github_mirror.LOCAL_MIRROR.mkdir(parents=True)
+        github_mirror.FRESHNESS_MARKER.write_text(str(int(time.time())))
+
+        # If urlopen is called, fail loudly — warm cache should skip it
+        def boom(*a, **kw):
+            raise AssertionError("warm cache should not fetch")
+        monkeypatch.setattr(github_mirror.urllib.request, "urlopen", boom)
+
+        assert github_mirror.ensure_mirror_from_github() is True
+
+    def test_extract_strips_outer_dir_and_rejects_traversal(self, monkeypatch, tmp_path):
+        """Tarball outer dir is stripped; `../etc/passwd` is rejected."""
+        import github_mirror
+        import io, tarfile as tf
+
+        mirror = tmp_path / "mirror"
+        monkeypatch.setattr(github_mirror, "LOCAL_MIRROR", mirror)
+        monkeypatch.setattr(github_mirror, "FRESHNESS_MARKER", mirror / ".github-synced-at")
+
+        # Build a synthetic tarball: outer dir + one good file + one traversal file
+        buf = io.BytesIO()
+        with tf.open(fileobj=buf, mode="w:gz") as tar:
+            # Outer dir
+            d = tf.TarInfo(name="ws-repo-abc123")
+            d.type = tf.DIRTYPE
+            tar.addfile(d)
+            # Good file
+            good_data = b"# tech radar\n"
+            good = tf.TarInfo(name="ws-repo-abc123/tech-radar.md")
+            good.size = len(good_data)
+            tar.addfile(good, io.BytesIO(good_data))
+            # Traversal attempt
+            bad_data = b"oops"
+            bad = tf.TarInfo(name="ws-repo-abc123/../../etc/passwd")
+            bad.size = len(bad_data)
+            tar.addfile(bad, io.BytesIO(bad_data))
+        tarball = tmp_path / "test.tar.gz"
+        tarball.write_bytes(buf.getvalue())
+
+        ok = github_mirror._safe_extract(tarball)
+        assert ok is True
+        assert (mirror / "tech-radar.md").exists()
+        assert (mirror / "tech-radar.md").read_bytes() == good_data
+        # The traversal target must NOT exist
+        assert not (tmp_path.parent / "etc" / "passwd").exists()
+        assert not Path("/etc/passwd-test-injected").exists()
+
+    def test_extract_whitelist_drops_unexpected_files(self, monkeypatch, tmp_path):
+        """A tarball entry outside the allow-list (e.g. `lambda/handler.py`) is skipped."""
+        import github_mirror
+        import io, tarfile as tf
+
+        mirror = tmp_path / "mirror"
+        monkeypatch.setattr(github_mirror, "LOCAL_MIRROR", mirror)
+        monkeypatch.setattr(github_mirror, "FRESHNESS_MARKER", mirror / ".github-synced-at")
+
+        buf = io.BytesIO()
+        with tf.open(fileobj=buf, mode="w:gz") as tar:
+            d = tf.TarInfo(name="ws-repo-abc123"); d.type = tf.DIRTYPE; tar.addfile(d)
+            for name, data in [
+                ("ws-repo-abc123/tech-radar.md", b"radar"),
+                ("ws-repo-abc123/lambda/handler.py", b"code"),   # not in allow-list
+                ("ws-repo-abc123/scripts/scout.py", b"more"),    # not in allow-list
+                ("ws-repo-abc123/memory/chroma/chroma.sqlite3", b"db"),  # allowed
+            ]:
+                m = tf.TarInfo(name=name); m.size = len(data)
+                tar.addfile(m, io.BytesIO(data))
+        tarball = tmp_path / "test.tar.gz"
+        tarball.write_bytes(buf.getvalue())
+
+        assert github_mirror._safe_extract(tarball) is True
+        assert (mirror / "tech-radar.md").exists()
+        assert (mirror / "memory" / "chroma" / "chroma.sqlite3").exists()
+        assert not (mirror / "lambda" / "handler.py").exists()
+        assert not (mirror / "scripts" / "scout.py").exists()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

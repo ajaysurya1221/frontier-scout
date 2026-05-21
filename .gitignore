@@ -43,6 +43,8 @@ ai-lab-experiments/
 
 # Local screenshots / debugging artifacts (operator-only)
 screenshots/
+screenshots_*/
+slack_screenshots/
 
 # Mem0 sqlite WAL files (commit the .db, not the journal)
 memory/*.db-journal

@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt detect-secrets
+      - name: Secret scan
+        run: |
+          detect-secrets scan --all-files --force-use-all-plugins \
+            --exclude-files '\.git/|\.pytest_cache/|memory/chroma/|costs\.jsonl|quality-log\.jsonl|briefings/|archive/|demo/' \
+            > .secrets-scan-result.json
+          python - <<'PY'
+          import json, sys
+          result = json.load(open(".secrets-scan-result.json"))
+          findings = sum(len(v) for v in result.get("results", {}).values())
+          print(f"detect-secrets found {findings} potential secrets")
+          sys.exit(1 if findings else 0)
+          PY
+      - name: Compile Python
+        run: python -m py_compile scripts/*.py tests/*.py lambda/*.py
+      - name: Non-live test suite
+        run: PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -m "not live" -q
+

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-AI Telemetry — Monthly Synthesizer (v3).
+Frontier Scout — Monthly Synthesizer (v3).
 
-Runs on the 1st of each month via Bitbucket Pipelines. Reads the radar + skills
+Runs on the 1st of each month via GitHub Actions. Reads the radar + skills
 log + last 8 weekly briefings, then uses Opus 4.7 with extended thinking to
 identify patterns, momentum, blind spots, and what to focus on next month.
 
@@ -33,12 +33,11 @@ THINKING_BUDGET = 8000
 
 
 def _client() -> anthropic.Anthropic:
-    """Create the Anthropic client only when a live synthesis call is made."""
     global CLIENT
     if CLIENT is None:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required for synthesis model calls")
+            raise RuntimeError("ANTHROPIC_API_KEY is required to run Synthesizer")
         CLIENT = anthropic.Anthropic(api_key=api_key)
     return CLIENT
 
@@ -136,7 +135,7 @@ def main():
 
 def _render_markdown(month: str, s: dict) -> str:
     focus = s["focus_this_month"]
-    return "\n".join([
+    sections = [
         f"## {month} — Monthly Synthesis",
         "",
         "### What you've been exploring",
@@ -153,7 +152,51 @@ def _render_markdown(month: str, s: dict) -> str:
         "",
         "### Org opportunity",
         s["org_opportunity"],
-    ])
+    ]
+    tastes = _render_team_tastes()
+    if tastes:
+        sections += ["", tastes]
+    return "\n".join(sections)
+
+
+def _render_team_tastes() -> str:
+    """Render a "Team tastes" section from the channel taste model.
+
+    Returns "" in cold start so the monthly synth stays clean until we
+    have real signal. Best-effort — any failure to load preferences
+    silently skips the section.
+    """
+    try:
+        import preferences
+        prefs = preferences.load()
+    except Exception as e:  # noqa: BLE001
+        print(f"  team-tastes section: preferences unavailable: {e}")
+        return ""
+    n = int(prefs.get("signal_count_14d", 0) or 0)
+    if n < preferences.COLD_START_THRESHOLD:
+        return ""
+
+    tags = prefs.get("tags") or {}
+    if not tags:
+        return ""
+    top_pos = sorted(((k, v) for k, v in tags.items() if v > 0),
+                     key=lambda kv: -kv[1])[:5]
+    top_neg = sorted(((k, v) for k, v in tags.items() if v < 0),
+                     key=lambda kv: kv[1])[:5]
+
+    lines = ["### Team tastes (last 14 days)",
+             f"Aggregated from **{n}** reactions + button clicks across the channel."]
+    if top_pos:
+        lines.append(
+            "- **Trending up**: "
+            + ", ".join(f"`{t}` (+{v:.2f})" for t, v in top_pos)
+        )
+    if top_neg:
+        lines.append(
+            "- **Trending down**: "
+            + ", ".join(f"`{t}` ({v:.2f})" for t, v in top_neg)
+        )
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":

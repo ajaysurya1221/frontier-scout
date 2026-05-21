@@ -1,49 +1,33 @@
 #!/usr/bin/env python3
 """
-Slack reaction → lab queue.
+Slack 🧪 click → GitHub Actions entry point.
 
-When a teammate reacts 🧪 on a Slack post, Slack Workflow Builder triggers the
-`lab-from-slack` custom pipeline. This script writes a markdown file under
-.scratch/labs/ so the next operator has a concrete task to pick up.
+Round 4: this script wrote a markdown TODO to `.scratch/labs/`. Round 7
+upgrades it to actually run the lab via `scripts/lab_runner.py`: pull the
+tool, generate a stack-shaped synthetic test, run it in a hermetic
+subprocess (env={} + PATH + HOME only), interpret the output, post a
+threaded reply on the verdict card.
 
-The next person running the `lab <tool>` skill picks up the oldest open file.
+The script signature is preserved so the `lab-from-slack` GitHub Actions
+workflow inputs (TOOL, URL, USER) stay simple.
 
 Usage: python lab_from_slack.py "<tool>" "<url>" "<slack-user>"
 """
 
-import re
+from __future__ import annotations
+
 import sys
-from datetime import datetime
-from pathlib import Path
 
-REPO_ROOT = Path(__file__).parent.parent
-QUEUE = REPO_ROOT / ".scratch" / "labs"
+import lab_runner
 
 
-def slug(s: str) -> str:
-    s = s.lower()
-    s = re.sub(r"[^a-z0-9]+", "-", s).strip("-")
-    return s or "unknown"
-
-
-def main():
+def main() -> int:
     if len(sys.argv) < 4:
         print("Usage: lab_from_slack.py <tool> <url> <user>")
-        sys.exit(1)
+        return 1
     tool, url, user = sys.argv[1], sys.argv[2], sys.argv[3]
-    today = datetime.now().strftime("%Y-%m-%d")
-    QUEUE.mkdir(parents=True, exist_ok=True)
-    path = QUEUE / f"{today}-{slug(tool)}.md"
-    path.write_text(
-        f"# Lab: {tool}\n\n"
-        f"_Queued by @{user} via 🧪 reaction on {today}._\n\n"
-        f"Source: {url}\n\n"
-        f"## Action\n"
-        f"Run the `lab` skill on `{tool}` and report findings to `skills-log.md`.\n"
-        f"Delete this file when done.\n"
-    )
-    print(f"✓ Queued lab → {path}")
+    return lab_runner.run(tool=tool, url=url, user=user)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

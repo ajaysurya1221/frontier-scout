@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-AI Telemetry — Deep evaluation triggered from Slack.
+Frontier Scout — Deep evaluation triggered from Slack.
 
-Invoked by the `evaluate-from-slack` custom Bitbucket pipeline when a teammate
+Invoked by the `evaluate-from-slack` GitHub Actions workflow when a teammate
 clicks the 📚 Full evaluation button on a verdict card in Slack. The Lambda
 backend triggers this pipeline with these variables:
 
@@ -42,12 +42,11 @@ MODEL = "claude-sonnet-4-6"
 
 
 def _client() -> anthropic.Anthropic:
-    """Create the Anthropic client only when a live evaluation is made."""
     global CLIENT
     if CLIENT is None:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required for evaluation model calls")
+            raise RuntimeError("ANTHROPIC_API_KEY is required for Slack evaluation")
         CLIENT = anthropic.Anthropic(api_key=api_key)
     return CLIENT
 
@@ -59,9 +58,9 @@ def _build_evaluation_prompt(tool: str, url: str, user: str) -> str:
         f"via the 📚 Full evaluation button in Slack.\n\n"
         f"Source URL: {url}\n\n"
         f"Produce a single, polished verdict for this tool against the "
-        f"standard rubric. Be specific to the configured stack (LangGraph, "
-        f"LangChain, FastAPI, AWS, regulated document intelligence, "
-        f"SOC2-style controls). The verdict will be posted as a Slack reply in the "
+        f"standard rubric. Be specific to the configured stack, the current "
+        f"security/compliance bar, and a realistic engineering adoption path. "
+        f"The verdict will be posted as a Slack reply in the "
         f"thread of the original briefing.\n\n"
         f"If the tool name is ambiguous, pick the most likely Python/AI "
         f"interpretation. Include 'Why this week' if there's a recent "

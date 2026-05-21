@@ -67,7 +67,6 @@ def log_call(component: str, model: str, usage, run_id: str | None = None) -> fl
         "cost_usd": round(cost, 6),
         "run_id": (
             run_id
-            or os.environ.get("BITBUCKET_BUILD_NUMBER")
             or os.environ.get("GITHUB_RUN_ID")
             or str(uuid.uuid4())[:8]
         ),

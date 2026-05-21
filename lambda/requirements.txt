@@ -15,5 +15,5 @@ slack-sdk>=3.27.0
 #
 # To add the chromadb layer:
 #   1. Build a layer zip in a manylinux2014_x86_64 environment (Docker)
-#   2. Publish: aws lambda publish-layer-version --layer-name ai-telemetry-chromadb ...
+#   2. Publish: aws lambda publish-layer-version --layer-name frontier-scout-chromadb ...
 #   3. Attach to function: aws lambda update-function-configuration --layers <arn>

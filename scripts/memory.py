@@ -1,11 +1,9 @@
 """
-Mem0 OSS wrapper — semantic memory over past AI Telemetry verdicts.
+Mem0 OSS wrapper — semantic memory over past Frontier Scout verdicts.
 
 Storage: Chroma vector store persisted to memory/chroma/ (committed to repo).
 Embeddings: OpenAI text-embedding-3-small.
 LLM (for memory consolidation): Anthropic Claude Sonnet 4.6.
-
-OpenAI handles embeddings only; Anthropic handles memory consolidation.
 
 Usage:
     from scripts.memory import mem
@@ -64,7 +62,7 @@ class RadarMemory:
         self._init()
         self._m.add(
             text,
-            user_id="ai-telemetry-team",
+            user_id="frontier-scout-team",
             metadata={
                 "tool": tool,
                 "verdict": verdict,
@@ -76,7 +74,7 @@ class RadarMemory:
 
     def search(self, query: str, limit: int = 5) -> list[dict]:
         self._init()
-        return self._m.search(query=query, user_id="ai-telemetry-team", limit=limit)
+        return self._m.search(query=query, user_id="frontier-scout-team", limit=limit)
 
     def prior_verdict(self, title: str, days: int = 30, threshold: float = 0.7) -> dict | None:
         """

@@ -5,10 +5,10 @@ Public, opinionated, ordered. Items at the top are the next thing in line.
 ## Near-term
 
 - **🧪 Lab → Jira spike auto-creation** — today the 🧪 button writes a markdown task to `.scratch/labs/`. Adding a Jira REST call to also open a sprint-spike ticket with the tool name, source URL, requester, and a 3-day SLA. Without this, the queue can pile up silently. ~1 hour of work in `scripts/lab_from_slack.py` once Jira credentials are added.
-- **🧪 Lab findings → Mem0 auto-seed** — when an engineer commits findings to `skills-log.md`, a Bitbucket post-commit hook seeds the finding into Mem0 so `/recall` surfaces it within minutes (today it only feeds the monthly Synthesizer + next Scout). Closes the "we waited a month for the next briefing to know" gap.
+- **🧪 Lab findings → Mem0 auto-seed** — when an engineer commits findings to `skills-log.md`, a GitHub Actions workflow seeds the finding into Mem0 so `/recall` surfaces it within minutes (today it only feeds the monthly Synthesizer + next Scout). Closes the "we waited a month for the next briefing to know" gap.
 - **`chromadb` Lambda Layer** — bundle Chroma + ONNX wheels in a Lambda Layer so `/recall` returns real semantic search instead of "unavailable". Needs Docker to cross-build for `manylinux2014_x86_64`. ETA: one Saturday morning.
 - **Mem0 prior-tier deltas in verdict cards** — *"was ASSESS in March, now TRIAL — what changed?"* The data is in Mem0 already; surfacing it in the card is renderer work. Genuine product value, not chrome.
-- **Operator preflight as a Bitbucket PR gate** — `scripts/preflight.py` runs cleanly on every PR, blocking schedule-enable changes that would break.
+- **Operator preflight as a GitHub Actions PR gate** — `scripts/preflight.py` runs cleanly on every PR, blocking schedule-enable changes that would break.
 - **Adversarial source corpus** — a small curated bank of prompt-injection-shaped fake RSS items the test suite scores against, asserting they never produce verdicts.
 
 ## Mid-term

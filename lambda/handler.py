@@ -1,5 +1,5 @@
 """
-AI Telemetry — Slack interactivity backend.
+Frontier Scout — Slack interactivity backend.
 
 Single AWS Lambda exposed at a Function URL. Slack calls it whenever a user
 interacts with the bot:
@@ -8,18 +8,18 @@ interacts with the bot:
   • button clicks        🧪 Queue lab · 📚 Full eval · 📊 Compare
   • App Home (future)    persistent dashboard view
 
-The Lambda is stateless beyond reading a read-only S3 mirror of the
-ai-telemetry repo (Mem0 store + briefings + tech-radar). Heavy work (running
-a lab, running an evaluation) is delegated back to Bitbucket Pipelines via
-the existing REST trigger pattern.
+The Lambda is stateless beyond reading a GitHub-backed mirror of the
+frontier-scout repo (Mem0 store + briefings + tech-radar). Heavy work (running
+a lab, running an evaluation) is delegated back to GitHub Actions via
+workflow_dispatch.
 
 Env vars (set in Lambda configuration):
   SLACK_SIGNING_SECRET   — required, used to verify every Slack request
   SLACK_BOT_TOKEN        — required, for replying to slash commands + opening modals
-  BB_TOKEN               — required, for triggering Bitbucket pipelines
-  BB_WORKSPACE           — Bitbucket workspace slug (e.g. "your-workspace")
-  BB_REPO                — Bitbucket repo slug   (e.g. "ai-telemetry")
-  S3_MIRROR_BUCKET       — S3 bucket holding the mirrored repo artifacts
+  GH_TOKEN               — required for Slack button-triggered GitHub Actions
+  GH_REPO                — owner/repo, e.g. "ajaysurya1221/frontier-scout"
+  GH_BRANCH              — optional branch, default "main"
+  S3_MIRROR_BUCKET       — optional S3 mirror bucket
   S3_MIRROR_PREFIX       — optional prefix inside the bucket (default "")
 
 Slack request flow:
@@ -41,6 +41,7 @@ from slack_verify import verify_slack_request
 import bootstrap
 import button_dispatch
 import radar_query
+import reaction_dispatch
 
 # Lambda runtime hands us the raw event dict; we shape responses for Slack.
 
@@ -99,6 +100,11 @@ def _route(event: dict) -> dict:
 
     if body.get("type") in {"block_actions", "view_submission"}:
         return button_dispatch.handle(body)
+
+    if body.get("type") == "event_callback":
+        # Slack Events API: reactions, thread replies, etc. Feeds the
+        # channel taste model (signals-log.jsonl → preferences.json).
+        return reaction_dispatch.handle(body)
 
     if body.get("command", "").startswith("/"):
         return _handle_slash_command(body)

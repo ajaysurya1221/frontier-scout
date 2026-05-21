@@ -27,7 +27,7 @@ def make_verdict(**overrides) -> dict:
         "category": "orchestration",
         "soc2": "safe",
         "what": "Multi-agent orchestration with durable checkpoints and persistent state.",
-        "why_it_matters": "Already the backbone of reference agent platform's agentic workflows.",
+        "why_it_matters": "Already the backbone of the example agent platform.",
         "adoption_cost": "Already done.",
         "next_action": "Track 0.6.x release notes; pilot durable checkpoints.",
         "source_url": "https://github.com/langchain-ai/langgraph",

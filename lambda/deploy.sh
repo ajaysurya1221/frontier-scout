@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Deploy the AI Telemetry Slack interactivity Lambda.
+# Deploy the Frontier Scout Slack interactivity Lambda.
 #
 # Runs locally (with AWS credentials in env) or in the `deploy-lambda` custom
-# Bitbucket pipeline (credentials from pipeline variables).
+# GitHub Actions workflow (credentials from repository secrets).
 #
 # Required env:
 #   AWS_REGION            — e.g. us-east-1
-#   LAMBDA_FUNCTION_NAME  — e.g. ai-telemetry-slack
+#   LAMBDA_FUNCTION_NAME  — e.g. frontier-scout-slack
 #
 # Optional:
 #   PYTHON_BIN            — defaults to python3.11 to match Lambda runtime

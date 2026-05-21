@@ -1,21 +1,28 @@
 ```
-   █████╗ ██╗    ████████╗███████╗██╗     ███████╗███╗   ███╗███████╗████████╗██████╗ ██╗   ██╗
-  ██╔══██╗██║    ╚══██╔══╝██╔════╝██║     ██╔════╝████╗ ████║██╔════╝╚══██╔══╝██╔══██╗╚██╗ ██╔╝
-  ███████║██║       ██║   █████╗  ██║     █████╗  ██╔████╔██║█████╗     ██║   ██████╔╝ ╚████╔╝
-  ██╔══██║██║       ██║   ██╔══╝  ██║     ██╔══╝  ██║╚██╔╝██║██╔══╝     ██║   ██╔══██╗  ╚██╔╝
-  ██║  ██║██║       ██║   ███████╗███████╗███████╗██║ ╚═╝ ██║███████╗   ██║   ██║  ██║   ██║
-  ╚═╝  ╚═╝╚═╝       ╚═╝   ╚══════╝╚══════╝╚══════╝╚═╝     ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝   ╚═╝
+███████╗██████╗  ██████╗ ███╗   ██╗████████╗██╗███████╗██████╗
+██╔════╝██╔══██╗██╔═══██╗████╗  ██║╚══██╔══╝██║██╔════╝██╔══██╗
+█████╗  ██████╔╝██║   ██║██╔██╗ ██║   ██║   ██║█████╗  ██████╔╝
+██╔══╝  ██╔══██╗██║   ██║██║╚██╗██║   ██║   ██║██╔══╝  ██╔══██╗
+██║     ██║  ██║╚██████╔╝██║ ╚████║   ██║   ██║███████╗██║  ██║
+╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚═╝╚══════╝╚═╝  ╚═╝
+
+███████╗ ██████╗ ██████╗ ██╗   ██╗████████╗
+██╔════╝██╔════╝██╔═══██╗██║   ██║╚══██╔══╝
+███████╗██║     ██║   ██║██║   ██║   ██║
+╚════██║██║     ██║   ██║██║   ██║   ██║
+███████║╚██████╗╚██████╔╝╚██████╔╝   ██║
+╚══════╝ ╚═════╝ ╚═════╝  ╚═════╝    ╚═╝
 ```
 
-**Built for AI-native engineering teams**
+**Frontier Scout: an AI adoption radar for engineering teams**
 
 _A practical adoption radar for AI-native engineering teams._
 
 ![python](https://img.shields.io/badge/python-3.11-3776ab?logo=python&logoColor=white)
 ![models](https://img.shields.io/badge/models-Sonnet_4.6_+_Opus_4.7-d97757)
 ![cost](https://img.shields.io/badge/cost-~%242%2Fmonth-success)
-![tests](https://img.shields.io/badge/tests-59%2F59_passing-brightgreen)
-![runtime](https://img.shields.io/badge/runtime-Scheduled_CI_+_AWS_Lambda-blueviolet)
+![tests](https://img.shields.io/badge/tests-130_passing-brightgreen)
+![runtime](https://img.shields.io/badge/runtime-GitHub_Actions_+_AWS_Lambda-blueviolet)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 
 [Demo](#60-second-demo) · [What You Get](#what-you-get) · [Architecture](#architecture) · [Safety](#safety-model) · [Quickstart](#quickstart) · [Roadmap](ROADMAP.md) · [Security](SECURITY.md)
@@ -24,7 +31,7 @@ _A practical adoption radar for AI-native engineering teams._
 
 Hundreds of AI tools, agent frameworks, model releases, and research drops appear every week. Most are irrelevant to your stack. A few are worth testing before competitors notice them.
 
-**AI Telemetry is an adoption radar for AI-native engineering teams.** It watches the exploding AI ecosystem, filters the noise, judges what matters against your stack and security bar, and turns the best signals into concrete adoption actions: adopt, trial, assess, or hold.
+**Frontier Scout is an adoption radar for AI-native engineering teams.** It watches the exploding AI ecosystem, filters the noise, judges what matters against your stack and security bar, and turns the best signals into concrete adoption actions: adopt, trial, assess, or hold.
 
 **Why star this repo**
 
@@ -41,17 +48,17 @@ python scripts/demo.py && open demo/briefing.html
 
 ---
 
-## Why AI Telemetry Exists
+## Why Frontier Scout Exists
 
 The goal is simple: give engineering leadership a weekly, evidence-backed view of which AI tools are worth researching, testing, and adopting.
 
 The AI ecosystem is too fast for manual radar meetings and too noisy for raw feeds. A useful engineering radar needs three things at once: early signal, conservative judgment, and a direct path from "interesting" to "someone tested this on a real problem."
 
-AI Telemetry turns public launches, releases, trending repos, newsletters, arXiv papers, HN posts, and HuggingFace movement into a weekly briefing that a real platform team can act on.
+Frontier Scout turns public launches, releases, trending repos, newsletters, arXiv papers, HN posts, and HuggingFace movement into a weekly briefing that a real platform team can act on.
 
 ### Why not just use...
 
-| Alternative | Where it breaks | What AI Telemetry adds |
+| Alternative | Where it breaks | What Frontier Scout adds |
 |---|---|---|
 | **Newsletters** | Great awareness, weak fit to your stack. | Stack-aware verdicts, SOC2 posture, adoption cost, and next actions. |
 | **GitHub Trending** | Strong velocity signal, lots of irrelevant repos. | Stratified source caps, judge vetoes, policy gates, and prior-memory filtering. |
@@ -62,11 +69,11 @@ AI Telemetry turns public launches, releases, trending repos, newsletters, arXiv
 
 ## 60-Second Demo
 
-Run the local demo when you want to understand the product without setting up Slack, AWS, Bitbucket, or API keys.
+Run the local demo when you want to understand the product without setting up Slack, AWS, GitHub Actions, or API keys.
 
 ```bash
-git clone https://github.com/YOUR_ORG/ai-telemetry.git
-cd ai-telemetry
+git clone https://github.com/ajaysurya1221/frontier-scout.git
+cd frontier-scout
 python scripts/demo.py
 open demo/briefing.html
 ```
@@ -82,7 +89,7 @@ The demo generates:
 ### Sample briefing excerpt
 
 ```md
-# AI Telemetry — Weekly Briefing · 2026-05-21
+# Frontier Scout — Weekly Briefing · 2026-05-21
 > Scanned **377** items · **350** considered after dedup + Mem0 prior-filter · **6** verdicts after RLAIF judge pass.
 
 ### 🔥 anthropics/skills — 🟢 ADOPT — Tools & Frameworks — ✅ SOC2-safe
@@ -123,7 +130,7 @@ Every API call, quality decision, retry, cost, briefing, and generated artifact 
 | `pulse` | Daily 02:30 UTC | Tier-S alert or silent run |
 | `synthesizer` | 1st of month | `MONTHLY_SYNTHESIS.md` + Slack thread |
 | `cost-report` | Sun 12:00 UTC | Month-to-date spend summary |
-| `lab-from-slack` | Button click | Markdown lab task in `.scratch/labs/` |
+| `lab-from-slack` | Button click | Pulls the tool, runs a synthetic stack-shaped test in a hermetic subprocess, posts insights in the verdict thread + full transcript in `.scratch/labs/` |
 | `evaluate-from-slack` | Button click | Deep evaluation reply in thread |
 | `deploy-lambda` | Manual | Slack interactivity Lambda deploy |
 | `verdict-quality` | PR gate | Secret scan + unit tests |
@@ -159,14 +166,18 @@ Artifacts
   Slack, briefings, Mem0, quality-log, cost ledger
         |
         v
-S3 mirror -> AWS Lambda Function URL
-        |             |
-        |             +-> Slack slash commands: /radar, /recall
+GitHub repo  (single source of truth)
+        |
+        |  Lambda fetches repo tarball via GH_TOKEN (cold-start)
+        v
+AWS Lambda Function URL
+        |
+        +-> Slack slash commands: /radar, /recall
         |
         +-> Slack buttons: lab, evaluate, compare
                 |
                 v
-        CI custom pipelines
+        GitHub Actions workflows
 ```
 
 The architecture is intentionally linear. No agent framework is needed for the scheduled runs: fetch, score, verdict, judge, validate, publish, log. The only always-on service is the small Lambda used for Slack interactivity.
@@ -202,7 +213,7 @@ The weekly briefing is designed to be scanned by leadership and acted on by engi
 
 ```text
 ┌────────────────────────────────────────────────────────────────────┐
-│ AI Telemetry — Weekly Briefing · 2026-05-21                       │
+│ Frontier Scout — Weekly Briefing · 2026-05-21                       │
 ├────────────────────────────────────────────────────────────────────┤
 │ 377 scanned  ·  250 considered  ·  8 shipped                      │
 │ Judge: HIGH  ·  Cost: $0.31  ·  Runtime: 232s                     │
@@ -245,7 +256,7 @@ Thread card example:
 │ Next action                                                        │
 │ Lab one skill inside a LangGraph node and record findings.         │
 ├────────────────────────────────────────────────────────────────────┤
-│ [ Queue lab ]   [ Full evaluation ]   [ Compare history ]          │
+│ [ 🧪 Run Lab ]  [ 📚 Full evaluation ]  [ 📊 Compare ]              │
 └────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -263,9 +274,9 @@ What the card gives you at a glance:
 
 | Surface | Behavior |
 |---|---|
-| **Lab button** | Queues a 30-minute hands-on spike as a markdown task. |
-| **Full evaluation button** | Runs an on-demand deep verdict and replies in the same thread. |
-| **Compare button** | Opens a modal showing prior vs current verdict from memory. |
+| **🧪 Run Lab** | Pulls the open-source tool, generates a synthetic test shaped like the configured stack, runs it in a hermetic subprocess (no app secrets reach the child), and posts insights in the verdict thread within ~5–15 min. Only shown on github.com / pypi.org / huggingface.co / gitlab.com URLs. |
+| **📚 Full evaluation** | Runs an on-demand deep verdict and replies in the same thread. |
+| **📊 Compare** | Opens a modal showing prior vs current verdict from memory. |
 | `/radar TOOL` | Returns the latest verdict for a tool. |
 | `/recall TOPIC` | Returns the top semantically related prior verdicts. |
 
@@ -273,7 +284,7 @@ What the card gives you at a glance:
 
 ## Safety Model
 
-AI Telemetry assumes public web content is hostile until proven otherwise.
+Frontier Scout assumes public web content is hostile until proven otherwise.
 
 | Risk | Control |
 |---|---|
@@ -355,15 +366,15 @@ Required for local pipeline runs:
 
 Run this once before enabling scheduled pipelines.
 
-1. Set CI repository variables: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GITHUB_TOKEN`, `BB_TOKEN`, and Slack credentials.
+1. Configure GitHub Actions credentials: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, Slack credentials, and optional `GH_TOKEN` for Slack-triggered workflows.
 2. Run local preflight: `python scripts/preflight.py --skip-aws --skip-lambda`.
 3. Run unit tests and live verdict tests.
-4. Trigger one manual `custom: scout` run on `main`.
+4. Trigger one manual **Scout** workflow run on `main`. Set `DEBUG=true` for the test run — it bypasses the Mem0 prior-filter (so back-to-back tests don't drain the candidate pool) and skips Mem0 seeding (so test verdicts don't pollute the production memory store).
 5. Confirm the Slack post lands, generated artifacts commit back, and `quality-log.jsonl` shows a healthy judge rating.
-6. Trigger one manual `custom: pulse` run.
-7. Enable schedules only after the manual Scout and Pulse runs are clean.
+6. Trigger one manual **Pulse** workflow run.
+7. **Set `DEBUG=false` (or unset)** and enable schedules only after the manual Scout and Pulse runs are clean. A loud banner prints at the start of every run when `DEBUG` is on, so it's impossible to miss if accidentally left enabled.
 
-### CI schedules
+### GitHub Actions schedules
 
 | Pipeline | Cron UTC |
 |---|---|
@@ -376,24 +387,38 @@ Run this once before enabling scheduled pipelines.
 
 The threaded briefing works without Lambda. Deploy Lambda only for buttons and slash commands.
 
-1. Create the S3 mirror bucket with versioning, encryption, and public access blocked.
-2. Create a Python 3.11 Lambda with `AWSLambdaBasicExecutionRole` and read access to the mirror bucket.
-3. Build and upload: `bash lambda/deploy.sh`.
-4. Enable a Function URL with auth type `NONE`; Slack signs requests and `lambda/slack_verify.py` verifies them.
-5. Configure the Slack app:
-   - Bot scopes: `commands`, `chat:write`, `chat:write.customize`, `reactions:write`
+The Lambda pulls the radar + Mem0 store **directly from GitHub via its REST API
+on cold start** — no S3 mirror required. For public repos, the mirror can work
+without a token; for private repos or higher rate limits, set `GH_TOKEN`.
+Tarball content is cached in `/tmp` for 10 minutes; warm Lambda invocations are
+zero-cost.
+
+If you'd prefer the legacy S3-mirror path, set `S3_MIRROR_BUCKET` on the Lambda
+and add an `aws s3 sync` step to the GitHub Actions workflow. The code path
+auto-detects which mirror is configured.
+
+1. Create a Python 3.11 Lambda with `AWSLambdaBasicExecutionRole`.
+2. Build and upload: `bash lambda/deploy.sh`.
+3. Enable a Function URL with auth type `NONE`; Slack signs requests and `lambda/slack_verify.py` verifies them.
+4. Configure the Slack app:
+   - Bot scopes: `commands`, `chat:write`, `chat:write.customize`, `reactions:write`,
+     `reactions:read`, `channels:history` *(the last two power the channel
+     taste model — reactions feed the bandit and thread replies count as
+     engagement signals)*
    - Interactivity URL: Lambda Function URL
+   - Event Subscriptions: enable, set Request URL to the same Lambda Function
+     URL, subscribe to bot events `reaction_added`, `reaction_removed`,
+     `message.channels`. Reinstall the app to grant the new scopes.
    - Slash commands: `/radar` and `/recall`
-6. Set Lambda env vars:
+5. Set Lambda env vars (no AWS env vars needed for the default mirror path):
    - `SLACK_SIGNING_SECRET`
    - `SLACK_BOT_TOKEN`
-   - `BB_TOKEN`
-   - `BB_WORKSPACE`
-   - `BB_REPO`
+   - `GH_TOKEN` — GitHub fine-grained token with Actions write and Contents read/write for this repo; used for Slack-triggered workflows and private-repo mirror reads
+   - `GH_REPO` — `owner/repo`
+   - `GH_BRANCH` — defaults to `main`
    - `SLACK_CHANNEL_ID`
-   - `S3_MIRROR_BUCKET`
-   - `OPENAI_API_KEY`
-7. Test in Slack with `/radar mem0`, then click one briefing button.
+   - `OPENAI_API_KEY` — only if you want semantic `/recall` (the chromadb Lambda Layer is required separately for that to work)
+6. Test in Slack with `/radar mem0`, then click one briefing button.
 
 ---
 
@@ -403,35 +428,35 @@ The threaded briefing works without Lambda. Deploy Lambda only for buttons and s
 |---|---|
 | See the product without setup | `python scripts/demo.py && open demo/briefing.html` |
 | Preflight before schedules | `python scripts/preflight.py` |
-| Trigger Scout manually | CI custom pipeline -> `scout` |
+| Trigger Scout manually | GitHub Actions -> Scout -> Run workflow |
 | Debug a low-quality run | Last row of `quality-log.jsonl`, then the matching briefing markdown |
 | Inspect judge fallback usage | `grep judge_used_fallback quality-log.jsonl` |
 | Repost failed Slack delivery | `.scratch/slack-dead-letter.jsonl` |
 | Add an RSS source | `scripts/scout.py` `RSS_FEEDS` |
 | Add a safe domain | `scripts/validators.py` `ALLOWED_DOMAINS` |
 | Update SOC2 rubric | `scripts/prompts.py` `SOC2_RUBRIC` |
-| Redeploy Lambda | CI custom pipeline -> `deploy-lambda` |
+| Redeploy Lambda | GitHub Actions `Deploy Lambda` workflow |
 | Rotate Slack signing secret | Slack app -> Basic Information -> regenerate -> update Lambda env |
 
 ### Repository map
 
 ```text
-ai-telemetry/
+frontier-scout/
 ├── README.md
 ├── LICENSE
 ├── CONTRIBUTING.md
 ├── ROADMAP.md
 ├── SECURITY.md
 ├── .env.example
-├── bitbucket-pipelines.yml
+├── .github/workflows/
 ├── tech-radar.md
 ├── skills-log.md
 ├── demo/
 ├── briefings/
 ├── archive/
-├── memory/
-├── costs.jsonl          # generated
-├── quality-log.jsonl    # generated
+├── memory/chroma/
+├── costs.jsonl
+├── quality-log.jsonl
 ├── scripts/
 │   ├── scout.py
 │   ├── pulse.py

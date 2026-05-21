@@ -1,12 +1,10 @@
 """
 Slash command handlers — `/radar <tool>` and `/recall <topic>`.
 
-Both query Mem0 (Chroma file-store mirrored from the Bitbucket repo to S3).
-Lambda downloads the Chroma collection on cold start, caches it in /tmp for
-warm invocations, and queries directly. Sub-second response time.
-
-If the S3 mirror isn't configured or fails, both commands degrade to a
-useful ephemeral message rather than a Slack error.
+Both query Mem0 (Chroma file-store mirrored from the GitHub repo or optional
+S3 mirror). Lambda downloads the collection on cold start, caches it in /tmp,
+and queries directly. If the mirror is unavailable, commands degrade to useful
+ephemeral text rather than a Slack error.
 """
 
 from __future__ import annotations
@@ -16,7 +14,7 @@ import os
 import re
 from pathlib import Path
 
-LOCAL_MIRROR = Path("/tmp/ai-telemetry-mirror")
+LOCAL_MIRROR = Path("/tmp/frontier-scout-mirror")
 CHROMA_LOCAL = LOCAL_MIRROR / "memory" / "chroma"
 RADAR_LOCAL = LOCAL_MIRROR / "tech-radar.md"
 
@@ -50,16 +48,28 @@ def _in_channel(text: str, blocks: list[dict] | None = None) -> dict:
     }
 
 
-# ── Mirror sync (S3 → /tmp) ──────────────────────────────────────────────────
+# ── Mirror sync (GitHub/S3 → /tmp) ───────────────────────────────────────────
 
 def _ensure_mirror() -> bool:
-    """Download the S3 mirror into /tmp if we haven't already this cold-start.
+    """Populate /tmp/frontier-scout-mirror/ from GitHub or optional S3.
 
-    Returns True if the mirror is usable, False if S3 isn't configured.
+    Routing:
+      1. S3_MIRROR_BUCKET set → sync from S3 (legacy compatibility path).
+      2. Otherwise → fetch the repo tarball from GitHub using GH_REPO and
+         optional GH_TOKEN/GITHUB_TOKEN.
+
+    Returns True if the mirror is usable after this call, False otherwise.
     """
     bucket = os.environ.get("S3_MIRROR_BUCKET")
     if not bucket:
-        return False
+        # Default: pull from GitHub, the repo's single source of truth.
+        try:
+            from github_mirror import ensure_mirror_from_github
+            return ensure_mirror_from_github()
+        except ImportError as e:
+            print(f"  github_mirror unavailable: {e}")
+            return False
+
     if (LOCAL_MIRROR / ".synced").exists():
         return True
     try:
@@ -124,8 +134,8 @@ def radar(tool: str, user_id: str) -> dict:
     if not _ensure_mirror():
         return _ephemeral(
             ":warning: Radar mirror not configured. The operator needs to set "
-            "`S3_MIRROR_BUCKET` and add the `aws s3 sync` step to Bitbucket "
-            "pipelines. Falling back to tech-radar.md grep below.\n\n"
+            "`GH_REPO` on the Lambda, or configure `S3_MIRROR_BUCKET`. "
+            "Falling back to tech-radar.md grep below.\n\n"
             + _grep_radar_fallback(tool)
         )
 

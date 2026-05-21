@@ -1,0 +1,48 @@
+name: Scout
+
+on:
+  schedule:
+    - cron: "30 3 * * 1"
+  workflow_dispatch:
+    inputs:
+      DEBUG:
+        description: "Set true for a manual no-memory test run"
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+
+jobs:
+  scout:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+      SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      DEBUG: ${{ inputs.DEBUG }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python scripts/scout.py
+      - name: Commit generated artifacts
+        run: |
+          git config user.name "Frontier Scout"
+          git config user.email "frontier-scout@users.noreply.github.com"
+          git add WEEKLY_SIGNAL.md briefings/ archive/ costs.jsonl memory/ tech-radar.md skills-log.md quality-log.jsonl signals-log.jsonl preferences.json .scratch/ 2>/dev/null || true
+          if git diff --staged --quiet; then
+            echo "Nothing to commit"
+          else
+            git commit -m "scout $(date -u +%Y-%m-%d)"
+            git push
+          fi
+

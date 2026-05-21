@@ -3,7 +3,7 @@ One-time S3 bucket bootstrap for the Slack interactivity Lambda.
 
 Invoked via direct AWS Lambda invocation (NOT the Function URL) — payload:
 
-    {"action": "bootstrap", "bucket": "ai-telemetry-mirror"}
+    {"action": "bootstrap", "bucket": "frontier-scout-mirror"}
 
 Requires temporary elevated S3 permissions on the Lambda's execution role:
 
@@ -21,8 +21,8 @@ The simplest pattern: bootstrap with a privileged role, then immediately
 update the Lambda execution role to the runtime read-only role:
 
     aws lambda update-function-configuration \
-        --function-name ai-telemetry-slack \
-        --role arn:aws:iam::ACCOUNT:role/ai-telemetry-slack-runtime
+        --function-name frontier-scout-slack \
+        --role arn:aws:iam::ACCOUNT:role/frontier-scout-slack-runtime
 
 SECURITY.md "Operator runbook" documents both roles and the swap.
 
@@ -123,7 +123,7 @@ def handle(event: dict) -> dict:
         "region": region,
         "log": log,
         "next_step": (
-            "Set S3_MIRROR_BUCKET=" + bucket + " on the Lambda + in Bitbucket "
+            "Set S3_MIRROR_BUCKET=" + bucket + " on the Lambda + in GitHub Actions "
             "Repository Variables. Trigger one Scout run; aws s3 sync will "
             "populate the mirror; /recall will start returning semantic results."
         ),

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-AI Telemetry — Demo Mode.
+Frontier Scout — Demo Mode.
 
 One command that generates a polished sample briefing from seeded data —
-no Slack, no AWS, no Bitbucket setup needed. Lets anyone clone the repo
+no Slack, no AWS, no GitHub Actions setup needed. Lets anyone clone the repo
 and see what the system produces in 60 seconds.
 
 Outputs:
@@ -125,7 +125,7 @@ SAMPLE_VERDICTS = [
         "category": "frontier_model",
         "soc2": "blocked",
         "what": "DeepSeek open-weight frontier model, MIT license, 3.8M downloads on HuggingFace.",
-        "why_it_matters": "Chinese AI lab with documented data-residency ambiguity and ongoing US regulatory scrutiny. Prior versions had telemetry questions never fully resolved.",
+        "why_it_matters": "Chinese AI lab with documented data-residency ambiguity and ongoing compliance scrutiny. Prior versions had telemetry questions never fully resolved.",
         "adoption_cost": "N/A — blocked on SOC2 and compliance grounds regardless of self-hosting posture.",
         "next_action": "Hold indefinitely. Revisit only if legal counsel explicitly clears it.",
         "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
@@ -195,7 +195,7 @@ SEV_LABEL = {"critical": "🔥", "high": "⭐", "standard": "📌"}
 
 def render_briefing_md() -> str:
     lines = [
-        f"# AI Telemetry — Weekly Briefing · {SAMPLE_DATE}",
+        f"# Frontier Scout — Weekly Briefing · {SAMPLE_DATE}",
         f"> Scanned **{SAMPLE_FUNNEL['items_scanned']}** items · "
         f"**{SAMPLE_FUNNEL['candidates']}** considered after dedup + Mem0 prior-filter · "
         f"**{len(SAMPLE_VERDICTS)}** verdicts after RLAIF judge pass. "
@@ -303,7 +303,7 @@ HTML_BASE = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>AI Telemetry — Demo Briefing</title>
+<title>Frontier Scout — Demo Briefing</title>
 <style>
 :root {
   --bg: #f8f8f8;
@@ -396,7 +396,7 @@ footer a { color: var(--link); }
 <body>
 <div class="wrap">
 <header>
-  <h1>#ai-telemetry · Slack preview</h1>
+  <h1>#frontier-scout · Slack preview</h1>
   <div class="meta">This is what the bot posts every Monday. Generated locally — no Slack workspace required.</div>
 </header>
 __PARENT__
@@ -444,7 +444,7 @@ def render_parent_html() -> str:
 
     return f"""
 <div class="parent">
-  <h2>📡 AI Telemetry — Weekly Briefing · {SAMPLE_DATE}</h2>
+  <h2>📡 Frontier Scout — Weekly Briefing · {SAMPLE_DATE}</h2>
   <div class="stats">
     <strong>{SAMPLE_FUNNEL['items_scanned']}</strong> scanned ·
     <strong>{considered}</strong> considered ·
@@ -480,15 +480,14 @@ def render_card_html(num: int, v: dict) -> str:
     sev = SEV_LABEL.get(v["severity"], "📌")
     readiness = v["readiness"]
     meter = "▰" * readiness + "▱" * (5 - readiness)
-    why_now = f'<div class="field"><blockquote>📅 <strong>Why this week</strong><br>{v["why_this_week"]}</blockquote></div>' if v.get("why_this_week") else ""
+    why_now = f'\n  <div class="field"><blockquote>📅 <strong>Why this week</strong><br>{v["why_this_week"]}</blockquote></div>' if v.get("why_this_week") else ""
 
     return f"""
 <div class="card {tier_css}">
   <div class="head">{_keycap(num)} · {sev} <a href="{v['source_url']}">{v['tool_name']}</a></div>
   <div class="badges">{VERDICT_LABEL[v['verdict']]} · {CAT_LABEL[v['category']]} · {SOC2_LABEL[v['soc2']]}</div>
   <div class="what">{v['what']}</div>
-  <div class="field"><span class="label">💡 Why it matters</span><br>{v['why_it_matters']}</div>
-  {why_now}
+  <div class="field"><span class="label">💡 Why it matters</span><br>{v['why_it_matters']}</div>{why_now}
   <div class="grid">
     <div><strong>⏱ Adoption</strong><br>{v['adoption_cost']}</div>
     <div><strong>▶ Next action</strong><br>{v['next_action']}</div>
@@ -538,11 +537,6 @@ def render_quality_log_jsonl() -> str:
     return json.dumps(record) + "\n"
 
 
-def _clean_text(content: str) -> str:
-    """Normalize generated demo artifacts for pre-commit-friendly output."""
-    return "\n".join(line.rstrip() for line in content.splitlines()) + "\n"
-
-
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -557,7 +551,6 @@ def main() -> None:
     }
     for name, content in files.items():
         path = DEMO_DIR / name
-        content = _clean_text(content)
         path.write_text(content)
         print(f"✅ {path.relative_to(REPO_ROOT)}  ({len(content):,} chars)")
 
