@@ -67,12 +67,38 @@ import anthropic
 
 from cost_tracker import log_call
 from llm_client import call_with_retry
-from prompts import STACK
 
-REPO_ROOT = Path(__file__).parent.parent
+
+def _fs_home() -> Path:
+    """Resolve Frontier Scout's local home directory.
+
+    ``$FRONTIER_SCOUT_HOME`` overrides; otherwise we fall back to the repo
+    root so direct ``python scripts/lab_runner.py`` runs still work in dev.
+    """
+    home_env = os.environ.get("FRONTIER_SCOUT_HOME")
+    if home_env:
+        return Path(home_env).expanduser()
+    return Path(__file__).resolve().parent.parent
+
+
+REPO_ROOT = _fs_home()
 LABS_DIR = REPO_ROOT / ".scratch" / "labs"
 BRIEFINGS_DIR = REPO_ROOT / "briefings"
 COSTS_LEDGER = REPO_ROOT / "costs.jsonl"
+
+
+# Light-weight "what to write the synthetic test for" note shared by all three
+# runtime generator prompts. The lab is a generic black-box test (does this
+# package import? does its main class instantiate?) so the user's exact stack
+# doesn't change how the script gets written — only the interpreter's later
+# "does this fit your stack?" reasoning needs the profile, and that lives in
+# the scout / MCP layer.
+_LAB_CONTEXT_NOTE = (
+    "TARGET CONTEXT: synthetic-only test for a polyglot lab dispatcher. The\n"
+    "user runs Claude Code / Cursor on a personal laptop; inputs should look\n"
+    "like the kind of toy data a solo developer would type to smoke-test a\n"
+    "new tool ('hello world', a 3-line JSON snippet, a 2-row CSV)."
+)
 
 MODEL = "claude-sonnet-4-6"
 
@@ -113,6 +139,15 @@ OPEN_SOURCE_URL_RE = re.compile(
     r"^https?://(www\.)?(github\.com|pypi\.org|huggingface\.co|gitlab\.com)/",
     re.IGNORECASE,
 )
+
+
+def is_open_source_url(url: str | None) -> bool:
+    """True if ``url`` is one of the four public-repo hosts the lab can pull
+    from (github.com / pypi.org / huggingface.co / gitlab.com). Surfaces are
+    expected to call this *before* offering a "Try it" button — exposing the
+    button on a vendor-blog URL just queues a guaranteed-to-fail run.
+    """
+    return bool(url) and OPEN_SOURCE_URL_RE.match(url) is not None
 
 # If Sonnet ever emits one of these in the generated test script, refuse to
 # execute. Belt-and-braces against prompt injection that tries to bake real
@@ -675,8 +710,7 @@ _GENERATOR_SYSTEM_PYTHON = (
     "     the right test is to verify import + class introspection + show what\n"
     "     'this would do if it had a key'. Don't try to fake a key.\n"
     "\n"
-    "REDICA STACK (so the synthetic inputs feel relevant):\n"
-    f"{STACK}\n"
+    f"\n{_LAB_CONTEXT_NOTE}\n"
 )
 
 _GENERATOR_SYSTEM_NODE = (
@@ -706,8 +740,9 @@ _GENERATOR_SYSTEM_NODE = (
     "     verify require + class introspection + show what 'this would do if\n"
     "     it had a key'. Don't fake a key.\n"
     "\n"
-    "REDICA STACK (so synthetic inputs feel relevant — this is a Python+Lambda\n"
-    f"stack, so JS tests should validate the JS tool's surface, not call into it):\n{STACK}\n"
+    f"\n{_LAB_CONTEXT_NOTE}\n"
+    "Note: this is a generic personal-laptop context; JS tests should validate the\n"
+    "JS tool's surface, not call into another runtime.\n"
 )
 
 _GENERATOR_SYSTEM_HF = (
@@ -740,8 +775,9 @@ _GENERATOR_SYSTEM_HF = (
     "     weights. Stay at the config + tokenizer level.\n"
     "  6. Be SHORT — aim for 20–50 lines.\n"
     "\n"
-    "REDICA STACK (the model verdict is about whether this checkpoint fits\n"
-    f"our stack — we run on AWS Lambda + FastAPI, no GPU):\n{STACK}\n"
+    f"\n{_LAB_CONTEXT_NOTE}\n"
+    "Note: model fit (does this checkpoint fit the user's stack?) is judged\n"
+    "downstream by the interpreter — your job here is just 'does the model load?'.\n"
 )
 
 # Per-runtime generator system prompt dispatch.
@@ -1118,8 +1154,9 @@ def _interpret(client: anthropic.Anthropic, spec: dict, classification: dict, sc
             "(python / node / huggingface) and the runtime name appears in "
             "the user message — use it to recognise runtime-typical failure "
             "modes (e.g. `npm install` 404, `from_pretrained` gated, native "
-            "build errors). Anchor the recommendation to the configured stack:\n"
-            + STACK
+            "build errors). Recommendations should be concise and concrete "
+            "('install fine, basic API works' / 'install ok but heavy deps' / "
+            "'install failed: native build')."
         )}],
         tools=[_INTERPRET_TOOL],
         tool_choice={"type": "tool", "name": "emit_lab_insights"},
@@ -1326,7 +1363,7 @@ def _write_transcript(
     path = LABS_DIR / f"{today}-{slug}.md"
     body = (
         f"# Lab transcript: {tool}\n\n"
-        f"_Ran by @{user or 'anon'} on {today} via 🧪 click in Slack._\n\n"
+        f"_Ran by @{user or 'anon'} on {today} via the Frontier Scout lab._\n\n"
         f"Source: {url}\n\n"
         f"## Classification\n```json\n{json.dumps(classification, indent=2)}\n```\n\n"
         f"## Generated test script\n```python\n{script}\n```\n\n"

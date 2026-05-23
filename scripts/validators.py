@@ -1,12 +1,13 @@
 """
-Deterministic policy gates that run AFTER the RLAIF judge, BEFORE any markdown
-or Slack write. These are content validators on top of the structural
-tool-use schema — the schema enforces shape, these enforce policy.
+Deterministic policy gates that run AFTER the RLAIF judge, BEFORE any verdict
+is written to the local SQLite store. These are content validators on top of
+the structural tool-use schema — the schema enforces shape, these enforce
+policy.
 
-Round 3 motivation: the LLM-as-judge pass can be fooled by a confident
-generator (the CISA-incident-as-ADOPT failure mode in Round 1). For a
-SOC2-adjacent unattended pipeline, we want hard rails the LLM cannot cross
-regardless of prompt drift.
+Motivation: the LLM-as-judge pass can be fooled by a confident generator (a
+news-incident slipping in as ADOPT was the original failure mode). For an
+unattended pipeline we want hard rails the model cannot cross regardless of
+prompt drift.
 
 Usage:
     from validators import validate_verdicts
@@ -24,17 +25,27 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
-# Allowlist of domains the Slack renderer is permitted to hyperlink.
-# Add new domains intentionally — adding here is a policy decision.
+# Allowlist of domains the HTML/terminal renderers will hyperlink and the
+# verdict schema will accept as source_url. Adding here is a policy
+# decision — random vendor blogs don't belong on the list.
 ALLOWED_DOMAINS = frozenset({
+    # Code hosts the lab can actually pull from
     "github.com", "raw.githubusercontent.com", "githubusercontent.com",
-    "huggingface.co", "anthropic.com", "openai.com", "deepmind.google",
-    "deeplearning.ai", "mistral.ai", "jack-clark.net", "latent.space",
-    "simonwillison.net", "eugeneyan.com", "sebastianraschka.com",
-    "aitidbits.ai", "cameronrwolfe.substack.com", "news.ycombinator.com",
-    "ycombinator.com", "paperswithcode.com", "arxiv.org", "reddit.com",
-    "producthunt.com", "tldr.tech", "bensbites.co", "buttondown.com",
-    "krebsonsecurity.com", "blog.google", "google.com",
+    "gitlab.com", "pypi.org", "npmjs.com", "crates.io",
+    # Model + tokenizer host
+    "huggingface.co",
+    # First-party labs / vendor blogs
+    "anthropic.com", "openai.com", "deepmind.google",
+    "deeplearning.ai", "mistral.ai", "blog.google", "google.com",
+    # Practitioner blogs that publish high-signal tool releases
+    "jack-clark.net", "latent.space", "simonwillison.net",
+    "eugeneyan.com", "sebastianraschka.com", "aitidbits.ai",
+    "cameronrwolfe.substack.com",
+    # Community signal feeds
+    "news.ycombinator.com", "ycombinator.com", "reddit.com",
+    "paperswithcode.com", "arxiv.org", "producthunt.com",
+    # Curated newsletters worth linking through
+    "tldr.tech", "bensbites.co", "buttondown.com",
 })
 
 
@@ -81,9 +92,10 @@ _SHELL_CHARS = re.compile(r"[;`]|\$\(")
 
 
 VerdictTier = Literal["adopt", "trial", "assess", "hold"]
-SOC2 = Literal["safe", "conditional", "blocked"]
+Risk = Literal["low", "medium", "high"]
+Fit = Literal["high", "medium", "low"]
 Category = Literal[
-    "frontier_model", "orchestration", "tool", "data", "compute", "security",
+    "skill", "mcp_server", "agent_framework", "dev_tool", "model_drop",
 ]
 Severity = Literal["critical", "high", "standard"]
 
@@ -94,7 +106,11 @@ class Verdict(BaseModel):
     tool_name: str = Field(min_length=2, max_length=200)
     verdict: VerdictTier
     category: Category
-    soc2: SOC2
+    risk: Risk
+    # ``fit`` is computed against the user's stack profile; verdicts produced
+    # before a profile exists (or for items that don't intersect it) can
+    # legitimately omit it.
+    fit: Fit | None = None
     what: str = Field(min_length=20, max_length=240)
     why_this_week: str | None = Field(default=None, max_length=180)
     why_it_matters: str = Field(min_length=20, max_length=420)

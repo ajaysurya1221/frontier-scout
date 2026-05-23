@@ -1,24 +1,17 @@
 #!/usr/bin/env python3
-"""
-Frontier Scout — Demo Mode.
+"""Frontier Scout — demo fixtures + offline preview.
 
-One command that generates a polished sample briefing from seeded data —
-no Slack, no AWS, no GitHub Actions setup needed. Lets anyone clone the repo
-and see what the system produces in 60 seconds.
+``SAMPLE_VERDICTS`` is the canonical fixture set used by:
+  * ``scout.run_scan(dry_run=True)`` — returns these directly
+  * ``frontier-scout demo`` (CLI) — renders an HTML snapshot
+  * Future tests that need realistic verdict shapes without LLM calls
 
-Outputs:
-  demo/briefing.html         — Slack-style HTML preview of the threaded briefing
-  demo/briefing.md           — the markdown briefing as it lands in the repo
-  demo/judge-trace.md        — the judge's per-verdict decisions + veto reasons
-  demo/quality-log.jsonl     — sample funnel + judge + retry stats
-  demo/cost-breakdown.md     — observed-cost table by component
+Every verdict here uses the v0.1 schema (category in {skill, mcp_server,
+agent_framework, dev_tool, model_drop}; risk + optional fit; readiness 0–5).
 
 Run:
     python scripts/demo.py
     open demo/briefing.html
-
-No API keys required. No network calls. Pure local rendering of seeded
-content that matches what a real Scout run would produce.
 """
 
 from __future__ import annotations
@@ -32,534 +25,244 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 REPO_ROOT = Path(__file__).parent.parent
 DEMO_DIR = REPO_ROOT / "demo"
-
-
-# ── Seeded sample verdicts ───────────────────────────────────────────────────
-# These reflect the format and quality bar of real Scout output. The
-# tool names are real; the verdicts are hand-crafted for the demo.
-
 SAMPLE_DATE = "2026-05-21"
-SAMPLE_VERDICTS = [
+
+
+# ── Sample verdicts (real tools, hand-crafted commentary) ───────────────────
+
+SAMPLE_VERDICTS: list[dict] = [
     {
         "tool_name": "anthropics/skills",
         "verdict": "adopt",
-        "category": "tool",
-        "soc2": "safe",
-        "what": "Anthropic's official public repository of Agent Skills — reusable, composable capability modules for Claude-based agents.",
-        "why_it_matters": "Skills primitives accelerate building agentic capabilities (retrieval, structured extraction, tool-use patterns) without reinventing plumbing, and carry implicit compatibility guarantees with Claude model updates.",
-        "why_this_week": "Public release this week with broad surge in adoption across Claude Code, Codex and Cursor integrations.",
-        "adoption_cost": "~2 hrs to audit + prototype one skill in an existing agent · low risk",
-        "next_action": "Lab — clone, identify one skill applicable to document extraction, integrate into one LangGraph node, demo to the team within 1 sprint.",
+        "category": "skill",
+        "risk": "low",
+        "fit": "high",
+        "what": "Anthropic's official repo of reusable Claude Code Skill bundles — prompt + tool packages installed under ~/.claude/skills/.",
+        "why_this_week": "New batch landed: research, security-review, simplify — broadens the catalogue beyond the original three.",
+        "why_it_matters": "You run Claude Code daily. Reusable skill bundles cut review setup from a custom prompt every time to one Skill invocation. The code-review and brainstorming skills in particular replace the slash-command shimmying most users do today.",
+        "adoption_cost": "~10 min to clone and symlink one skill; zero install cost. Low risk — pure markdown + Python.",
+        "next_action": "lab anthropics/skills — verify bundle layout loads under your Claude Code version, then symlink brainstorming.",
         "source_url": "https://github.com/anthropics/skills",
         "severity": "critical",
         "readiness": 5,
-        "_judge_decision": "keep",
-        "_judge_reason": "Official Anthropic source, immediate stack-fit, low adoption cost, concrete next action with timebox.",
+        "tags": ["skill", "claude-code", "agentic-coding"],
     },
     {
-        "tool_name": "Gemini 3.5 Flash",
+        "tool_name": "modelcontextprotocol/postgres-mcp",
         "verdict": "trial",
-        "category": "frontier_model",
-        "soc2": "conditional",
-        "what": "Google's new GA fast/cheap frontier model, deployed across Search and Gemini app at scale.",
-        "why_it_matters": "Flash-tier pricing makes it a credible candidate for high-volume document classification where Sonnet cost dominates. GA-from-day-one signals production readiness; SOC2 conditional pending Vertex AI data residency confirmation.",
-        "why_this_week": "Skipped preview and jumped straight to GA — Google is signaling production-confidence on the Flash tier.",
-        "adoption_cost": "~3 hrs benchmark vs Sonnet on 50 classification samples · medium risk (verify Vertex training opt-out)",
-        "next_action": "Evaluate — run head-to-head benchmark on document classification; check Vertex AI data-processing addendum for training opt-out before any prod data path.",
-        "source_url": "https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-3-5/",
-        "severity": "high",
-        "readiness": 5,
-        "_judge_decision": "keep",
-        "_judge_reason": "Major lab release; existing Gemini integration means low integration overhead; SOC2 caveat is correctly conservative.",
-    },
-    {
-        "tool_name": "obra/superpowers",
-        "verdict": "adopt",
-        "category": "tool",
-        "soc2": "conditional",
-        "what": "Agentic skills framework + software development methodology already on our dev stack.",
-        "why_it_matters": "Stack-direct hit. 10,577 stars this week signals a major version or surge — check if our pinned version is current and whether new skills are relevant to ongoing work.",
-        "why_this_week": "Trending hard on GitHub this week (+10.5k stars in 7 days) — strong signal something changed.",
-        "adoption_cost": "Already on the dev stack · upgrade audit is ~1 hr",
-        "next_action": "Audit current pin against latest release; review changelog for breaking changes; bump version if compatible.",
-        "source_url": "https://github.com/obra/superpowers",
+        "category": "mcp_server",
+        "risk": "medium",
+        "fit": "high",
+        "what": "MCP server that exposes a Postgres database to Claude Code as a queryable tool, with read-only and read-write modes.",
+        "why_it_matters": "Your stack profile lists Postgres + Next.js. This lets the agent answer 'what's the latest row in users?' directly, without copy-pasting schema into the prompt every time.",
+        "adoption_cost": "~30 min to lab-test against a throwaway DB; ~2 hrs to add to a real project with read-only credentials. Medium risk — third-party MCP, audit before connecting to prod.",
+        "next_action": "lab modelcontextprotocol/postgres-mcp against a local DB; if the schema introspection looks clean, promote to your MCP config.",
+        "source_url": "https://github.com/modelcontextprotocol/servers",
         "severity": "high",
         "readiness": 4,
-        "_judge_decision": "promote",
-        "_judge_reason": "Stack-direct trending repo missed by the verdict-gen pass; clear adoption path because we already use it.",
-        "_promoted_by_judge": True,
+        "tags": ["mcp", "postgres", "developer-tools"],
     },
     {
-        "tool_name": "Forge (Guardrails for Agentic Tasks)",
+        "tool_name": "browser-use/browser-use",
         "verdict": "trial",
-        "category": "orchestration",
-        "soc2": "conditional",
-        "what": "Open-source guardrail framework that lifts an 8B-model task-completion rate from 53% to 99% on agentic benchmarks via proposer + verifier loops.",
-        "why_it_matters": "Reliability claim is compelling for domains where a hallucinated extraction or citation is a trust-killer. Complements deepeval already in the stack.",
-        "adoption_cost": "~4-6 hrs to wrap one LangGraph node · medium risk (early-stage project, API may shift)",
-        "next_action": "Lab — apply Forge guardrails to one agent node; compare output validity rate against baseline using deepeval; timebox to 4 hrs.",
-        "source_url": "https://github.com/antoinezambelli/forge",
+        "category": "agent_framework",
+        "risk": "medium",
+        "fit": "medium",
+        "what": "Python agent framework that drives Playwright via an LLM — the agent navigates real websites, fills forms, and clicks buttons.",
+        "why_this_week": "v0.4 released structured-output mode that returns typed results instead of raw transcripts.",
+        "why_it_matters": "Your stack has FastAPI + Anthropic SDK already; browser-use plugs in as a tool call. For research / scraping flows that today need a custom Playwright script, this collapses to a few lines.",
+        "adoption_cost": "~45 min to lab-test on a public site; ~half day to integrate into a real flow with retries. Medium risk — Playwright is heavy, ~150 MB install.",
+        "next_action": "lab browser-use/browser-use against a public search page; measure cost-per-task vs the manual Playwright script.",
+        "source_url": "https://github.com/browser-use/browser-use",
         "severity": "high",
-        "readiness": 2,
-        "_judge_decision": "keep",
-        "_judge_reason": "Promising reliability mechanism with concrete lab hypothesis; SOC2 conditional captures the solo-dev early-stage risk.",
+        "readiness": 4,
+        "tags": ["agent-framework", "playwright", "automation"],
     },
     {
-        "tool_name": "Qwen3.6-35B-A3B",
+        "tool_name": "Qwen/Qwen3-Coder-30B",
         "verdict": "assess",
-        "category": "frontier_model",
-        "soc2": "conditional",
-        "what": "Alibaba open-weight multimodal MoE (35B total / 3B active), Apache-2.0, 5.8M downloads on HuggingFace.",
-        "why_it_matters": "Apache-2.0 + MoE efficiency makes this interesting for self-hosted inference. 3B active params runs on smaller GPU instances. Alibaba provenance needs legal sign-off before any prod path.",
-        "adoption_cost": "1-2 days to stand up on SageMaker for benchmarking · medium risk (legal review required)",
-        "next_action": "Monitor 3 months — watch for independent evals on document-heavy tasks; revisit when self-host fallback is a real need.",
-        "source_url": "https://huggingface.co/Qwen/Qwen3.6-35B-A3B",
+        "category": "model_drop",
+        "risk": "medium",
+        "fit": "low",
+        "what": "Alibaba's 30B-parameter open-weight coding model on HuggingFace, claiming Claude Sonnet 3.6 parity on HumanEval.",
+        "why_this_week": "Public release with ~12 GB quantised weight, fits a single 24 GB GPU.",
+        "why_it_matters": "You ship with hosted Claude; running local inference at this scale doesn't pay back for a solo project unless you've got the GPU sitting idle. Worth knowing for the day you do.",
+        "adoption_cost": "~2 hrs to set up Ollama + pull weights; ongoing GPU cost if used in flow.",
+        "next_action": "Monitor 3 months — revisit if a 7B distill lands with similar HumanEval numbers.",
+        "source_url": "https://huggingface.co/Qwen/Qwen3-Coder-30B",
         "severity": "standard",
-        "readiness": 4,
-        "_judge_decision": "keep",
-        "_judge_reason": "Defensible 'assess' — provenance concern correctly captured; not urgent enough to promote.",
+        "readiness": 3,
+        "tags": ["model-drop", "code-llm", "local-inference"],
     },
     {
-        "tool_name": "DeepSeek-V4-Pro",
+        "tool_name": "deepseek-ai/DeepSeek-V4-Pro",
         "verdict": "hold",
-        "category": "frontier_model",
-        "soc2": "blocked",
-        "what": "DeepSeek open-weight frontier model, MIT license, 3.8M downloads on HuggingFace.",
-        "why_it_matters": "Chinese AI lab with documented data-residency ambiguity and ongoing compliance scrutiny. Prior versions had telemetry questions never fully resolved.",
-        "adoption_cost": "N/A — blocked on SOC2 and compliance grounds regardless of self-hosting posture.",
-        "next_action": "Hold indefinitely. Revisit only if legal counsel explicitly clears it.",
+        "category": "model_drop",
+        "risk": "high",
+        "fit": "low",
+        "what": "67 GB open-weight reasoning model — biggest open release of the quarter.",
+        "why_it_matters": "Way over the lab's 5 GB size cap; would need a dedicated multi-GPU box to even download. For a solo developer running on a laptop or single hosted box, this is academic only.",
+        "adoption_cost": "Weekend to provision GPU infra + ongoing compute cost. High risk — opaque license clauses on derivative works.",
+        "next_action": "Monitor 6 months — revisit if a quantised variant lands under 10 GB.",
         "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
         "severity": "standard",
         "readiness": 4,
-        "_judge_decision": "keep",
-        "_judge_reason": "Correctly SOC2-blocked; verdict's restraint is appropriate.",
+        "tags": ["model-drop", "reasoning", "large-model"],
     },
 ]
 
-# Items the judge VETOED (would have been kept by verdict-gen but the
-# judge struck them down) — visible in judge-trace.md so the value of
-# the judge layer is concrete.
-SAMPLE_VETOED = [
-    {
-        "tool_name": "LlamaIndex v0.14.22",
-        "draft_verdict": "adopt",
-        "veto_reason": "patch release of an already-adopted framework (55 sub-package lockfile bump). ADOPT bar requires a substantive API change or new capability; this is dependency hygiene.",
-    },
-    {
-        "tool_name": "CISA AWS GovCloud Key Leak",
-        "draft_verdict": "adopt",
-        "veto_reason": "tool_name matches incident/breach pattern, not a tool/framework. The radar evaluates tools; security advisories belong in a different output channel.",
-    },
-]
 
 SAMPLE_FUNNEL = {
     "items_scanned": 377,
     "dedup_drops": 22,
-    "mem0_prior_drops": 5,
+    "seen_drops": 5,
     "candidates": 350,
-    "verdicts_pre_judge": 7,
-    "verdicts_post_judge": 6,
-    "vetoed": 2,
-    "tier_adjusted": 0,
-    "missed_recovered": 1,
-    "policy_dropped": 0,
+    "scored_above_threshold": 19,
+    "verdicts_pre_judge": 8,
+    "verdicts_post_judge": len(SAMPLE_VERDICTS),
     "judge_self_rating": "high",
-    "judge_summary": "Tight upstream pass — vetoed two noise items, promoted one stack-direct trending repo. SOC2 calls are conservative and well-reasoned.",
+    "judge_summary": "Tight upstream pass — vetoed two patch-release noise items, promoted one stack-direct trending repo. Risk calls are conservative.",
     "total_cost_usd": 0.31,
-    "duration_s": 232.0,
+    "duration_s": 232.4,
 }
 
-COST_BREAKDOWN = [
-    ("Sonnet score (250 candidates)", 0.146),
-    ("Sonnet verdict (7 drafts)", 0.041),
-    ("Opus judge (adaptive thinking)", 0.122),
-    ("OpenAI embeddings (Mem0 prior + seed)", 0.001),
-    ("**Total**", 0.310),
-]
 
-
-# ── Markdown renderers ───────────────────────────────────────────────────────
-
-VERDICT_LABEL = {"adopt": "🟢 ADOPT", "trial": "🟡 TRIAL", "assess": "⚪ ASSESS", "hold": "🔴 HOLD"}
-SOC2_LABEL = {"safe": "✅ SOC2-safe", "conditional": "⚠️ SOC2-conditional", "blocked": "❌ SOC2-blocked"}
-CAT_LABEL = {
-    "frontier_model": "🧠 Frontier Models",
-    "orchestration": "🤖 Orchestration & Agents",
-    "tool": "🛠️ Tools & Frameworks",
-    "data": "📊 Data Ecosystem",
-    "compute": "⚡ Compute & Hardware",
-    "security": "🔐 Security & Compliance",
+VERDICT_LABEL = {
+    "adopt":  "ADOPT",
+    "trial":  "TRIAL",
+    "assess": "ASSESS",
+    "hold":   "HOLD",
 }
-SEV_LABEL = {"critical": "🔥", "high": "⭐", "standard": "📌"}
+
+CATEGORY_LABEL = {
+    "skill":           "Skill",
+    "mcp_server":      "MCP Server",
+    "agent_framework": "Agent Framework",
+    "dev_tool":        "Dev Tool",
+    "model_drop":      "Model Drop",
+}
+
+RISK_LABEL = {"low": "low-risk", "medium": "medium-risk", "high": "high-risk"}
 
 
-def render_briefing_md() -> str:
-    lines = [
-        f"# Frontier Scout — Weekly Briefing · {SAMPLE_DATE}",
-        f"> Scanned **{SAMPLE_FUNNEL['items_scanned']}** items · "
-        f"**{SAMPLE_FUNNEL['candidates']}** considered after dedup + Mem0 prior-filter · "
-        f"**{len(SAMPLE_VERDICTS)}** verdicts after RLAIF judge pass. "
-        f"Run cost **${SAMPLE_FUNNEL['total_cost_usd']:.4f}** (cached). "
-        f"Judge confidence: **{SAMPLE_FUNNEL['judge_self_rating']}**.",
-        "",
-        f"> _{SAMPLE_FUNNEL['judge_summary']}_",
-        "",
-    ]
+# ── Minimal HTML preview ────────────────────────────────────────────────────
+
+
+def _render_html() -> str:
+    rows = []
     for v in SAMPLE_VERDICTS:
-        sev = SEV_LABEL.get(v["severity"], "📌")
-        readiness = v["readiness"]
+        fit = (v.get("fit") or "—").upper()
+        readiness = int(v.get("readiness", 3))
         meter = "▰" * readiness + "▱" * (5 - readiness)
-        lines += [
-            f"### {sev} [{v['tool_name']}]({v['source_url']}) — {VERDICT_LABEL[v['verdict']]} "
-            f"— {SAMPLE_DATE} — {CAT_LABEL[v['category']]} — {SOC2_LABEL[v['soc2']]}",
-            f"**What**: {v['what']}",
-            f"**Why it matters**: {v['why_it_matters']}",
-        ]
-        if v.get("why_this_week"):
-            lines.append(f"**Why this week**: {v['why_this_week']}")
-        lines += [
-            f"**Adoption cost**: {v['adoption_cost']}",
-            f"**Next action**: {v['next_action']}",
-            f"**Readiness**: `{meter}` {readiness}/5",
-            "",
-        ]
-    lines += [
-        "---",
-        "*Dig deeper: `evaluate <tool>` · Build skill: `lab <tool>` · Recall past verdicts: `recall <topic>`*",
-    ]
-    return "\n".join(lines)
-
-
-def render_judge_trace_md() -> str:
-    lines = [
-        "# Judge Trace — RLAIF decisions",
-        "",
-        f"_Generated for {SAMPLE_DATE} demo briefing. Shows the Opus 4.7 judge's "
-        f"per-draft decision (keep / veto / retier / promote) with rationale._",
-        "",
-        f"**Quality self-rating:** {SAMPLE_FUNNEL['judge_self_rating']}",
-        f"**Summary:** {SAMPLE_FUNNEL['judge_summary']}",
-        "",
-        "## ✅ Kept verdicts",
-        "",
-    ]
-    for v in SAMPLE_VERDICTS:
-        decision = v.get("_judge_decision", "keep")
-        reason = v.get("_judge_reason", "")
-        promoted = " (promoted from missed pool)" if v.get("_promoted_by_judge") else ""
-        lines += [
-            f"### {v['tool_name']} → {decision.upper()}{promoted}",
-            f"**Verdict:** {VERDICT_LABEL[v['verdict']]} · {SOC2_LABEL[v['soc2']]} · severity {SEV_LABEL.get(v['severity'])} · readiness {v['readiness']}/5",
-            f"**Judge reason:** {reason}",
-            "",
-        ]
-    lines += ["## ❌ Vetoed drafts", ""]
-    for v in SAMPLE_VETOED:
-        lines += [
-            f"### {v['tool_name']} → VETOED (was draft `{v['draft_verdict']}`)",
-            f"**Reason:** {v['veto_reason']}",
-            "",
-        ]
-    lines += [
-        "---",
-        "_The judge layer turns the system from 'Sonnet's best guess' into "
-        "'Sonnet's best guess, audited by Opus.' Vetoes you see here are noise "
-        "that would have shipped without the judge._",
-    ]
-    return "\n".join(lines)
-
-
-def render_cost_breakdown_md() -> str:
-    lines = [
-        "# Cost breakdown — single Scout run",
-        "",
-        "Observed numbers from the demo's seeded run. Real runs land in the same band.",
-        "",
-        "| Component | Cost (USD) |",
-        "|---|---|",
-    ]
-    for component, cost in COST_BREAKDOWN:
-        lines.append(f"| {component} | ${cost:.4f} |")
-    lines += [
-        "",
-        "## Monthly extrapolation",
-        "",
-        "| Cadence | Runs/month | Monthly cost |",
-        "|---|---|---|",
-        "| Scout (weekly) | 4 | ~$1.24 |",
-        "| Pulse (daily, mostly silent) | 30 | ~$0.30 |",
-        "| Synthesizer (monthly Opus) | 1 | ~$0.10 |",
-        "| Lambda interactivity (free tier) | — | <$0.10 |",
-        "| **Total** | | **~$2 / month** |",
-        "",
-        "_Anthropic monthly spend cap recommended: **$30**._",
-    ]
-    return "\n".join(lines)
-
-
-# ── HTML renderer (Slack-style preview) ──────────────────────────────────────
-
-HTML_BASE = """<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>Frontier Scout — Demo Briefing</title>
-<style>
-:root {
-  --bg: #f8f8f8;
-  --card: #ffffff;
-  --text: #1d1c1d;
-  --muted: #616061;
-  --border: #e1e1e1;
-  --link: #1264a3;
-  --code-bg: #f4ede4;
-  --quote-border: #e1e1e1;
-  --adopt: #36a64f;
-  --trial: #f2c744;
-  --assess: #9aa0a6;
-  --hold: #d93025;
-}
-html, body { margin: 0; padding: 0; background: var(--bg); }
-body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  color: var(--text);
-  font-size: 15px;
-  line-height: 1.46;
-}
-.wrap { max-width: 760px; margin: 32px auto; padding: 0 16px; }
-header { margin-bottom: 24px; }
-header h1 { font-size: 18px; margin: 0 0 4px 0; }
-header .meta { color: var(--muted); font-size: 13px; }
-
-.parent {
-  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-  padding: 20px 24px; margin-bottom: 16px;
-}
-.parent h2 { font-size: 22px; margin: 0 0 8px 0; }
-.parent .stats { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
-.parent .sev-counts { color: var(--text); font-size: 14px; margin-bottom: 16px; }
-.parent blockquote {
-  border-left: 4px solid var(--quote-border); margin: 0 0 16px 0;
-  padding: 4px 12px; color: var(--text); font-size: 14px;
-}
-.parent .tier-tldr { margin-top: 18px; }
-.parent .tier-tldr h3 { font-size: 15px; margin: 12px 0 6px 0; }
-.parent .tier-tldr ul { margin: 0; padding-left: 24px; }
-.parent .tier-tldr li { padding: 2px 0; }
-.parent .footer { color: var(--muted); font-size: 13px; margin-top: 16px;
-                   padding-top: 12px; border-top: 1px solid var(--border); }
-
-.thread-anchor {
-  text-align: center; color: var(--muted); font-size: 13px;
-  margin: 14px 0 8px 0;
-}
-
-.card {
-  background: var(--card); border-radius: 8px;
-  border-left: 4px solid var(--assess);
-  margin-bottom: 12px; padding: 16px 20px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-}
-.card.adopt { border-left-color: var(--adopt); }
-.card.trial { border-left-color: var(--trial); }
-.card.assess { border-left-color: var(--assess); }
-.card.hold { border-left-color: var(--hold); }
-
-.card .head { font-size: 15px; }
-.card .head a { color: var(--link); text-decoration: none; font-weight: 700; }
-.card .head a:hover { text-decoration: underline; }
-.card .badges { color: var(--muted); font-size: 13px; margin: 4px 0 10px 0; }
-.card .what { font-style: italic; color: var(--text); margin-bottom: 12px; }
-.card .field { margin: 8px 0; }
-.card .field .label { font-weight: 700; }
-.card .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
-.card .meter { color: var(--muted); font-size: 13px; margin-top: 10px;
-                font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.card blockquote {
-  border-left: 3px solid var(--quote-border); margin: 6px 0;
-  padding: 2px 10px; font-size: 14px; color: var(--text);
-}
-.actions {
-  display: flex; gap: 8px; margin-top: 14px; padding-top: 10px;
-  border-top: 1px solid var(--border);
-}
-.btn {
-  background: #f8f8f8; border: 1px solid var(--border); border-radius: 4px;
-  padding: 6px 12px; font-size: 13px; color: var(--text); cursor: default;
-}
-.btn.primary { background: var(--adopt); color: white; border-color: var(--adopt); }
-
-footer { color: var(--muted); font-size: 12px; text-align: center; margin: 24px 0; }
-footer a { color: var(--link); }
-</style>
-</head>
-<body>
-<div class="wrap">
-<header>
-  <h1>#frontier-scout · Slack preview</h1>
-  <div class="meta">This is what the bot posts every Monday. Generated locally — no Slack workspace required.</div>
-</header>
-__PARENT__
-__THREAD__
-<footer>
-  Generated by <code>scripts/demo.py</code> — open the file to regenerate with your own seeded data.<br>
-  Hover any verdict card; the 🧪/📚/📊 actions are wired to AWS Lambda in real deployments.
-</footer>
-</div>
-</body>
-</html>
-"""
-
-
-def _keycap(n: int) -> str:
-    keycaps = ["", "1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-    return keycaps[n] if 1 <= n <= 10 else f"#{n}"
-
-
-def render_parent_html() -> str:
-    sev_counts = {"critical": 0, "high": 0, "standard": 0}
-    for v in SAMPLE_VERDICTS:
-        sev_counts[v["severity"]] = sev_counts.get(v["severity"], 0) + 1
-
-    considered = SAMPLE_FUNNEL["items_scanned"] - SAMPLE_FUNNEL["dedup_drops"] - SAMPLE_FUNNEL["mem0_prior_drops"]
-
-    tier_blocks = []
-    counter = 0
-    for tier in ["adopt", "trial", "assess", "hold"]:
-        items = [v for v in SAMPLE_VERDICTS if v["verdict"] == tier]
-        if not items:
-            continue
-        lines = [f'<h3>{VERDICT_LABEL[tier]} · {len(items)}</h3>', "<ul>"]
-        for v in items:
-            counter += 1
-            cat_short = CAT_LABEL[v["category"]].split(" ", 1)[0]
-            soc2_short = SOC2_LABEL[v["soc2"]].split(" ", 1)[0]
-            sev = SEV_LABEL.get(v["severity"])
-            lines.append(
-                f'<li>{_keycap(counter)} {sev} <strong>{v["tool_name"]}</strong> '
-                f'· {cat_short} · {soc2_short}</li>'
-            )
-        lines.append("</ul>")
-        tier_blocks.append("\n".join(lines))
-
-    return f"""
-<div class="parent">
-  <h2>📡 Frontier Scout — Weekly Briefing · {SAMPLE_DATE}</h2>
-  <div class="stats">
-    <strong>{SAMPLE_FUNNEL['items_scanned']}</strong> scanned ·
-    <strong>{considered}</strong> considered ·
-    <strong>{len(SAMPLE_VERDICTS)}</strong> shipped
-  </div>
-  <div class="stats">
-    🤖 Judge: <strong>{SAMPLE_FUNNEL['judge_self_rating'].upper()}</strong> ·
-    💰 ${SAMPLE_FUNNEL['total_cost_usd']:.4f} ·
-    ⏱ {int(SAMPLE_FUNNEL['duration_s'])}s
-  </div>
-  <div class="sev-counts">
-    🔥 <strong>{sev_counts['critical']}</strong> critical ·
-    ⭐ <strong>{sev_counts['high']}</strong> high ·
-    📌 <strong>{sev_counts['standard']}</strong> standard
-  </div>
-
-  <blockquote>🧠 <strong>Judge's read</strong><br>{SAMPLE_FUNNEL['judge_summary']}</blockquote>
-
-  <div class="tier-tldr">
-    <h3 style="text-align:center;color:var(--muted);">━━━━━━━━━━  TL;DR  ━━━━━━━━━━</h3>
-    {chr(10).join(tier_blocks)}
-  </div>
-
-  <div class="footer">
-    🧵 Full verdicts in thread →  react 🧪 to lab · 👍 worth it · 👎 skip
-  </div>
-</div>
-"""
-
-
-def render_card_html(num: int, v: dict) -> str:
-    tier_css = v["verdict"]
-    sev = SEV_LABEL.get(v["severity"], "📌")
-    readiness = v["readiness"]
-    meter = "▰" * readiness + "▱" * (5 - readiness)
-    why_now = f'\n  <div class="field"><blockquote>📅 <strong>Why this week</strong><br>{v["why_this_week"]}</blockquote></div>' if v.get("why_this_week") else ""
-
-    return f"""
-<div class="card {tier_css}">
-  <div class="head">{_keycap(num)} · {sev} <a href="{v['source_url']}">{v['tool_name']}</a></div>
-  <div class="badges">{VERDICT_LABEL[v['verdict']]} · {CAT_LABEL[v['category']]} · {SOC2_LABEL[v['soc2']]}</div>
-  <div class="what">{v['what']}</div>
-  <div class="field"><span class="label">💡 Why it matters</span><br>{v['why_it_matters']}</div>{why_now}
-  <div class="grid">
-    <div><strong>⏱ Adoption</strong><br>{v['adoption_cost']}</div>
-    <div><strong>▶ Next action</strong><br>{v['next_action']}</div>
-  </div>
-  <div class="meter">📊 Readiness <code>{meter}</code> {readiness}/5</div>
-  <div class="actions">
-    <button class="btn primary" disabled>🧪 Queue lab</button>
-    <button class="btn" disabled>📚 Full evaluation</button>
-    <button class="btn" disabled>📊 Compare</button>
-  </div>
-</div>
-"""
-
-
-def render_thread_html() -> str:
-    blocks = []
-    counter = 0
-    for tier in ["adopt", "trial", "assess", "hold"]:
-        items = [(i, v) for i, v in enumerate(SAMPLE_VERDICTS) if v["verdict"] == tier]
-        if not items:
-            continue
-        blocks.append(
-            f'<div class="thread-anchor">━━━━━━━━━━ {VERDICT_LABEL[tier]} · {len(items)} ━━━━━━━━━━</div>'
+        why_now = v.get("why_this_week", "") or ""
+        rows.append(
+            f"""
+        <article class="verdict tier-{v['verdict']}">
+          <header>
+            <span class="tier">{VERDICT_LABEL[v['verdict']]}</span>
+            <span class="meta">{CATEGORY_LABEL[v['category']]} · {RISK_LABEL[v['risk']]} · fit {fit}</span>
+          </header>
+          <h2><a href="{v['source_url']}" rel="noopener">{v['tool_name']}</a></h2>
+          <p class="what">{v['what']}</p>
+          {f'<p class="why-now"><strong>Why this week.</strong> {why_now}</p>' if why_now else ''}
+          <p><strong>Why it matters.</strong> {v['why_it_matters']}</p>
+          <dl>
+            <dt>Adoption cost</dt><dd>{v['adoption_cost']}</dd>
+            <dt>Next action</dt><dd><code>{v['next_action']}</code></dd>
+            <dt>Readiness</dt><dd><code>{meter}</code> {readiness}/5</dd>
+          </dl>
+        </article>"""
         )
-        for _, v in items:
-            counter += 1
-            blocks.append(render_card_html(counter, v))
-    return "\n".join(blocks)
+
+    body = "\n".join(rows)
+    funnel = (
+        f"{SAMPLE_FUNNEL['items_scanned']} scanned · "
+        f"{SAMPLE_FUNNEL['candidates']} considered · "
+        f"{SAMPLE_FUNNEL['verdicts_post_judge']} shipped · "
+        f"${SAMPLE_FUNNEL['total_cost_usd']:.2f} · "
+        f"judge {SAMPLE_FUNNEL['judge_self_rating']}"
+    )
+    return f"""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>Frontier Scout — Demo Briefing · {SAMPLE_DATE}</title>
+<style>
+  body {{ font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+          max-width: 760px; margin: 2rem auto; padding: 0 1.2rem; color: #1f2937;
+          line-height: 1.55; }}
+  header.page {{ border-bottom: 1px solid #e5e7eb; padding-bottom: 1rem; margin-bottom: 2rem; }}
+  header.page h1 {{ margin: 0 0 .4rem; font-size: 1.5rem; }}
+  header.page .funnel {{ color: #6b7280; font-size: .92rem; font-family: ui-monospace, monospace; }}
+  article.verdict {{ border-left: 4px solid #9aa0a6; padding: .6rem 0 .6rem 1rem;
+                     margin: 1.4rem 0; }}
+  article.tier-adopt {{ border-left-color: #16a34a; }}
+  article.tier-trial {{ border-left-color: #ca8a04; }}
+  article.tier-assess {{ border-left-color: #6b7280; }}
+  article.tier-hold {{ border-left-color: #dc2626; }}
+  article.verdict header {{ display: flex; gap: .8rem; align-items: baseline; font-size: .85rem; }}
+  article.verdict header .tier {{ font-weight: 600; letter-spacing: .04em; }}
+  article.verdict header .meta {{ color: #6b7280; }}
+  article.verdict h2 {{ margin: .35rem 0 .6rem; font-size: 1.15rem; }}
+  article.verdict h2 a {{ color: #1d4ed8; text-decoration: none; }}
+  article.verdict p {{ margin: .35rem 0; }}
+  article.verdict p.what {{ font-style: italic; color: #374151; }}
+  article.verdict dl {{ margin: .6rem 0 0; }}
+  article.verdict dt {{ font-weight: 600; color: #374151; margin-top: .3rem; }}
+  article.verdict dd {{ margin: 0 0 .2rem; color: #4b5563; }}
+  code {{ background: #f3f4f6; padding: 1px 5px; border-radius: 3px; font-size: .9em; }}
+  footer {{ margin-top: 3rem; color: #9ca3af; font-size: .82rem; text-align: center; }}
+</style>
+</head><body>
+<header class="page">
+  <h1>Frontier Scout — Weekly Briefing · {SAMPLE_DATE}</h1>
+  <div class="funnel">{funnel}</div>
+  <p style="margin: .8rem 0 0;"><strong>Judge's read.</strong> {SAMPLE_FUNNEL['judge_summary']}</p>
+</header>
+<main>
+{body}
+</main>
+<footer>
+  Generated locally by <code>python scripts/demo.py</code>. No network calls, no API keys.
+</footer>
+</body></html>
+"""
 
 
-def render_briefing_html() -> str:
-    return HTML_BASE.replace("__PARENT__", render_parent_html()).replace("__THREAD__", render_thread_html())
+# ── CLI ─────────────────────────────────────────────────────────────────────
 
 
-# ── Quality log sample ───────────────────────────────────────────────────────
-
-def render_quality_log_jsonl() -> str:
-    record = {
-        "ts": datetime(2026, 5, 21, 3, 30, tzinfo=timezone.utc).isoformat(),
-        "component": "scout",
-        **SAMPLE_FUNNEL,
-        "slack_posted": True,
-        "judge_used_fallback": False,
-        "llm_retries_total": 0,
-        "llm_retries_by_component": {},
-    }
-    return json.dumps(record) + "\n"
-
-
-# ── Main ─────────────────────────────────────────────────────────────────────
-
-def main() -> None:
+def main() -> int:
     DEMO_DIR.mkdir(parents=True, exist_ok=True)
+    html_path = DEMO_DIR / "briefing.html"
+    json_path = DEMO_DIR / "verdicts.json"
+    log_path = DEMO_DIR / "quality-log.jsonl"
 
-    files = {
-        "briefing.md": render_briefing_md(),
-        "briefing.html": render_briefing_html(),
-        "judge-trace.md": render_judge_trace_md(),
-        "cost-breakdown.md": render_cost_breakdown_md(),
-        "quality-log.jsonl": render_quality_log_jsonl(),
+    html_path.write_text(_render_html())
+    json_path.write_text(
+        json.dumps({"date": SAMPLE_DATE, "verdicts": SAMPLE_VERDICTS}, indent=2)
+    )
+
+    sample_log = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "component": "scout",
+        "items_scanned": SAMPLE_FUNNEL["items_scanned"],
+        "dedup_drops": SAMPLE_FUNNEL["dedup_drops"],
+        "seen_drops": SAMPLE_FUNNEL["seen_drops"],
+        "candidates": SAMPLE_FUNNEL["candidates"],
+        "verdicts_pre_judge": SAMPLE_FUNNEL["verdicts_pre_judge"],
+        "verdicts_post_judge": SAMPLE_FUNNEL["verdicts_post_judge"],
+        "judge_self_rating": SAMPLE_FUNNEL["judge_self_rating"],
+        "total_cost_usd": SAMPLE_FUNNEL["total_cost_usd"],
+        "duration_s": SAMPLE_FUNNEL["duration_s"],
     }
-    for name, content in files.items():
-        path = DEMO_DIR / name
-        path.write_text(content)
-        print(f"✅ {path.relative_to(REPO_ROOT)}  ({len(content):,} chars)")
+    log_path.write_text(json.dumps(sample_log) + "\n")
 
-    print()
-    print(f"🎨  Open the Slack-style preview:  open {DEMO_DIR / 'briefing.html'}")
-    print(f"📄  Read the briefing markdown:    cat {DEMO_DIR / 'briefing.md'}")
-    print(f"⚖️   See judge decisions:           cat {DEMO_DIR / 'judge-trace.md'}")
-    print(f"💰  Cost breakdown:                cat {DEMO_DIR / 'cost-breakdown.md'}")
+    print(f"📝 Wrote {html_path}")
+    print(f"📝 Wrote {json_path}")
+    print(f"📝 Wrote {log_path}")
+    print(f"🎨 Open the preview:   open {html_path}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

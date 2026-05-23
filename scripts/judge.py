@@ -1,10 +1,14 @@
 """
 RLAIF Judge — Opus 4.7 with extended thinking, applied as a third pass over the
-Sonnet-generated verdicts before they ship to Slack.
+Sonnet-generated verdicts before they're written to the local SQLite store.
 
 This is the precision lever. The Sonnet pass is a strong generator but occasionally
 over-labels maintenance releases as ADOPT or emits awareness-only items. The judge
 is a strict reviewer that vetoes those, adjusts tiers, and surfaces missed items.
+
+The judge is gated by ``JUDGE_ENABLED`` in scout.run_scan() — cost-conscious
+users (~$0.20/scan) can skip it without losing the score + verdict + policy
+passes.
 
 Flow:
     verdicts (Sonnet output) + scored_items (Sonnet score pass output)
@@ -42,14 +46,22 @@ THINKING_BUDGET = 4000  # tokens
 def critique(
     verdicts: list[dict],
     scored_items: list[dict],
+    stack_profile: dict | None = None,
 ) -> tuple[dict[str, Any], float]:
     """
     Run the Opus judge pass over the draft verdicts.
 
-    Returns: (judge_result, cost_usd) where judge_result has keys:
-        decisions: list of {index, action, reason, [new_tier], [severity], [readiness]}
-        missed: list of {item_index, suggested_tier, rationale}
-        quality_self_rating: "high" | "medium" | "low"
+    Args:
+        verdicts: drafts emitted by ``scout.generate_verdicts``.
+        scored_items: pool the verdict-gen picked from (so the judge can
+            promote misses).
+        stack_profile: optional parsed ``stack.yaml`` — threaded into the
+            cached judge system prompt so the rubric can reference it.
+
+    Returns: ``(judge_result, cost_usd)`` where judge_result has keys:
+        decisions: list of ``{index, action, reason, [new_tier], [severity], [readiness]}``
+        missed: list of ``{item_index, suggested_tier, ...}``
+        quality_self_rating: ``"high" | "medium" | "low"``
         judge_summary: str
     """
     if not verdicts and not scored_items:
@@ -58,9 +70,10 @@ def critique(
     # Render the draft verdicts for the judge to critique
     draft_lines = []
     for i, v in enumerate(verdicts):
+        fit_value = v.get("fit") or "—"
         draft_lines.append(
             f"[draft {i}] {v.get('tool_name')} — verdict={v.get('verdict')} "
-            f"category={v.get('category')} soc2={v.get('soc2')}\n"
+            f"category={v.get('category')} risk={v.get('risk')} fit={fit_value}\n"
             f"  what: {v.get('what')}\n"
             f"  why_it_matters: {v.get('why_it_matters')}\n"
             f"  adoption_cost: {v.get('adoption_cost')}\n"
@@ -113,7 +126,7 @@ def critique(
         model=JUDGE_MODEL,
         max_tokens=8000,
         thinking={"type": "adaptive"},
-        system=cached_judge_blocks(),
+        system=cached_judge_blocks(stack_profile),
         tools=[JUDGE_TOOL],
         tool_choice={"type": "auto"},
         messages=[{"role": "user", "content": user_message}],
@@ -139,7 +152,7 @@ def critique(
             "scout-judge-forced",
             model=JUDGE_MODEL,
             max_tokens=4000,
-            system=cached_judge_blocks(),
+            system=cached_judge_blocks(stack_profile),
             tools=[JUDGE_TOOL],
             tool_choice={"type": "tool", "name": "critique_verdicts"},
             messages=[{"role": "user", "content": user_message}],
@@ -213,8 +226,9 @@ def apply_judge_decisions(
         final.append({
             "tool_name": m.get("tool_name") or (item.get("title") or "")[:80],
             "verdict": m.get("suggested_tier", "assess"),
-            "category": m.get("category") or item.get("category", "tool"),
-            "soc2": m.get("soc2", "conditional"),
+            "category": m.get("category") or item.get("category", "dev_tool"),
+            "risk": m.get("risk", "medium"),
+            "fit": m.get("fit"),
             "what": m.get("what") or (item.get("summary") or "")[:200],
             "why_it_matters": m.get("why_it_matters", ""),
             "adoption_cost": m.get("adoption_cost", "Not estimated"),
@@ -222,8 +236,8 @@ def apply_judge_decisions(
             "source_url": item.get("url", ""),
             "severity": m.get("severity", "high"),
             "readiness": int(m.get("readiness", 3)),
-            # Carry topic tags from the source item so the channel taste
-            # model (preferences.py) can attribute reactions to topics.
+            # Carry topic tags from the source item so future taste-model
+            # layers (v0.3) can attribute ratings to topics.
             "tags": list(item.get("tags") or []),
             "_judge_reason": "promoted from missed pool",
             "_promoted_by_judge": True,
@@ -244,10 +258,10 @@ def _empty_result() -> dict:
 def _fail_closed_result(verdicts: list[dict]) -> dict:
     """Fallback when judge didn't emit a tool call — VETO every draft.
 
-    This is the SOC2-adjacent safe default: if we can't get a structured
-    critique from the judge, we don't ship unjudged verdicts. The operator
-    sees a low-rated run in quality-log.jsonl, can inspect, and either
-    re-run or accept the empty briefing.
+    Safe default: if we can't get a structured critique from the judge,
+    we don't write unjudged verdicts. The operator sees a low-rated run
+    in quality-log.jsonl, can inspect, and either re-run or accept the
+    empty result.
     """
     return {
         "decisions": [

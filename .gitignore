@@ -8,6 +8,8 @@ __pycache__/
 .venv/
 venv/
 env/
+build/
+dist/
 
 # Secrets / local env
 .env
@@ -28,25 +30,21 @@ Thumbs.db
 # Logs
 *.log
 
-# deepeval cache (per-developer)
-.deepeval/
+# Frontier Scout runtime state lives in ~/.frontier-scout/ on the user's
+# laptop. The repo should never contain a scan database or cost ledger.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+costs.jsonl
+quality-log.jsonl
+signals-log.jsonl
 
-# Generated convenience copy of the latest briefing
-# (briefings/YYYY-MM-DD.md is the audit-tracked copy)
-WEEKLY_SIGNAL.md
-
-# Lab skill's scratch workspaces (outside repo, but symlinks happen)
+# Lab subprocess scratch workspaces (created under /tmp, but symlinks
+# happen during local debugging).
 ai-lab-experiments/
-
-# Runtime scratch — dead-letter queue, lab task queue, etc.
 .scratch/
 
-# Local screenshots / debugging artifacts (operator-only)
+# Local screenshots / debugging artifacts (operator-only).
 screenshots/
 screenshots_*/
-slack_screenshots/
-
-# Mem0 sqlite WAL files (commit the .db, not the journal)
-memory/*.db-journal
-memory/*.db-wal
-memory/*.db-shm
