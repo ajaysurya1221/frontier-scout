@@ -1,509 +1,178 @@
-```
-███████╗██████╗  ██████╗ ███╗   ██╗████████╗██╗███████╗██████╗
-██╔════╝██╔══██╗██╔═══██╗████╗  ██║╚══██╔══╝██║██╔════╝██╔══██╗
-█████╗  ██████╔╝██║   ██║██╔██╗ ██║   ██║   ██║█████╗  ██████╔╝
-██╔══╝  ██╔══██╗██║   ██║██║╚██╗██║   ██║   ██║██╔══╝  ██╔══██╗
-██║     ██║  ██║╚██████╔╝██║ ╚████║   ██║   ██║███████╗██║  ██║
-╚═╝     ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚═╝╚══════╝╚═╝  ╚═╝
+# frontier-scout
 
-███████╗ ██████╗ ██████╗ ██╗   ██╗████████╗
-██╔════╝██╔════╝██╔═══██╗██║   ██║╚══██╔══╝
-███████╗██║     ██║   ██║██║   ██║   ██║
-╚════██║██║     ██║   ██║██║   ██║   ██║
-███████║╚██████╗╚██████╔╝╚██████╔╝   ██║
-╚══════╝ ╚═════╝ ╚═════╝  ╚═════╝    ╚═╝
-```
-
-**Frontier Scout: an AI adoption radar for engineering teams**
-
-_A practical adoption radar for AI-native engineering teams._
+> the Claude Code skill that tells your agent which new skills,
+> MCP servers, and frameworks to plug in this week.
 
 ![python](https://img.shields.io/badge/python-3.11-3776ab?logo=python&logoColor=white)
-![models](https://img.shields.io/badge/models-Sonnet_4.6_+_Opus_4.7-d97757)
-![cost](https://img.shields.io/badge/cost-~%242%2Fmonth-success)
-![tests](https://img.shields.io/badge/tests-130%2B_passing-brightgreen)
-![runtime](https://img.shields.io/badge/runtime-GitHub_Actions_+_AWS_Lambda-blueviolet)
+![status](https://img.shields.io/badge/status-v0.1%20build%20in%20progress-orange)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 
-[Demo](#60-second-demo) · [What You Get](#what-you-get) · [Architecture](#architecture) · [Safety](#safety-model) · [Slack Design Guide](docs/slack-message-design.md) · [Quickstart](#quickstart) · [Roadmap](ROADMAP.md) · [Security](SECURITY.md)
+Five of the top-20 fastest-growing GitHub repos this week have "skills" in
+the name. The Claude Code ecosystem keeps shipping MCP servers, slash
+commands, and agent frameworks faster than any newsletter can keep up with.
+
+**Frontier Scout is an AI-tooling radar that lives inside your AI coding
+agent.** Once a week it scans the parts of the ecosystem that actually
+matter to a solo builder — anthropics/skills, mattpocock/skills,
+awesome-mcp-servers, Claude Code release notes, agent-framework releases —
+forms an opinion (ADOPT / TRIAL / ASSESS / HOLD with risk and stack-fit),
+and exposes it to Claude Code / Cursor / Codex through an MCP server.
+
+You ask: *"any new MCP worth trying for Postgres?"*
+Your agent calls Frontier Scout and answers with a verdict.
+You say: *"lab-test the second one."*
+The polyglot lab runner pulls it, executes it in a hermetic subprocess,
+and reports back what actually worked.
 
 ---
 
-Hundreds of AI tools, agent frameworks, model releases, and research drops appear every week. Most are irrelevant to your stack. A few are worth testing before competitors notice them.
+## status
 
-**Frontier Scout is an adoption radar for AI-native engineering teams.** It watches the exploding AI ecosystem, filters the noise, judges what matters against your stack and security bar, and turns the best signals into concrete adoption actions: adopt, trial, assess, or hold.
+**v0.1 build in progress.** The engine — scout funnel, Sonnet score +
+verdict passes, optional Opus RLAIF judge, polyglot lab runner
+(Python / Node / HuggingFace), policy validators — lives under
+[`scripts/`](scripts/) and runs today. The CLI shell + SQLite store +
+MCP server + Claude Code skill bundle that turn this into something you
+can `pipx install` are landing across the next few commits.
 
-**Why star this repo**
-
-| Signal | What makes it different |
-|---|---|
-| **Decision-grade radar** | Every item becomes ADOPT, TRIAL, ASSESS, or HOLD with SOC2 posture, readiness, adoption cost, and next action. |
-| **Judge before publish** | Draft verdicts are reviewed by an Opus judge, then checked by deterministic validators for incidents, hallucinated tools, unsafe URLs, and prompt injection. |
-| **Action loop built in** | Slack buttons queue labs, run deep evaluations, and compare against memory so the radar becomes an operating rhythm, not a newsletter. |
-
-```bash
-# No Slack, no AWS, no API keys
-python scripts/demo.py && open demo/briefing.html
-```
-
----
-
-## Why Frontier Scout Exists
-
-The goal is simple: give engineering leadership a weekly, evidence-backed view of which AI tools are worth researching, testing, and adopting.
-
-The AI ecosystem is too fast for manual radar meetings and too noisy for raw feeds. A useful engineering radar needs three things at once: early signal, conservative judgment, and a direct path from "interesting" to "someone tested this on a real problem."
-
-Frontier Scout turns public launches, releases, trending repos, newsletters, arXiv papers, HN posts, and HuggingFace movement into a weekly briefing that a real platform team can act on.
-
-### Why not just use...
-
-| Alternative | Where it breaks | What Frontier Scout adds |
+| Phase | What lands | Status |
 |---|---|---|
-| **Newsletters** | Great awareness, weak fit to your stack. | Stack-aware verdicts, SOC2 posture, adoption cost, and next actions. |
-| **GitHub Trending** | Strong velocity signal, lots of irrelevant repos. | Stratified source caps, judge vetoes, policy gates, and prior-memory filtering. |
-| **Manual radar docs** | High quality, low freshness. | Scheduled Scout, daily Pulse, monthly synthesis, and append-only audit logs. |
-| **A Slack bot script** | Fun demo, brittle production story. | Retry/backoff, dead letters, secret scanning, preflight checks, and signed Lambda interactivity. |
+| 1 | Strip legacy Slack / Lambda / Bitbucket surface | ✅ shipped |
+| 2 | Reshape verdict schema (`risk` + `fit`, new categories) + reprompt for solo builders | ✅ shipped |
+| 3 | `fs_cli/` foundation — SQLite store, stack auto-detect, scheduler, first-run wizard | ⏳ next |
+| 4 | `outputs/` — terminal (Rich) + HTML report | ⏳ |
+| 5 | `fs_mcp/server.py` — FastMCP server (6 tools) | ⏳ |
+| 6 | `skill/` — Claude Code skill bundle | ⏳ |
+| 7 | `pyproject.toml` + GitHub Actions test workflow | ⏳ |
+| 8 | README polish + SECURITY trim | ⏳ |
 
----
-
-## 60-Second Demo
-
-Run the local demo when you want to understand the product without setting up Slack, AWS, GitHub Actions, or API keys.
+Until Phase 3 lands, the only entry points that work are:
 
 ```bash
-git clone https://github.com/ajaysurya1221/frontier-scout.git
-cd frontier-scout
-python scripts/demo.py
-open demo/briefing.html
-```
-
-The demo generates:
-
-- `demo/briefing.html`: Slack-style preview that opens in any browser.
-- `demo/briefing.md`: markdown briefing as it would land in the repo.
-- `demo/judge-trace.md`: judge decisions, including veto reasons.
-- `demo/cost-breakdown.md`: per-component cost table.
-- `demo/quality-log.jsonl`: sample funnel, judge, and retry stats.
-
-### Sample briefing excerpt
-
-```md
-# Frontier Scout — Weekly Briefing · 2026-05-21
-> Scanned **377** items · **350** considered after dedup + Mem0 prior-filter · **6** verdicts after RLAIF judge pass.
-
-### 🔥 anthropics/skills — 🟢 ADOPT — Tools & Frameworks — ✅ SOC2-safe
-What: Anthropic's official public repository of Agent Skills.
-Why it matters: Skills primitives accelerate reusable agent capabilities without reinventing plumbing.
-Next action: Lab one skill inside an existing LangGraph node.
+python scripts/demo.py                          # render demo/briefing.html from fixtures
+ANTHROPIC_API_KEY=… python scripts/scout.py     # live scan, prints results
+pytest -q                                       # lab regressions + validator gates
 ```
 
 ---
 
-## What You Get
+## what it is (and isn't)
 
-**Scout: weekly intelligence briefing**
-
-Scans the AI/ML ecosystem every Monday, dedupes and prior-filters the source pool, caps the candidate set by source group, emits judged verdicts, writes a markdown audit copy, updates memory, and posts the Slack thread.
-
-**Pulse: daily Tier-S alerts**
-
-Checks high-signal release surfaces daily. Silent on boring days, posts only when a candidate clears the Tier-S threshold and survives judge + policy gates.
-
-**Synthesizer: monthly strategy layer**
-
-Looks across the month of verdicts and labs to summarize momentum, blind spots, stalled ideas, and the next best area of focus.
-
-**Slack-native operating loop**
-
-Each verdict card has buttons for lab, deep evaluation, and comparison. Slash commands make the radar queryable from any Slack channel.
-
-**Audit and safety rails**
-
-Every API call, quality decision, retry, cost, briefing, and generated artifact is written to repo-visible files so the system is inspectable instead of magical.
-
-### Pipeline map
-
-| Pipeline | When | Produces |
-|---|---|---|
-| `scout` | Mon 03:30 UTC | Weekly Slack briefing + `briefings/YYYY-MM-DD.md` |
-| `pulse` | Daily 02:30 UTC | Tier-S alert or silent run |
-| `synthesizer` | 1st of month | `MONTHLY_SYNTHESIS.md` + Slack thread |
-| `cost-report` | Sun 12:00 UTC | Month-to-date spend summary |
-| `lab-from-slack` | Button click | Pulls the tool, runs a synthetic stack-shaped test in a hermetic subprocess, posts insights in the verdict thread + full transcript in `.scratch/labs/` |
-| `evaluate-from-slack` | Button click | Deep evaluation reply in thread |
-| `deploy-lambda` | Manual | Slack interactivity Lambda deploy |
-| `verdict-quality` | PR gate | Secret scan + unit tests |
-
----
-
-## Architecture
-
-```text
-47 source streams
-  RSS, labs, GitHub, HN, HuggingFace, arXiv
-        |
-        v
-Dedupe + Mem0 prior filter
-        |
-        v
-Stratified cap
-  keep source diversity under token budget
-        |
-        v
-Sonnet 4.6 score pass -> Sonnet 4.6 verdict pass
-        |
-        v
-Opus 4.7 RLAIF judge
-  veto, retier, promote, rate readiness
-        |
-        v
-Deterministic policy gates
-  Pydantic, URL allowlist, anti-injection
-        |
-        v
-Artifacts
-  Slack, briefings, Mem0, quality-log, cost ledger
-        |
-        v
-GitHub repo  (single source of truth)
-        |
-        |  Lambda fetches repo tarball via GH_TOKEN (cold-start)
-        v
-AWS Lambda Function URL
-        |
-        +-> Slack slash commands: /radar, /recall
-        |
-        +-> Slack buttons: lab, evaluate, compare
-                |
-                v
-        GitHub Actions workflows
-```
-
-The architecture is intentionally linear. No agent framework is needed for the scheduled runs: fetch, score, verdict, judge, validate, publish, log. The only always-on service is the small Lambda used for Slack interactivity.
-
-### The 47-source funnel
-
-| Layer | Sources |
+| | |
 |---|---|
-| **First-party labs** | Anthropic, OpenAI, DeepMind, HuggingFace, Mistral |
-| **Curated newsletters** | TLDR AI, AINews, Ben's Bites, The Batch, Import AI, Latent Space |
-| **Practitioner blogs** | Simon Willison, Eugene Yan, Raschka, AI Tidbits, Cameron Wolfe, HF Papers |
-| **Community** | r/MachineLearning, r/LocalLLaMA, HN smart-filter |
-| **Adoption velocity** | GitHub Trending, HF likes-7d, PapersWithCode |
-| **Product discovery** | ProductHunt AI category |
-| **Watchlist** | LangChain, LangGraph, vLLM, Ollama, Modal, and other named repos |
-| **Research** | arXiv `cs.AI`, `cs.CL`, `cs.LG` |
-
-### RLAIF judge strategy
-
-The judge is the precision layer. Sonnet generates strong drafts; Opus reviews them like a strict principal engineer.
-
-1. **Adaptive thinking attempt:** Opus 4.7 reviews the drafts with tool choice on auto.
-2. **Forced tool fallback:** if the thinking pass does not emit structured `tool_use`, retry without thinking and force `critique_verdicts`.
-3. **Fail closed:** if both attempts fail, every draft is vetoed and the run is marked low-confidence.
-
-The judge can veto, retier, promote missed items, assign severity, and set a 5-slot readiness meter.
+| **Bullseye user** | solo AI builders shipping with Claude Code / Cursor / Codex / Aider |
+| **Primary surface** | a Claude Code skill backed by an MCP server. The CLI is the engine; the agent is the UI. |
+| **Storage** | a single SQLite file at `~/.frontier-scout/db.sqlite`. No daemon, no central service. |
+| **Cost** | ~$2 / month at default settings, BYO Anthropic key. Opus judge optional (`JUDGE_ENABLED=false` to skip). |
+| **What it's not** | not a chatbot, not a newsletter, not enterprise, not auto-installing anything. The agent asks; the user decides. |
 
 ---
 
-## Slack Experience
+## how it will work (end-to-end, once Phase 3+ lands)
 
-The weekly briefing is designed to be scanned by leadership and acted on by engineers. A compact parent message gives the funnel, cost, and judge read; the thread contains one decision card per verdict.
-
-```text
-┌────────────────────────────────────────────────────────────────────┐
-│ Frontier Scout — Weekly Briefing · 2026-05-21                       │
-├────────────────────────────────────────────────────────────────────┤
-│ 377 scanned  ·  250 considered  ·  8 shipped                      │
-│ Judge: HIGH  ·  Cost: $0.31  ·  Runtime: 232s                     │
-│ Severity: 1 critical  ·  5 high  ·  2 standard                    │
-│                                                                    │
-│ Judge's read                                                       │
-│ Strong pass. Vetoed two noise items, promoted one stack-direct hit.│
-│                                                                    │
-│ TL;DR                                                              │
-│   ADOPT  · 1                                                       │
-│     1. anthropics/skills      Tools           SOC2-safe            │
-│   TRIAL  · 4                                                       │
-│     2. Gemini 3.5 Flash       Frontier        SOC2-conditional     │
-│     3. Forge Guardrails       Agents          SOC2-conditional     │
-│   ASSESS · 2                                                       │
-│   HOLD   · 1                                                       │
-└────────────────────────────────────────────────────────────────────┘
-```
-
-Thread card example:
-
-```text
-┌─ Verdict #1 ───────────────────────────────────────────────────────┐
-│ ADOPT · critical · Tools & Frameworks · SOC2-safe                  │
-│ Readiness: ▰▰▰▰▰ 5/5                                               │
-├────────────────────────────────────────────────────────────────────┤
-│ anthropics/skills                                                  │
-│ Official reusable Agent Skills for Claude-based agents.            │
-│                                                                    │
-│ Why it matters                                                     │
-│ Reusable capability modules can shorten implementation time for    │
-│ retrieval, extraction, and tool-use patterns already in the stack.  │
-│                                                                    │
-│ Why this week                                                      │
-│ Public release with fast adoption across agent tooling workflows.  │
-│                                                                    │
-│ Adoption cost                                                      │
-│ ~2 hours to audit and prototype one skill in an existing agent.    │
-│                                                                    │
-│ Next action                                                        │
-│ Lab one skill inside a LangGraph node and record findings.         │
-├────────────────────────────────────────────────────────────────────┤
-│ [ 🧪 Run Lab ]  [ 📚 Full evaluation ]  [ 📊 Compare ]              │
-└────────────────────────────────────────────────────────────────────┘
-```
-
-What the card gives you at a glance:
-
-| Field | Why it matters |
-|---|---|
-| **Verdict** | ADOPT, TRIAL, ASSESS, or HOLD keeps the discussion decision-oriented. |
-| **SOC2 posture** | Safe, conditional, or blocked prevents accidental vendor drift. |
-| **Readiness** | A 5-slot meter separates "interesting" from "ready to test." |
-| **Why this week** | Explains the trigger, not just the tool. |
-| **Next action** | Converts signal into ownership: lab, evaluate, monitor, or hold. |
-
-### Actions and commands
-
-| Surface | Behavior |
-|---|---|
-| **🧪 Run Lab** | Pulls the open-source tool, generates a synthetic test shaped like the configured stack, runs it in a hermetic subprocess (no app secrets reach the child), and posts insights in the verdict thread within ~5–15 min. **Polyglot dispatcher** — Python packages via `pip install`, Node CLIs / libraries via `npm install`, HuggingFace models via config-and-tokenizer introspection (no inference, no weight download for models >5 GB). Only shown on github.com / pypi.org / huggingface.co / gitlab.com URLs. Tools the dispatcher can't classify (Cargo binaries, Docker-only systems, markdown skill collections) get skipped with a clear "lab can't exercise this" reply rather than a fabricated verdict. See [Roadmap](#roadmap) for Cargo + Docker and the Lab isolation subsection below for the safety model. |
-| **📚 Full evaluation** | Runs an on-demand deep verdict and replies in the same thread. |
-| **📊 Compare** | Opens a modal showing prior vs current verdict from memory. |
-| `/radar TOOL` | Returns the latest verdict for a tool. |
-| `/recall TOPIC` | Returns the top semantically related prior verdicts. |
-
----
-
-## Safety Model
-
-Frontier Scout assumes public web content is hostile until proven otherwise.
-
-| Risk | Control |
-|---|---|
-| Prompt injection from source text | Source items are wrapped in `source_data` tags, and validators reject known injection signatures. |
-| Hallucinated tools or fake URLs | Tool names are fuzzy-matched against input titles; URLs must pass an allowlist before becoming clickable. |
-| Incident-as-tool mistakes | Validators reject breach, leak, outage, compromised, and similar incident patterns as tool names. |
-| Provider instability | Anthropic calls route through retry/backoff with jitter and quality-log counters. |
-| Silent Slack loss | Slack posts retry, dead-letter on exhaustion, and record partial threaded delivery outcomes. |
-| Public Lambda endpoint | Every HTTP request must pass Slack HMAC verification with a 5-minute replay window. |
-| S3 mirror abuse | Mirror sync guards path traversal and caps object count and total bytes. |
-| Secret leakage | `.env` is ignored; detect-secrets runs locally and in PR checks. |
-
-See [`SECURITY.md`](SECURITY.md) for the full threat model, rotation schedule, and operator runbook.
-
-### Lab isolation
-
-This is the question every security reviewer asks: *"You install random packages from PyPI and npm and run code from them. Is that safe?"* The honest answer:
-
-| Property | Status | Mechanism |
-|---|---|---|
-| Credentials (`GH_TOKEN`, `ANTHROPIC_API_KEY`, `SLACK_BOT_TOKEN`, `AWS_*`) reach the untrusted package's code? | ✅ **No** | Each runtime's subprocess starts from `_hermetic_base_env()` — only `PATH`, `HOME`, `LANG`, `LC_ALL` are passed through from `os.environ`. The pipeline step itself has the secrets, but the spawned child does NOT. Backed by the test `TestLabRuntimeDispatch::test_hermetic_base_env_has_no_secrets` — that's the regression gate. |
-| Persistent compromise of the runner | ✅ **No** | GitHub Actions containers are ephemeral — destroyed when the step ends. No state survives between labs. |
-| Lab affects other repos / pipelines | ✅ **No** | `GH_TOKEN` is scoped `Repositories:Write` to this one repo only. The container has no AWS creds, no other Slack tokens, no cross-repo access. |
-| Resource exhaustion (fork bomb, memory bomb, disk fill) | ✅ Bounded | `LAB_SUBPROCESS_TIMEOUT` (default 600s) hard-stops the child. GitHub Actions platform caps step memory and disk. HF dispatcher additionally refuses models whose total weight files exceed `LAB_HF_SIZE_CAP_GB` (default 5 GB). |
-| True syscall sandbox (seccomp / namespaces) | ❌ **No** | Out of scope. The Roadmap moves to E2B (Phase B) for per-run network + FS isolation when the polyglot dispatcher's surface area justifies it. |
-
-**Net assessment**: the lab prevents credential theft and persistent compromise — the two outcomes a security reviewer cares about most. The lab only fires on a *human click* — there's no automated path that runs untrusted code without a teammate's explicit action.
-
----
-
-## Roadmap
-
-Honest about what the radar does today vs. where the next investment goes.
-
-| Status | Item | Notes |
-|---|---|---|
-| **Today** | **Polyglot lab dispatcher (Python + Node + HuggingFace)** | `scripts/lab_runner.py` classifies each tool into a runtime, then dispatches to `_run_subprocess_{python,node,hf}`. Same hermetic-env safety model across all three. HF runtime is config-and-tokenizer-only — no inference, no weight download for models over the size cap. |
-| Today | Honest skip path for unsupported runtimes | Cargo binaries, Docker-only systems, markdown skill collections, gated HF models — all get a clear "lab can't exercise this" reply rather than a fabricated MONITOR verdict. |
-| Next | Cargo + Docker runtimes | Each one's substantial on its own: Cargo needs `rustc` in the pipeline image; Docker needs `services: [docker]` plus per-image size caps. Two cleanly-shipped runtimes beat four sloppily-shipped ones. |
-| Later | E2B sandbox (Phase B) | When the polyglot dispatcher's surface area outgrows what a shared pipeline container can safely host, move execution to E2B for per-run network/FS isolation. |
-| Later | Per-user dashboards | Today App Home is channel-level. Tracking per-user taste-model state unlocks personalised verdict feeds. |
-
----
-
-## Cost
-
-Observed steady-state spend is tiny enough for a personal project, but explicit enough for a production owner.
-
-| Component | Per run | Per month |
-|---|---:|---:|
-| Scout | ~$0.30 | ~$1.20 |
-| Pulse | ~$0.01 silent / ~$0.10 firing | ~$0.30 |
-| Synthesizer | ~$0.10 | ~$0.10 |
-| OpenAI embeddings | n/a | ~$0.10 |
-| Lambda + S3 | n/a | < $0.10 |
-| **Total** | | **~$2/month** |
-
-Every LLM call is logged to `costs.jsonl` with token usage and estimated dollars.
-
----
-
-## Quickstart
-
-### Local demo
+### day 0 — install
 
 ```bash
-python scripts/demo.py
-open demo/briefing.html
+pipx install frontier-scout
+frontier-scout init
 ```
 
-### Full local development
+The init wizard:
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install pre-commit detect-secrets
-pre-commit install
-cp .env.example .env
+1. **Auto-detects your stack** (with consent) — walks `~/projects` for
+   `package.json`, `pyproject.toml`, `Cargo.toml`, `~/.config/claude/mcp.json`,
+   and writes a `stack.yaml` profile you can edit anytime.
+2. **Schedules the weekly scan** — installs a cron entry (Linux),
+   launchd plist (macOS), or scheduled task (Windows).
+3. **Hooks Claude Code** — writes the MCP server config into your
+   Claude Code settings.
+
+### day-to-day — inside Claude Code
+
+```
+you  > any new MCP servers worth trying for postgres?
+claude  *calls frontier-scout MCP → verdicts_by_category("mcp_server")*
+claude  > Three recent verdicts:
+        1. modelcontextprotocol/postgres-mcp — TRIAL — fit=high
+        2. crystaldba/postgres-mcp — ASSESS — fit=medium
+        3. neondatabase/mcp-server-neon — TRIAL — fit=high
+you  > lab-test the first one against my stack
+claude  *calls frontier-scout.try_before_install(...)*
+claude  > Install ok, basic introspection works. Read-only mode connected
+        to a throwaway DB, returned schema for 3 tables. Worth a real trial.
 ```
 
-Fill in `.env`, then run:
+### weekly — the scheduled scan
 
-```bash
-python scripts/preflight.py --skip-aws --skip-lambda
-DRY_RUN=1 python scripts/scout.py
-DRY_RUN=1 python scripts/pulse.py
-pytest tests/test_validators.py tests/test_pipeline_bits.py tests/test_lambda_handler.py -v
-```
-
-Live model tests are available when `ANTHROPIC_API_KEY` is set:
-
-```bash
-pytest tests/ -m live -v
-```
-
-Required for local pipeline runs:
-
-- `ANTHROPIC_API_KEY`
-- Optional `OPENAI_API_KEY` for memory/embeddings
-- Optional `GITHUB_TOKEN` for higher GitHub rate limits
-- Slack target for non-dry-run posting: `SLACK_BOT_TOKEN` + `SLACK_CHANNEL_ID`, or `SLACK_WEBHOOK_URL`
+Sunday 8pm, a single Python process wakes, runs 60–120 seconds, writes
+verdicts to SQLite, exits. No always-on daemon. The MCP server is
+launched on-demand by Claude Code and exits when the client disconnects.
 
 ---
 
-## Production Checklist
+## what's interesting under the hood
 
-Run this once before enabling scheduled pipelines.
-
-1. Set GitHub Actions repository variables: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GITHUB_TOKEN`, `GH_TOKEN`, and Slack credentials.
-2. Run local preflight: `python scripts/preflight.py --skip-aws --skip-lambda`.
-3. Run unit tests and live verdict tests.
-4. Trigger one manual **Scout** workflow run on `main`. Set `DEBUG=true` in repo variables for the test run — it bypasses the Mem0 prior-filter (so back-to-back tests don't drain the candidate pool) and skips Mem0 seeding (so test verdicts don't pollute the production memory store).
-5. Confirm the Slack post lands, generated artifacts commit back, and `quality-log.jsonl` shows a healthy judge rating.
-6. Trigger one manual **Pulse** workflow run.
-7. **Set `DEBUG=false` (or unset)** and enable schedules only after the manual Scout and Pulse runs are clean. A loud banner prints at the start of every run when `DEBUG` is on, so it's impossible to miss if accidentally left enabled.
-
-### GitHub Actions schedules
-
-| Pipeline | Cron UTC |
-|---|---|
-| `scout` | `30 3 * * 1` |
-| `pulse` | `30 2 * * *` |
-| `synthesizer` | `0 9 1 * *` |
-| `cost-report` | `0 12 * * 0` |
-
-### Optional Slack interactivity Lambda
-
-The threaded briefing works without Lambda. Deploy Lambda only for buttons and slash commands.
-
-The Lambda pulls the radar + Mem0 store **directly from GitHub via the repo
-tarball API on cold start** — no S3 mirror, no AWS credentials in GitHub Actions.
-The Lambda already needs `GH_TOKEN` to dispatch workflows for the 🧪 / 📚
-buttons; the mirror reuses the same token. The tarball is cached in `/tmp` for
-10 minutes; warm Lambda invocations are zero-cost.
-
-If you'd prefer the legacy S3-mirror path (faster cold-start, AWS creds
-required in GitHub Actions), set `S3_MIRROR_BUCKET` on the Lambda and add the
-`aws s3 sync` step to the GitHub Actions workflow. The code path auto-detects
-which one is configured.
-
-1. Create a Python 3.11 Lambda with `AWSLambdaBasicExecutionRole`.
-2. Build and upload: `bash lambda/deploy.sh`.
-3. Enable a Function URL with auth type `NONE`; Slack signs requests and `lambda/slack_verify.py` verifies them.
-4. Configure the Slack app:
-   - Bot scopes: `commands`, `chat:write`, `chat:write.customize`, `reactions:write`,
-     `reactions:read`, `channels:history` *(the last two power the channel
-     taste model — reactions feed the bandit and thread replies count as
-     engagement signals)*
-   - Interactivity URL: Lambda Function URL
-   - Event Subscriptions: enable, set Request URL to the same Lambda Function
-     URL, subscribe to bot events `reaction_added`, `reaction_removed`,
-     `message.channels`. Reinstall the app to grant the new scopes.
-   - Slash commands: `/radar` and `/recall`
-5. Set Lambda env vars (no AWS env vars needed for the default mirror path):
-   - `SLACK_SIGNING_SECRET`
-   - `SLACK_BOT_TOKEN`
-   - `GH_TOKEN` — GitHub fine-grained token with Actions read/write and Contents read/write on this repo; used for workflow dispatch, repo-tarball mirror, and signal-log writes
-   - `GH_REPO` — `owner/repo`, for example `ajaysurya1221/frontier-scout`
-   - `GITHUB_REF_NAME` — defaults to `main`
-   - `SLACK_CHANNEL_ID`
-   - `OPENAI_API_KEY` — only if you want semantic `/recall` (the chromadb Lambda Layer is required separately for that to work)
-6. Test in Slack with `/radar mem0`, then click one briefing button.
+- **Honest funnel.** Sonnet score pass → Sonnet verdict pass → optional
+  Opus RLAIF judge → Pydantic policy gates (URL allowlist, anti-injection,
+  incident-as-tool veto). See [`scripts/scout.py`](scripts/scout.py),
+  [`scripts/judge.py`](scripts/judge.py), [`scripts/validators.py`](scripts/validators.py).
+- **Polyglot lab.** One dispatcher, three runtimes: pip + python,
+  npm + node, huggingface_hub + transformers (config + tokenizer only,
+  no inference, 5 GB weight cap). Hermetic env strips every secret from
+  the child process. Backed by [`tests/test_lab.py`](tests/test_lab.py)
+  including a live subprocess check that the child can't read the
+  parent's API keys.
+- **Risk + fit, not SOC2.** v0.1 dropped the enterprise SOC2 framing and
+  replaced it with a solo-builder-relevant axis: `risk = {low|medium|high}`
+  × `fit = {high|medium|low}` against the user's detected stack.
+- **Narrow source funnel.** 220-item cap across the parts of the
+  ecosystem this audience actually cares about — anthropics/skills,
+  trending `*/skills` repos, awesome-mcp-servers, Claude Code releases,
+  agent framework releases, HF model drops (capped). Generic AI
+  newsletters: out.
 
 ---
 
-## Operations
+## non-goals (explicit)
 
-| Need | Command or file |
-|---|---|
-| See the product without setup | `python scripts/demo.py && open demo/briefing.html` |
-| Preflight before schedules | `python scripts/preflight.py` |
-| Trigger Scout manually | GitHub Actions -> Scout -> Run workflow |
-| Debug a low-quality run | Last row of `quality-log.jsonl`, then the matching briefing markdown |
-| Inspect judge fallback usage | `rg judge_used_fallback quality-log.jsonl` |
-| Repost failed Slack delivery | `.scratch/slack-dead-letter.jsonl` |
-| Add an RSS source | `scripts/scout.py` `RSS_FEEDS` |
-| Add a safe domain | `scripts/validators.py` `ALLOWED_DOMAINS` |
-| Update SOC2 rubric | `scripts/prompts.py` `SOC2_RUBRIC` |
-| Redeploy Lambda | GitHub Actions -> Deploy Lambda -> Run workflow |
-| Rotate Slack signing secret | Slack app -> Basic Information -> regenerate -> update Lambda env |
-
-### Repository map
-
-```text
-frontier-scout/
-├── README.md
-├── LICENSE
-├── CONTRIBUTING.md
-├── ROADMAP.md
-├── SECURITY.md
-├── .env.example
-├── .github/workflows/
-├── tech-radar.md
-├── skills-log.md
-├── demo/
-├── briefings/
-├── archive/
-├── memory/chroma/
-├── costs.jsonl
-├── quality-log.jsonl
-├── scripts/
-│   ├── scout.py
-│   ├── pulse.py
-│   ├── synthesizer.py
-│   ├── judge.py
-│   ├── validators.py
-│   ├── slack_post.py
-│   ├── preflight.py
-│   └── demo.py
-├── lambda/
-│   ├── handler.py
-│   ├── slack_verify.py
-│   ├── radar_query.py
-│   ├── button_dispatch.py
-│   └── deploy.sh
-└── tests/
-```
+- **Not a chatbot.** Your agent uses it. You don't talk to it.
+- **Not a newsletter.** Email / Slack / Discord output is a v0.3 plug-in
+  if there's demand. The primary surface is the MCP server.
+- **Not enterprise.** No SSO, teams, SOC2 mode, shared dashboards.
+- **Not auto-installing anything.** The lab runs a synthetic test in a
+  sandbox. You decide what to install for real.
+- **Not a hosted service.** Everything runs on your laptop.
 
 ---
 
-[Roadmap](ROADMAP.md) · [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) · [License](LICENSE)
+## roadmap
+
+See [ROADMAP.md](ROADMAP.md). Short version:
+
+- **v0.1 (in progress)** — CLI + MCP + Claude Code skill, the launchable slice.
+- **v0.2** — semantic search over past verdicts, email digest output,
+  `compare <tool>` MCP tool.
+- **v0.3** — `frontier rate <id> +1/-1` taste model,
+  Slack / Discord / generic-webhook outputs.
+- **v0.4+** — Cargo + Docker lab runtimes, optional E2B sandbox.
+
+---
+
+## security & lab isolation
+
+See [SECURITY.md](SECURITY.md) for the full threat model. One-line summary:
+the lab runs untrusted package code in a hermetic subprocess (no API keys
+reach the child; verified by a live test in `tests/test_lab.py`), under a
+wall-clock timeout, with a daily run cap and a USD cap.
+
+---
+
+## contributing
+
+Open an issue first if you're adding a new source, a new lab runtime, or
+a new MCP tool — the funnel and the lab's safety model both have
+non-obvious invariants. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+[License: MIT](LICENSE)
