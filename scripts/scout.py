@@ -52,6 +52,15 @@ from validators import validate_verdicts
 # ── Config ────────────────────────────────────────────────────────────────────
 
 CLIENT: anthropic.Anthropic | None = None
+
+def _client() -> anthropic.Anthropic:
+    global CLIENT
+    if CLIENT is None:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY is required for this run")
+        CLIENT = anthropic.Anthropic(api_key=api_key)
+    return CLIENT
 MODEL = "claude-sonnet-4-6"
 CUTOFF = datetime.now(timezone.utc) - timedelta(days=7)
 
@@ -78,16 +87,6 @@ SOURCE_QUOTAS = {
 assert sum(SOURCE_QUOTAS.values()) <= MAX_ITEMS, "quotas exceed MAX_ITEMS"
 
 USER_AGENT = "frontier-scout/2.0 (+https://github.com/ajaysurya1221/frontier-scout)"
-
-
-def _client() -> anthropic.Anthropic:
-    global CLIENT
-    if CLIENT is None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required to run Scout")
-        CLIENT = anthropic.Anthropic(api_key=api_key)
-    return CLIENT
 
 
 # ── Sources ───────────────────────────────────────────────────────────────────
@@ -119,7 +118,7 @@ RSS_FEEDS = [
 ]
 
 GITHUB_REPOS = [
-    # Existing watchlist (frameworks a typical AI-native team uses or evaluates)
+    # Existing watchlist (frameworks a team uses or evaluates)
     ("langchain-ai/langchain",             "LangChain"),
     ("langchain-ai/langgraph",             "LangGraph"),
     ("anthropics/claude-plugins-official", "Claude Code Plugins"),
@@ -518,7 +517,7 @@ def dedupe(items: list[dict]) -> tuple[list[dict], int]:
 def _debug_mode() -> bool:
     """Return True when the operator wants the run to NOT touch Mem0.
 
-    Set `DEBUG=true` in GitHub Actions variables (or in local shell) to:
+    Set `DEBUG=true` in GitHub Actions repo variables (or in local shell) to:
       • bypass the Mem0 prior-filter — every fetched item reaches scoring,
         even if a previous run already evaluated it. Avoids empty briefings
         during back-to-back test runs on the same week's items.
@@ -650,7 +649,14 @@ def score_items(items: list[dict]) -> tuple[list[dict], float]:
             "Consider lowering MAX_ITEMS or raising max_tokens further."
         )
 
-    tool_use = next(b for b in resp.content if b.type == "tool_use")
+    tool_use = next((b for b in resp.content if getattr(b, "type", None) == "tool_use"), None)
+    if tool_use is None:
+        print("  ⚠️  Score pass returned no tool payload; defaulting all scores to 0.")
+        for item in items:
+            item.setdefault("score", 0)
+            item.setdefault("category", "tool")
+            item.setdefault("tags", [])
+        return items, cost
     for entry in tool_use.input.get("scores", []) or []:
         i = entry["index"]
         if 0 <= i < len(items):
@@ -753,8 +759,11 @@ def generate_verdicts(top: list[dict]) -> tuple[list[dict], float]:
     print(f"  Verdict pass: {resp.usage.input_tokens} in + {resp.usage.output_tokens} out "
           f"(cache_read={getattr(resp.usage, 'cache_read_input_tokens', 0)}) = ${cost:.4f}")
 
-    tool_use = next(b for b in resp.content if b.type == "tool_use")
-    return tool_use.input["verdicts"], cost
+    tool_use = next((b for b in resp.content if getattr(b, "type", None) == "tool_use"), None)
+    if tool_use is None:
+        print("  ⚠️  Verdict pass returned no tool payload.")
+        return [], cost
+    return tool_use.input.get("verdicts", []) or [], cost
 
 
 # ── Output ────────────────────────────────────────────────────────────────────
@@ -797,6 +806,7 @@ def write_briefing(verdicts: list[dict], scanned: int, candidates: int, total_co
             f"— {today} — {CAT_LABEL[v['category']]} — {SOC2_LABEL[v['soc2']]}",
             f"**What**: {v['what']}",
             f"**Why it matters**: {v['why_it_matters']}",
+            *([f"**Why this week**: {v['why_this_week']}"] if v.get("why_this_week") else []),
             f"**Adoption cost**: {v['adoption_cost']}",
             f"**Next action**: {v['next_action']}",
             f"**Readiness**: `{meter}` {readiness}/5",

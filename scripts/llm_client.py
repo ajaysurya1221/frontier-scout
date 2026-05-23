@@ -16,7 +16,7 @@ this module fixes that by retrying:
 Backoff: 1s, 4s, 12s, 30s (cap), with ±25% jitter. 4 retries total → max ~50s
 extra latency. Total cost cap: still bounded by Anthropic monthly limit.
 
-Each retry logs to stderr (visible in GitHub Actions logs) AND increments
+Each retry logs to stderr (visible in GitHub Actions workflow logs) AND increments
 a counter that the caller can include in its `quality-log.jsonl` row.
 """
 

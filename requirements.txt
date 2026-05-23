@@ -16,6 +16,13 @@ slack-sdk>=3.27.0
 # Round 3: deterministic policy gates around LLM output
 pydantic>=2.0
 
+# Round 10: HuggingFace runtime for the polyglot lab dispatcher. We
+# deliberately do NOT depend on torch/tensorflow/jax — the HF lab loads
+# config + tokenizer only and never runs inference, so the heavy ML
+# frameworks would bloat the pipeline image without buying anything.
+huggingface_hub>=0.24.0
+transformers>=4.40.0
+
 # Verdict quality CI (used in tests/, not at runtime)
 deepeval>=1.0.0
 pytest>=8.0.0

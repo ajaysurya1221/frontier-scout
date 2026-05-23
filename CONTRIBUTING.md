@@ -51,7 +51,7 @@ fetch → dedupe → Mem0 prior-filter → stratified cap
 
 Every Anthropic call routes through `scripts/llm_client.py` with retry +
 backoff. Every pipeline writes a row to `quality-log.jsonl`. See
-`README.md`, `SECURITY.md`, and `ROADMAP.md` for the full picture.
+`README.md` and `REVIEW.md` for the full picture.
 
 ## Reporting security issues
 

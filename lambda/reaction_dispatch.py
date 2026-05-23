@@ -42,9 +42,25 @@ def handle(body: dict) -> dict:
 
     Slack envelope:
       {"type": "event_callback", "event": {...}, "team_id": ..., ...}
+
+    Three event subtypes are dispatched today:
+      • reaction_added / reaction_removed  → taste-model signals (Round 6)
+      • message (thread reply, non-bot)    → engagement signals (Round 6)
+      • app_home_opened                    → App Home dashboard (Round 9)
     """
     event = body.get("event") or {}
     etype = event.get("type")
+
+    # Round 9: App Home opens go to their own dispatcher. Delegating
+    # here (rather than at the handler.py level) means there's still
+    # ONE entry point for every event_callback, easier to reason about.
+    if etype == "app_home_opened":
+        try:
+            import app_home_dispatch
+            return app_home_dispatch.handle(body)
+        except Exception as e:  # noqa: BLE001
+            print(f"  app_home_dispatch failed: {type(e).__name__}: {e}")
+            return _ack()
 
     if etype in {"reaction_added", "reaction_removed"}:
         return _handle_reaction(event, removed=(etype == "reaction_removed"))

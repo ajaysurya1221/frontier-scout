@@ -1,0 +1,123 @@
+{
+  "blocks": [
+    {
+      "type": "actions",
+      "block_id": "verdict_actions_1",
+      "elements": [
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "Run Lab",
+            "emoji": true
+          },
+          "action_id": "verdict_lab",
+          "value": "{\"tool_name\": \"PydanticAI v1.100.0\", \"verdict\": \"adopt\", \"soc2\": \"safe\", \"category\": \"security\", \"source_url\": \"https://github.com/pydantic/pydantic-ai/releases/tag/v1.100.0\"}",
+          "style": "primary",
+          "accessibility_label": "Run automated lab on PydanticAI v1.100.0 against your stack patterns"
+        },
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "Deep Evaluation",
+            "emoji": true
+          },
+          "action_id": "verdict_evaluate",
+          "value": "{\"tool_name\": \"PydanticAI v1.100.0\", \"verdict\": \"adopt\", \"soc2\": \"safe\", \"category\": \"security\", \"source_url\": \"https://github.com/pydantic/pydantic-ai/releases/tag/v1.100.0\"}",
+          "accessibility_label": "Run full evaluation on PydanticAI v1.100.0"
+        },
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "Compare",
+            "emoji": true
+          },
+          "action_id": "verdict_compare",
+          "value": "{\"tool_name\": \"PydanticAI v1.100.0\", \"verdict\": \"adopt\", \"soc2\": \"safe\", \"category\": \"security\", \"source_url\": \"https://github.com/pydantic/pydantic-ai/releases/tag/v1.100.0\"}",
+          "accessibility_label": "Compare current verdict on PydanticAI v1.100.0 to prior verdicts"
+        },
+        {
+          "type": "overflow",
+          "action_id": "verdict_overflow",
+          "options": [
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Mark as evaluated",
+                "emoji": true
+              },
+              "value": "{\"a\":\"mark_seen\",\"t\":\"PydanticAI v1.100.0\"}"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Snooze for 30 days",
+                "emoji": true
+              },
+              "value": "{\"a\":\"snooze_30d\",\"t\":\"PydanticAI v1.100.0\"}"
+            },
+            {
+              "text": {
+                "type": "plain_text",
+                "text": "Copy source link",
+                "emoji": true
+              },
+              "value": "{\"a\":\"copy_link\",\"t\":\"PydanticAI v1.100.0\"}"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "attachments": [
+    {
+      "color": "#36a64f",
+      "blocks": [
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "`#1`  *<https://github.com/pydantic/pydantic-ai/releases/tag/v1.100.0|PydanticAI v1.100.0>*\nADOPT · Critical · SOC2-safe · Readiness `▰▰▰▰▰` 5/5\n_Security release that closes an SSRF bypass via IPv6-encoded URL forms._"
+          },
+          "accessory": {
+            "type": "image",
+            "image_url": "https://github.com/pydantic.png?size=120",
+            "alt_text": "pydantic avatar"
+          }
+        },
+        {
+          "type": "section",
+          "text": {
+            "type": "mrkdwn",
+            "text": "*Why it matters*\nDirectly relevant to production agents that fetch external references; this closes a real exploit path in our stack."
+          }
+        },
+        {
+          "type": "section",
+          "fields": [
+            {
+              "type": "mrkdwn",
+              "text": "*Adoption cost*\n1 hour to bump package and rerun integration tests."
+            },
+            {
+              "type": "mrkdwn",
+              "text": "*Next action*\nPatch this sprint and validate with SSRF regression tests."
+            }
+          ]
+        },
+        {
+          "type": "context",
+          "elements": [
+            {
+              "type": "mrkdwn",
+              "text": "Category Security & Compliance · Why now: Security advisory published with a confirmed exploit pattern."
+            }
+          ]
+        }
+      ],
+      "fallback": "PydanticAI v1.100.0: ADOPT · SOC2-safe · next action Patch this sprint and validate with SSRF regression tests."
+    }
+  ]
+}

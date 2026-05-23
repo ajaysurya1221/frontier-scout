@@ -12,7 +12,7 @@ no try/except, no regex, no JSON-in-markdown nightmares.
 SCORE_ITEMS_TOOL = {
     "name": "score_items",
     "description": (
-        "Score each item 0-10 for relevance to the configured AI/ML stack and assign "
+        "Score each item 0-10 for relevance to the target AI/ML stack and assign "
         "one of the six categories.\n"
         "\n"
         "  8-10 = directly affects our stack OR a major frontier drop (new model "
@@ -24,7 +24,7 @@ SCORE_ITEMS_TOOL = {
         "    - Lockfile bumps, transitive-dependency hygiene, version-pin updates\n"
         "    - Test-suite, CI, or chore releases of frameworks we already use\n"
         "    - Survey papers / overview blog posts about hosted-model internals "
-        "we don't control (no actionable lever for the team)\n"
+        "we don't control (no actionable lever for team)\n"
         "    - Marketing posts, generic 'AI is transforming X' content\n"
         "    - JS-only / mobile-only ecosystems (we're Python)\n"
         "    - ProductHunt launches with no GitHub/PyPI presence\n"
@@ -113,7 +113,7 @@ VERDICT_TOOL = {
                 "items": {
                     "type": "object",
                     "properties": {
-                        "tool_name": {"type": "string"},
+                        "tool_name": {"type": "string", "minLength": 2, "maxLength": 120},
                         "verdict": {
                             "type": "string",
                             "enum": ["adopt", "trial", "assess", "hold"],
@@ -136,14 +136,28 @@ VERDICT_TOOL = {
                         "what": {
                             "type": "string",
                             "description": "One sentence — what the tool does.",
+                            "minLength": 20,
+                            "maxLength": 240,
+                        },
+                        "why_this_week": {
+                            "type": "string",
+                            "description": (
+                                "Optional timing signal (release, adoption spike, or security event). "
+                                "Omit or set empty string when timing is not meaningful."
+                            ),
+                            "maxLength": 180,
                         },
                         "why_it_matters": {
                             "type": "string",
-                            "description": "Specific to the configured stack and security/compliance bar.",
+                            "description": "Specific to the configured stack and configured domain.",
+                            "minLength": 20,
+                            "maxLength": 420,
                         },
                         "adoption_cost": {
                             "type": "string",
                             "description": "Concrete estimate + risk level (low/medium/high).",
+                            "minLength": 4,
+                            "maxLength": 220,
                         },
                         "next_action": {
                             "type": "string",
@@ -152,9 +166,12 @@ VERDICT_TOOL = {
                                 "`lab <tool>` (30 min), `evaluate <tool>`, `Monitor 3 months`, "
                                 "or a specific patch/swap action. Avoid 'awareness only' wording."
                             ),
+                            "minLength": 12,
+                            "maxLength": 220,
                         },
                         "source_url": {
                             "type": "string",
+                            "maxLength": 500,
                             "description": (
                                 "Prefer the CANONICAL primary source. If the item came "
                                 "from a blog/HN/aggregator about Tool X, set source_url "
@@ -345,7 +362,7 @@ SYNTHESIS_TOOL = {
             },
             "org_opportunity": {
                 "type": "string",
-                "description": "One radar finding worth bringing to the engineering team this quarter.",
+                "description": "One radar finding worth bringing to the team this quarter.",
             },
         },
         "required": [
@@ -406,7 +423,7 @@ EVALUATE_TOOLS = [
     {
         "name": "search_radar_memory",
         "description": (
-            "Query Mem0 over past Frontier Scout verdicts. Use to check if this tool (or "
+            "Query Mem0 over past radar verdicts. Use to check if this tool (or "
             "an alternative) has been evaluated before."
         ),
         "input_schema": {

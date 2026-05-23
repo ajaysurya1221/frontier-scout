@@ -21,11 +21,11 @@ _A practical adoption radar for AI-native engineering teams._
 ![python](https://img.shields.io/badge/python-3.11-3776ab?logo=python&logoColor=white)
 ![models](https://img.shields.io/badge/models-Sonnet_4.6_+_Opus_4.7-d97757)
 ![cost](https://img.shields.io/badge/cost-~%242%2Fmonth-success)
-![tests](https://img.shields.io/badge/tests-130_passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-130%2B_passing-brightgreen)
 ![runtime](https://img.shields.io/badge/runtime-GitHub_Actions_+_AWS_Lambda-blueviolet)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 
-[Demo](#60-second-demo) · [What You Get](#what-you-get) · [Architecture](#architecture) · [Safety](#safety-model) · [Quickstart](#quickstart) · [Roadmap](ROADMAP.md) · [Security](SECURITY.md)
+[Demo](#60-second-demo) · [What You Get](#what-you-get) · [Architecture](#architecture) · [Safety](#safety-model) · [Slack Design Guide](docs/slack-message-design.md) · [Quickstart](#quickstart) · [Roadmap](ROADMAP.md) · [Security](SECURITY.md)
 
 ---
 
@@ -274,7 +274,7 @@ What the card gives you at a glance:
 
 | Surface | Behavior |
 |---|---|
-| **🧪 Run Lab** | Pulls the open-source tool, generates a synthetic test shaped like the configured stack, runs it in a hermetic subprocess (no app secrets reach the child), and posts insights in the verdict thread within ~5–15 min. Only shown on github.com / pypi.org / huggingface.co / gitlab.com URLs. |
+| **🧪 Run Lab** | Pulls the open-source tool, generates a synthetic test shaped like the configured stack, runs it in a hermetic subprocess (no app secrets reach the child), and posts insights in the verdict thread within ~5–15 min. **Polyglot dispatcher** — Python packages via `pip install`, Node CLIs / libraries via `npm install`, HuggingFace models via config-and-tokenizer introspection (no inference, no weight download for models >5 GB). Only shown on github.com / pypi.org / huggingface.co / gitlab.com URLs. Tools the dispatcher can't classify (Cargo binaries, Docker-only systems, markdown skill collections) get skipped with a clear "lab can't exercise this" reply rather than a fabricated verdict. See [Roadmap](#roadmap) for Cargo + Docker and the Lab isolation subsection below for the safety model. |
 | **📚 Full evaluation** | Runs an on-demand deep verdict and replies in the same thread. |
 | **📊 Compare** | Opens a modal showing prior vs current verdict from memory. |
 | `/radar TOOL` | Returns the latest verdict for a tool. |
@@ -298,6 +298,34 @@ Frontier Scout assumes public web content is hostile until proven otherwise.
 | Secret leakage | `.env` is ignored; detect-secrets runs locally and in PR checks. |
 
 See [`SECURITY.md`](SECURITY.md) for the full threat model, rotation schedule, and operator runbook.
+
+### Lab isolation
+
+This is the question every security reviewer asks: *"You install random packages from PyPI and npm and run code from them. Is that safe?"* The honest answer:
+
+| Property | Status | Mechanism |
+|---|---|---|
+| Credentials (`GH_TOKEN`, `ANTHROPIC_API_KEY`, `SLACK_BOT_TOKEN`, `AWS_*`) reach the untrusted package's code? | ✅ **No** | Each runtime's subprocess starts from `_hermetic_base_env()` — only `PATH`, `HOME`, `LANG`, `LC_ALL` are passed through from `os.environ`. The pipeline step itself has the secrets, but the spawned child does NOT. Backed by the test `TestLabRuntimeDispatch::test_hermetic_base_env_has_no_secrets` — that's the regression gate. |
+| Persistent compromise of the runner | ✅ **No** | GitHub Actions containers are ephemeral — destroyed when the step ends. No state survives between labs. |
+| Lab affects other repos / pipelines | ✅ **No** | `GH_TOKEN` is scoped `Repositories:Write` to this one repo only. The container has no AWS creds, no other Slack tokens, no cross-repo access. |
+| Resource exhaustion (fork bomb, memory bomb, disk fill) | ✅ Bounded | `LAB_SUBPROCESS_TIMEOUT` (default 600s) hard-stops the child. GitHub Actions platform caps step memory and disk. HF dispatcher additionally refuses models whose total weight files exceed `LAB_HF_SIZE_CAP_GB` (default 5 GB). |
+| True syscall sandbox (seccomp / namespaces) | ❌ **No** | Out of scope. The Roadmap moves to E2B (Phase B) for per-run network + FS isolation when the polyglot dispatcher's surface area justifies it. |
+
+**Net assessment**: the lab prevents credential theft and persistent compromise — the two outcomes a security reviewer cares about most. The lab only fires on a *human click* — there's no automated path that runs untrusted code without a teammate's explicit action.
+
+---
+
+## Roadmap
+
+Honest about what the radar does today vs. where the next investment goes.
+
+| Status | Item | Notes |
+|---|---|---|
+| **Today** | **Polyglot lab dispatcher (Python + Node + HuggingFace)** | `scripts/lab_runner.py` classifies each tool into a runtime, then dispatches to `_run_subprocess_{python,node,hf}`. Same hermetic-env safety model across all three. HF runtime is config-and-tokenizer-only — no inference, no weight download for models over the size cap. |
+| Today | Honest skip path for unsupported runtimes | Cargo binaries, Docker-only systems, markdown skill collections, gated HF models — all get a clear "lab can't exercise this" reply rather than a fabricated MONITOR verdict. |
+| Next | Cargo + Docker runtimes | Each one's substantial on its own: Cargo needs `rustc` in the pipeline image; Docker needs `services: [docker]` plus per-image size caps. Two cleanly-shipped runtimes beat four sloppily-shipped ones. |
+| Later | E2B sandbox (Phase B) | When the polyglot dispatcher's surface area outgrows what a shared pipeline container can safely host, move execution to E2B for per-run network/FS isolation. |
+| Later | Per-user dashboards | Today App Home is channel-level. Tracking per-user taste-model state unlocks personalised verdict feeds. |
 
 ---
 
@@ -366,10 +394,10 @@ Required for local pipeline runs:
 
 Run this once before enabling scheduled pipelines.
 
-1. Configure GitHub Actions credentials: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, Slack credentials, and optional `GH_TOKEN` for Slack-triggered workflows.
+1. Set GitHub Actions repository variables: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GITHUB_TOKEN`, `GH_TOKEN`, and Slack credentials.
 2. Run local preflight: `python scripts/preflight.py --skip-aws --skip-lambda`.
 3. Run unit tests and live verdict tests.
-4. Trigger one manual **Scout** workflow run on `main`. Set `DEBUG=true` for the test run — it bypasses the Mem0 prior-filter (so back-to-back tests don't drain the candidate pool) and skips Mem0 seeding (so test verdicts don't pollute the production memory store).
+4. Trigger one manual **Scout** workflow run on `main`. Set `DEBUG=true` in repo variables for the test run — it bypasses the Mem0 prior-filter (so back-to-back tests don't drain the candidate pool) and skips Mem0 seeding (so test verdicts don't pollute the production memory store).
 5. Confirm the Slack post lands, generated artifacts commit back, and `quality-log.jsonl` shows a healthy judge rating.
 6. Trigger one manual **Pulse** workflow run.
 7. **Set `DEBUG=false` (or unset)** and enable schedules only after the manual Scout and Pulse runs are clean. A loud banner prints at the start of every run when `DEBUG` is on, so it's impossible to miss if accidentally left enabled.
@@ -387,15 +415,16 @@ Run this once before enabling scheduled pipelines.
 
 The threaded briefing works without Lambda. Deploy Lambda only for buttons and slash commands.
 
-The Lambda pulls the radar + Mem0 store **directly from GitHub via its REST API
-on cold start** — no S3 mirror required. For public repos, the mirror can work
-without a token; for private repos or higher rate limits, set `GH_TOKEN`.
-Tarball content is cached in `/tmp` for 10 minutes; warm Lambda invocations are
-zero-cost.
+The Lambda pulls the radar + Mem0 store **directly from GitHub via the repo
+tarball API on cold start** — no S3 mirror, no AWS credentials in GitHub Actions.
+The Lambda already needs `GH_TOKEN` to dispatch workflows for the 🧪 / 📚
+buttons; the mirror reuses the same token. The tarball is cached in `/tmp` for
+10 minutes; warm Lambda invocations are zero-cost.
 
-If you'd prefer the legacy S3-mirror path, set `S3_MIRROR_BUCKET` on the Lambda
-and add an `aws s3 sync` step to the GitHub Actions workflow. The code path
-auto-detects which mirror is configured.
+If you'd prefer the legacy S3-mirror path (faster cold-start, AWS creds
+required in GitHub Actions), set `S3_MIRROR_BUCKET` on the Lambda and add the
+`aws s3 sync` step to the GitHub Actions workflow. The code path auto-detects
+which one is configured.
 
 1. Create a Python 3.11 Lambda with `AWSLambdaBasicExecutionRole`.
 2. Build and upload: `bash lambda/deploy.sh`.
@@ -413,9 +442,9 @@ auto-detects which mirror is configured.
 5. Set Lambda env vars (no AWS env vars needed for the default mirror path):
    - `SLACK_SIGNING_SECRET`
    - `SLACK_BOT_TOKEN`
-   - `GH_TOKEN` — GitHub fine-grained token with Actions write and Contents read/write for this repo; used for Slack-triggered workflows and private-repo mirror reads
-   - `GH_REPO` — `owner/repo`
-   - `GH_BRANCH` — defaults to `main`
+   - `GH_TOKEN` — GitHub fine-grained token with Actions read/write and Contents read/write on this repo; used for workflow dispatch, repo-tarball mirror, and signal-log writes
+   - `GH_REPO` — `owner/repo`, for example `ajaysurya1221/frontier-scout`
+   - `GITHUB_REF_NAME` — defaults to `main`
    - `SLACK_CHANNEL_ID`
    - `OPENAI_API_KEY` — only if you want semantic `/recall` (the chromadb Lambda Layer is required separately for that to work)
 6. Test in Slack with `/radar mem0`, then click one briefing button.
@@ -430,12 +459,12 @@ auto-detects which mirror is configured.
 | Preflight before schedules | `python scripts/preflight.py` |
 | Trigger Scout manually | GitHub Actions -> Scout -> Run workflow |
 | Debug a low-quality run | Last row of `quality-log.jsonl`, then the matching briefing markdown |
-| Inspect judge fallback usage | `grep judge_used_fallback quality-log.jsonl` |
+| Inspect judge fallback usage | `rg judge_used_fallback quality-log.jsonl` |
 | Repost failed Slack delivery | `.scratch/slack-dead-letter.jsonl` |
 | Add an RSS source | `scripts/scout.py` `RSS_FEEDS` |
 | Add a safe domain | `scripts/validators.py` `ALLOWED_DOMAINS` |
 | Update SOC2 rubric | `scripts/prompts.py` `SOC2_RUBRIC` |
-| Redeploy Lambda | GitHub Actions `Deploy Lambda` workflow |
+| Redeploy Lambda | GitHub Actions -> Deploy Lambda -> Run workflow |
 | Rotate Slack signing secret | Slack app -> Basic Information -> regenerate -> update Lambda env |
 
 ### Repository map

@@ -349,6 +349,32 @@ def reweight_score(base_score: float, tags: list[str] | None,
     return base_score * multiplier
 
 
+# ── Convenience accessors for consumers (App Home dashboard, etc.) ──────────
+
+def top_tags(prefs: dict | None = None, k: int = 5, side: str = "positive") -> list[tuple[str, float]]:
+    """Return the top-k tags from a preferences snapshot, sorted by weight.
+
+    `side` is "positive" (highest first) or "negative" (lowest first).
+    Always returns a list of `(tag, weight)` tuples; empty list if no
+    tags meet the side's direction. Used by the App Home dashboard's
+    taste-model snapshot — kept in this module so the schema knowledge
+    stays in one place.
+    """
+    prefs = prefs if prefs is not None else load()
+    tags = prefs.get("tags") or {}
+    if not tags:
+        return []
+    if side == "positive":
+        items = [(t, w) for t, w in tags.items() if w > 0]
+        items.sort(key=lambda kv: -kv[1])
+    elif side == "negative":
+        items = [(t, w) for t, w in tags.items() if w < 0]
+        items.sort(key=lambda kv: kv[1])
+    else:
+        raise ValueError(f"side must be 'positive' or 'negative', got {side!r}")
+    return items[:k]
+
+
 # ── CLI ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

@@ -26,20 +26,19 @@ from tools import SYNTHESIS_TOOL
 import slack_post
 
 CLIENT: anthropic.Anthropic | None = None
-MODEL = "claude-opus-4-7"
-REPO_ROOT = Path(__file__).parent.parent
-OUTPUT = REPO_ROOT / "MONTHLY_SYNTHESIS.md"
-THINKING_BUDGET = 8000
-
 
 def _client() -> anthropic.Anthropic:
     global CLIENT
     if CLIENT is None:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required to run Synthesizer")
+            raise RuntimeError("ANTHROPIC_API_KEY is required for this run")
         CLIENT = anthropic.Anthropic(api_key=api_key)
     return CLIENT
+MODEL = "claude-opus-4-7"
+REPO_ROOT = Path(__file__).parent.parent
+OUTPUT = REPO_ROOT / "MONTHLY_SYNTHESIS.md"
+THINKING_BUDGET = 8000
 
 
 def _main_impl():

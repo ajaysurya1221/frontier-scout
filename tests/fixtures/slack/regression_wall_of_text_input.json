@@ -1,0 +1,52 @@
+{
+  "date": "2026-05-22",
+  "scanned": 378,
+  "cost": 0.3826,
+  "judge_rating": "high",
+  "judge_summary": "Upstream verdict pass was strong — all 6 drafts kept as-is with reasonable tier calls. The notable miss was obra/superpowers, promoted along with Antigravity 2.0 and Graphiti 0.29.1. Briefing now reads as a security-led week, a major Google I/O frontier-model beat, and local-tooling momentum.",
+  "dedup_drops": 30,
+  "prior_drops": 0,
+  "duration_s": 172.92,
+  "verdicts": [
+    {
+      "tool_name": "PydanticAI v1.100.0",
+      "verdict": "adopt",
+      "category": "security",
+      "soc2": "safe",
+      "what": "Security release that closes an SSRF bypass via IPv6-encoded URL forms.",
+      "why_it_matters": "Directly relevant to production agents that fetch external references; this closes a real exploit path in our stack.",
+      "adoption_cost": "1 hour to bump package and rerun integration tests.",
+      "next_action": "Patch this sprint and validate with SSRF regression tests.",
+      "source_url": "https://github.com/pydantic/pydantic-ai/releases/tag/v1.100.0",
+      "severity": "critical",
+      "readiness": 5,
+      "why_this_week": "Security advisory published with a confirmed exploit pattern."
+    },
+    {
+      "tool_name": "obra/superpowers",
+      "verdict": "trial",
+      "category": "tool",
+      "soc2": "conditional",
+      "what": "Agentic skills framework and software methodology for coding workflows.",
+      "why_it_matters": "Already adjacent to our internal workflow, and recent traction suggests better reusable patterns for agent guidance.",
+      "adoption_cost": "4 hours to trial one skill path in a sandbox branch.",
+      "next_action": "Run one lab and compare execution quality against baseline prompts.",
+      "source_url": "https://github.com/obra/superpowers",
+      "severity": "high",
+      "readiness": 4
+    },
+    {
+      "tool_name": "DeepSeek-V4-Pro",
+      "verdict": "hold",
+      "category": "frontier_model",
+      "soc2": "blocked",
+      "what": "Open-weights frontier model with strong benchmarks but unresolved compliance posture.",
+      "why_it_matters": "Team demand is high, so we need an explicit do-not-adopt signal to avoid accidental policy drift.",
+      "adoption_cost": "N/A — blocked pending legal/security review.",
+      "next_action": "Hold and re-evaluate only if legal and security sign off.",
+      "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+      "severity": "high",
+      "readiness": 3
+    }
+  ]
+}

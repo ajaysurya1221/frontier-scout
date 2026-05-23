@@ -35,6 +35,12 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - name: Install Node runtime for polyglot labs
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq nodejs npm
+          node --version
+          npm --version
       - run: pip install -r requirements.txt
       - run: python scripts/lab_from_slack.py "$TOOL" "$URL" "$USER"
       - name: Commit lab transcript
@@ -48,4 +54,3 @@ jobs:
             git commit -m "lab: $TOOL"
             git push
           fi
-

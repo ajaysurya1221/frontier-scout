@@ -29,6 +29,15 @@ from llm_client import STATS as LLM_STATS, call_with_retry
 from validators import validate_verdicts
 
 CLIENT: anthropic.Anthropic | None = None
+
+def _client() -> anthropic.Anthropic:
+    global CLIENT
+    if CLIENT is None:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError("ANTHROPIC_API_KEY is required for this run")
+        CLIENT = anthropic.Anthropic(api_key=api_key)
+    return CLIENT
 MODEL = "claude-sonnet-4-6"
 CUTOFF = datetime.now(timezone.utc) - timedelta(hours=24)
 
@@ -41,16 +50,6 @@ MAX_PULSE_ITEMS = 50
 TIER_S_THRESHOLD = 8  # loosened from v1's 9 — v1 was too strict, missed real drops
 
 USER_AGENT = "frontier-scout/2.0 (+https://github.com/ajaysurya1221/frontier-scout)"
-
-
-def _client() -> anthropic.Anthropic:
-    global CLIENT
-    if CLIENT is None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required to run Pulse")
-        CLIENT = anthropic.Anthropic(api_key=api_key)
-    return CLIENT
 
 # Tier-S sources: frontier model labs + core infrastructure.
 TIER_S_GITHUB = [
@@ -187,7 +186,10 @@ def score_for_tier_s(items: list[dict]) -> tuple[list[dict], float]:
     print(f"  Pulse score: {resp.usage.input_tokens} in + {resp.usage.output_tokens} out "
           f"(cache_read={getattr(resp.usage, 'cache_read_input_tokens', 0)}) = ${cost:.4f}")
 
-    tool_use = next(b for b in resp.content if b.type == "tool_use")
+    tool_use = next((b for b in resp.content if getattr(b, "type", None) == "tool_use"), None)
+    if tool_use is None:
+        print("  ⚠️  Pulse score pass returned no structured output.")
+        return [], cost
     fires: list[dict] = []
     for entry in tool_use.input["scores"]:
         i = entry["index"]
@@ -224,7 +226,10 @@ def generate_verdict_for(item: dict) -> tuple[dict | None, float]:
         }],
     )
     cost = log_call("pulse-verdict", MODEL, resp.usage)
-    tool_use = next(b for b in resp.content if b.type == "tool_use")
+    tool_use = next((b for b in resp.content if getattr(b, "type", None) == "tool_use"), None)
+    if tool_use is None:
+        print("  ⚠️  Pulse verdict pass returned no structured output.")
+        return None, cost
     verdicts = tool_use.input.get("verdicts") or []
     return (verdicts[0] if verdicts else None), cost
 

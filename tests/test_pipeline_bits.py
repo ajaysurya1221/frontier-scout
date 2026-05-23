@@ -194,7 +194,7 @@ class TestSlackThreaded:
             {
                 "tool_name": "LangGraph", "verdict": "adopt", "category": "orchestration",
                 "soc2": "safe", "what": "Multi-agent orchestration.",
-                "why_it_matters": "Backbone of the example agent platform.",
+                "why_it_matters": "Backbone of genai-core.",
                 "adoption_cost": "Already done.", "next_action": "Track 0.6.x releases.",
                 "source_url": "https://github.com/langchain-ai/langgraph",
                 "severity": "high", "readiness": 5,
@@ -243,8 +243,8 @@ class TestSlackThreaded:
         assert "threaded · parent" in out
         # One card block per verdict (4 verdicts → 4 card blocks)
         assert out.count("threaded · #") == 4
-        # Tier anchors: ADOPT, TRIAL, ASSESS (HOLD has 0 verdicts in fixture)
-        assert out.count("thread anchor ·") == 3
+        # No thread anchors in the redesigned parent/thread flow.
+        assert out.count("thread anchor ·") == 0
         assert "Tight upstream pass" in out
         assert "would add reactions" in out
 
@@ -293,9 +293,8 @@ class TestSlackThreaded:
             duration_s=232.0,
         )
 
-        # 1 parent + 3 tier anchors (ADOPT, TRIAL, ASSESS — HOLD has 0) +
-        # 4 verdict cards = 8 chat.postMessage calls
-        assert len(post_calls) == 8
+        # 1 parent + 4 verdict cards (tier anchor removed).
+        assert len(post_calls) == 5
 
         # First call: parent, no thread_ts, has bot identity override
         assert post_calls[0].get("thread_ts") in (None, "")
@@ -306,13 +305,12 @@ class TestSlackThreaded:
         for reply in post_calls[1:]:
             assert reply.get("thread_ts") == "172000000.000001"
 
-        # Tier anchors are blocks-only (no attachments) and contain the tier label.
         # Verdict cards have BOTH blocks (the actions/overflow row) AND
         # attachments (the colored read-only card) — actions live at the top
         # level because Slack drops interactive elements inside attachments.
         anchor_calls = [c for c in post_calls[1:] if (c.get("blocks") and not c.get("attachments"))]
         verdict_calls = [c for c in post_calls[1:] if c.get("attachments")]
-        assert len(anchor_calls) == 3, "expected 3 tier anchors (ADOPT/TRIAL/ASSESS)"
+        assert len(anchor_calls) == 0, "thread anchors removed in redesign"
         assert len(verdict_calls) == 4, "expected 4 verdict cards"
 
         # Each verdict card has top-level blocks containing the actions row
@@ -343,15 +341,6 @@ class TestSlackThreaded:
                             f"overflow value too long ({v_len} >= 151): "
                             f"{opt.get('value')!r}"
                         )
-
-        anchor_texts = []
-        for ac in anchor_calls:
-            for b in ac["blocks"]:
-                if b.get("type") == "section":
-                    anchor_texts.append(b["text"]["text"])
-        assert any("🟢 ADOPT" in t for t in anchor_texts)
-        assert any("🟡 TRIAL" in t for t in anchor_texts)
-        assert any("⚪ ASSESS" in t for t in anchor_texts)
 
         colors = [v["attachments"][0].get("color") for v in verdict_calls]
         assert "#36a64f" in colors, "ADOPT card should have green color bar"
@@ -443,7 +432,7 @@ class TestSlackThreadedPartialFailure:
         import slack_post
 
         monkeypatch.delenv("DRY_RUN", raising=False)
-        monkeypatch.setenv("SLACK_BOT_TOKEN", "xoxb-fake")
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "xox" + "b-test")
         monkeypatch.setenv("SLACK_CHANNEL_ID", "C0FAKE")
         # Isolate the dead-letter file so we don't pollute .scratch/ in the repo
         monkeypatch.setattr(slack_post, "DEAD_LETTER", tmp_path / "dl.jsonl")
@@ -1215,6 +1204,181 @@ class TestLabSecretLeakGuard:
         assert self._matches(placeholder) is None
 
 
+class TestLabRuntimeDispatch:
+    """Round 10: polyglot lab dispatcher. The classifier emits a `runtime`
+    field (python / node / huggingface / unknown); `_unsupported_runtime_reason`
+    bails BEFORE spending generator + subprocess + interpreter cycles when:
+      - the runtime isn't in the supported set
+      - the HF model is gated / private / over the size cap
+      - the README explicitly says the repo isn't a runnable library
+      - python runtime was picked but PyPI returned nothing
+    """
+
+    # ── _unsupported_runtime_reason ─────────────────────────────────────
+
+    def test_unknown_runtime_is_rejected(self):
+        """Classifier picked something we don't support (cargo, docker, …)."""
+        import lab_runner
+        spec = {"name": "x", "url": "https://github.com/x/y", "readme": "", "pypi": {}, "hf": {}}
+        reason = lab_runner._unsupported_runtime_reason(
+            spec, {"runtime": "cargo", "package": "x"},
+            "https://github.com/x/y",
+        )
+        assert reason is not None
+        assert "cargo" in reason or "supported" in reason
+
+    def test_python_with_pypi_passes_gate(self):
+        """dspy on PyPI + runtime=python → no skip reason; lab proceeds."""
+        import lab_runner
+        spec = {"name": "dspy", "url": "https://github.com/stanfordnlp/dspy",
+                "readme": "DSPy: programming with foundation models",
+                "pypi": {"version": "2.5.0", "summary": "DSPy"}, "hf": {}}
+        reason = lab_runner._unsupported_runtime_reason(
+            spec, {"runtime": "python", "package": "dspy"},
+            "https://github.com/stanfordnlp/dspy",
+        )
+        assert reason is None
+
+    def test_python_with_no_pypi_record_is_rejected(self):
+        """anthropics/skills — runtime=python but PyPI returns nothing → bail."""
+        import lab_runner
+        spec = {"name": "anthropics/skills",
+                "url": "https://github.com/anthropics/skills",
+                "readme": "Anthropic skills — a collection of capabilities.",
+                "pypi": {}, "hf": {}}  # PyPI 404
+        reason = lab_runner._unsupported_runtime_reason(
+            spec, {"runtime": "python", "package": ""},
+            "https://github.com/anthropics/skills",
+        )
+        assert reason is not None
+        assert "PyPI" in reason
+
+    def test_node_runtime_passes_gate(self):
+        """Node tools don't need a PyPI record — let `npm install` succeed or
+        fail naturally with a real npm error message in stderr."""
+        import lab_runner
+        spec = {"name": "@modelcontextprotocol/inspector",
+                "url": "https://github.com/modelcontextprotocol/inspector",
+                "readme": "Run with `npx @modelcontextprotocol/inspector`",
+                "pypi": {}, "hf": {}}
+        reason = lab_runner._unsupported_runtime_reason(
+            spec, {"runtime": "node", "package": "@modelcontextprotocol/inspector"},
+            "https://github.com/modelcontextprotocol/inspector",
+        )
+        assert reason is None
+
+    def test_hf_runtime_passes_when_small_and_public(self):
+        """A small public HF model passes the size gate (under 5 GB)."""
+        import lab_runner
+        spec = {"name": "tiny-gpt2",
+                "url": "https://huggingface.co/sshleifer/tiny-gpt2",
+                "readme": "",
+                "pypi": {},
+                "hf": {"total_weight_bytes": 5_000_000,  # 5 MB
+                       "gated": False, "private": False}}
+        reason = lab_runner._unsupported_runtime_reason(
+            spec, {"runtime": "huggingface", "package": "sshleifer/tiny-gpt2"},
+            "https://huggingface.co/sshleifer/tiny-gpt2",
+        )
+        assert reason is None
+
+    def test_hf_model_over_size_cap_is_rejected_without_download(self):
+        """A 67 GB DeepSeek model is rejected based on the manifest alone —
+        no weight download, no LLM call wasted."""
+        import lab_runner
+        spec = {"name": "DeepSeek-V4-Pro",
+                "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+                "readme": "",
+                "pypi": {},
+                "hf": {"total_weight_bytes": 67 * 1024 ** 3,  # 67 GB
+                       "gated": False, "private": False}}
+        reason = lab_runner._unsupported_runtime_reason(
+            spec, {"runtime": "huggingface", "package": "deepseek-ai/DeepSeek-V4-Pro"},
+            "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+        )
+        assert reason is not None
+        assert "GB" in reason and ("cap" in reason or "over" in reason)
+
+    def test_hf_gated_model_is_rejected(self):
+        """Gated HF models can't be pulled unauthenticated → skip cleanly."""
+        import lab_runner
+        spec = {"name": "Llama-3", "url": "https://huggingface.co/meta-llama/Llama-3",
+                "readme": "", "pypi": {},
+                "hf": {"total_weight_bytes": 100_000_000,
+                       "gated": True, "private": False}}
+        reason = lab_runner._unsupported_runtime_reason(
+            spec, {"runtime": "huggingface", "package": "meta-llama/Llama-3"},
+            "https://huggingface.co/meta-llama/Llama-3",
+        )
+        assert reason is not None
+        assert "gated" in reason.lower()
+
+    def test_hf_url_without_manifest_is_rejected(self):
+        """HF URL but the manifest fetch returned nothing → can't size-check."""
+        import lab_runner
+        spec = {"name": "x", "url": "https://huggingface.co/x/y",
+                "readme": "", "pypi": {}, "hf": {}}
+        reason = lab_runner._unsupported_runtime_reason(
+            spec, {"runtime": "huggingface", "package": "x/y"},
+            "https://huggingface.co/x/y",
+        )
+        assert reason is not None
+        assert "manifest" in reason.lower() or "huggingface" in reason.lower()
+
+    def test_readme_says_not_a_library_overrides_runtime(self):
+        """A 'skills are markdown' README skips even if runtime=python."""
+        import lab_runner
+        spec = {"name": "some-skills",
+                "url": "https://github.com/x/some-skills",
+                "readme": "This repository contains skills — markdown files only.",
+                "pypi": {"version": "0.1.0", "summary": "unrelated package"},
+                "hf": {}}
+        reason = lab_runner._unsupported_runtime_reason(
+            spec, {"runtime": "python", "package": "some-skills"},
+            "https://github.com/x/some-skills",
+        )
+        assert reason is not None
+        assert "README" in reason or "library" in reason
+
+    # ── npm token leak guard ────────────────────────────────────────────
+
+    def test_npm_token_caught_by_secret_leak_regex(self):
+        """Round 10 added npm_<36+> to SECRET_LEAK_RE so a Node test script
+        that bakes in an npm publish token is rejected before execution."""
+        import lab_runner
+        token = TestLabSecretLeakGuard._secret("npm_", "abcdefghijklmnopqrstuvwxyz0123456789AB")
+        script = f"const auth = '{token}';"
+        assert lab_runner.SECRET_LEAK_RE.search(script) is not None
+
+    # ── Hermetic env: no secrets reach the child, across ALL runtimes ───
+
+    def _patch_loud_secrets(self, monkeypatch):
+        """Plant fake secrets in the parent env so leakage tests can detect
+        anything reaching the child env-builder."""
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "parent-anthropic-sentinel")
+        monkeypatch.setenv("OPENAI_API_KEY", "parent-openai-sentinel")
+        monkeypatch.setenv("SLACK_BOT_TOKEN", "parent-slack-sentinel")
+        monkeypatch.setenv("GH_TOKEN", "parent-github-sentinel")
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", "parent-aws-key-sentinel")
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "PARENT-SHOULD-NOT-LEAK")
+
+    def test_hermetic_base_env_has_no_secrets(self, monkeypatch):
+        """The base hermetic env is the shared root of all three runtime
+        runners. Backs the README/SECURITY.md isolation claim."""
+        import lab_runner
+        self._patch_loud_secrets(monkeypatch)
+        env = lab_runner._hermetic_base_env()
+        forbidden = {
+            "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "SLACK_BOT_TOKEN",
+            "GH_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN", "SLACK_SIGNING_SECRET", "HF_TOKEN",
+        }
+        leaked = sorted(env.keys() & forbidden)
+        assert leaked == [], f"hermetic base env leaked: {leaked}"
+        # Sanity: PATH + HOME ARE pass-throughs (we need them).
+        assert "PATH" in env and "HOME" in env
+
+
 class TestLabCapsReader:
     """`_within_caps` is the bouncer at the door — reads today's lab-* lines
     from costs.jsonl and refuses if either cap is hit. Reviewer-visible
@@ -1319,14 +1483,15 @@ class TestLabCapsReader:
 
 
 class TestLabSubprocessHermetic:
-    """The generated test script runs with no parent API keys in the child env.
+    """The single most important behavioural guarantee: the generated test
+    script runs with NO team API keys in the child env. Verified via
+    subprocess introspection (the test asks the child to print its env)
+    on the live python runtime — the Node + HF runners share the same
+    `_hermetic_base_env()` root, separately covered by
+    TestLabRuntimeDispatch::test_hermetic_base_env_has_no_secrets."""
 
-    Verified via subprocess introspection: the test asks the child to print
-    its environment and asserts sensitive keys are absent.
-    """
-
-    def test_subprocess_env_contains_no_secrets(self, tmp_path, monkeypatch):
-        """Run a tiny synthetic script that prints its env; assert no app
+    def test_python_subprocess_env_contains_no_secrets(self, tmp_path, monkeypatch):
+        """Run a tiny synthetic script that prints its env; assert no team
         secret keys are present."""
         import lab_runner
 
@@ -1341,6 +1506,7 @@ class TestLabSubprocessHermetic:
         # using a real but tiny package: `six` is universally available
         # and installs in <2s.
         spec = {"name": "six", "package": "six", "url": "https://pypi.org/project/six/"}
+        classification = {"runtime": "python", "package": "six"}
         script = textwrap.dedent("""
             import os, sys, json
             keys_present = sorted(k for k in os.environ
@@ -1355,7 +1521,7 @@ class TestLabSubprocessHermetic:
             print("HOME_PRESENT=" + str("HOME" in os.environ))
         """).strip()
 
-        result = lab_runner._run_subprocess(spec, script)
+        result = lab_runner._run_subprocess_python(spec, classification, script)
         # If install fails (no internet), skip — the hermetic check is
         # what matters and can't be tested without subprocess.
         if result["stage"] == "install" and result["exit_code"] != 0:
@@ -1571,7 +1737,7 @@ class TestReactionErrorHandling:
 
 
 class TestDebugMode:
-    """`DEBUG=true` in GitHub Actions variables bypasses Mem0 entirely:
+    """`DEBUG=true` in GitHub Actions repo vars bypasses Mem0 entirely:
     prior-filter passes everything through, seeding is skipped. Lets us
     run back-to-back tests without manually wiping Mem0, and without
     polluting the production memory store with test verdicts.
@@ -1739,6 +1905,417 @@ class TestQuietWeekBriefing:
             if b["type"] == "section":
                 assert "text" in b
                 assert b["text"].get("text"), f"empty section text in {b!r}"
+
+
+# ── Round 8: Slack visual refresh — invariant guards ────────────────────────
+
+class TestRound8VerdictCardCompactness:
+    """Verdict cards must be ≤4 inner blocks (Round 8 compression rule).
+    Previous design was 7 blocks per card; the refresh halves the visual
+    weight without losing information."""
+
+    def _verdict(self, **overrides) -> dict:
+        v = {
+            "tool_name": "DSPy", "verdict": "trial", "category": "tool",
+            "soc2": "safe", "what": "Stanford prompt-programming framework.",
+            "why_it_matters": "Could replace ad-hoc prompt templates in our LangGraph nodes with a typed, reproducible pipeline.",
+            "adoption_cost": "~4 hours to audit.", "next_action": "Lab one node.",
+            "source_url": "https://github.com/stanfordnlp/dspy",
+            "severity": "high", "readiness": 4,
+        }
+        v.update(overrides)
+        return v
+
+    def test_card_has_at_most_four_inner_blocks(self):
+        import slack_post
+        outer, atts = slack_post._threaded_verdict_card(1, self._verdict())
+        # The attachment carries the body blocks; outer carries actions.
+        inner = atts[0].get("blocks") or []
+        assert len(inner) <= 4, (
+            f"Round 8 limits verdict card to 4 inner blocks; got {len(inner)}: "
+            f"{[b.get('type') for b in inner]}"
+        )
+
+    def test_card_with_memory_trend_still_within_four(self, monkeypatch):
+        """With Mem0 trend present, card grows to 4 blocks — still under cap."""
+        import slack_post
+        monkeypatch.setattr(slack_post, "_memory_trend_text",
+                            lambda tool, verdict: "🧠 Memory: ASSESS (Mar 14) → TRIAL (today)")
+        outer, atts = slack_post._threaded_verdict_card(1, self._verdict())
+        inner = atts[0].get("blocks") or []
+        assert len(inner) == 4, f"Expected exactly 4 inner blocks with trend; got {len(inner)}"
+        # Last block IS the trend
+        assert "Memory" in inner[-1]["elements"][0]["text"]
+
+
+class TestRound8NoEmojiAsLabel:
+    """No body block opens with `:emoji: *Label*` — emoji are status badges
+    only, not field labels. Slack's [Block Kit guidance](https://docs.slack.dev/concepts/designing-with-block-kit/)
+    explicitly says use bold text for labels, not emoji."""
+
+    def test_verdict_card_body_has_no_emoji_labels(self):
+        import slack_post, re
+        v = {
+            "tool_name": "Test", "verdict": "adopt", "category": "tool",
+            "soc2": "safe", "what": "x", "why_it_matters": "y",
+            "adoption_cost": "z", "next_action": "w",
+            "source_url": "https://github.com/foo/bar",
+            "severity": "standard", "readiness": 3,
+        }
+        outer, atts = slack_post._threaded_verdict_card(1, v)
+        inner = atts[0].get("blocks") or []
+        # Look at every text element in every block
+        emoji_label_pattern = re.compile(r"^[\U0001F300-\U0001FAFF☀-➿⌀-⏿✀-➿]+\s*\*[A-Z]")
+        for block in inner:
+            if block.get("type") == "section":
+                text = (block.get("text") or {}).get("text", "")
+                # Allow emoji INSIDE the prose, just not at the start
+                # alongside a bold label like ":bulb: *Why it matters*"
+                first_line = text.split("\n", 1)[0]
+                # The hero line carries severity trail and link; that's OK.
+                # We're checking the OLD pattern where every body label was
+                # emoji-prefixed (💡 *Why it matters*, etc.)
+                assert "💡  *Why it matters*" not in text, (
+                    "Round 8 dropped 💡-prefixed labels — found in:\n" + text
+                )
+                assert "📅  *Why this week*" not in text, (
+                    "Round 8 dropped 📅-prefixed labels — found in:\n" + text
+                )
+            if block.get("type") == "section" and "fields" in block:
+                for f in block["fields"]:
+                    t = f.get("text", "")
+                    assert not t.startswith("⏱"), \
+                        "Round 8 dropped ⏱ emoji-label on Adoption field"
+                    assert not t.startswith("▶"), \
+                        "Round 8 dropped ▶ emoji-label on Next action field"
+
+
+class TestRound8TldrRichTextList:
+    """The TL;DR uses rich_text_list with per-row metadata. Killed the
+    multi-line section-mrkdwn whitespace bug AND added executive-grade
+    signal per row (link + what + severity + SOC2 + readiness)."""
+
+    def _make_blocks(self, num_verdicts: int = 4) -> list[dict]:
+        import slack_post
+        verdicts = []
+        for i in range(num_verdicts):
+            verdicts.append({
+                "tool_name": f"Tool {i+1}",
+                "verdict": ["adopt", "trial", "trial", "assess"][i],
+                "category": "tool", "soc2": "safe",
+                "what": f"Description of Tool {i+1}.",
+                "why_it_matters": f"Matters because of reason {i+1}.",
+                "adoption_cost": "x", "next_action": "y",
+                "source_url": f"https://github.com/foo/tool{i+1}",
+                "severity": "standard", "readiness": 3,
+            })
+        return slack_post._threaded_parent_blocks(
+            date="2026-05-21", scanned=300, cost=0.3,
+            verdicts=verdicts, judge_rating="medium", judge_summary="",
+            dedup_drops=10, prior_drops=5, duration_s=200.0,
+        )
+
+    def test_tldr_uses_rich_text_list_not_section_mrkdwn(self):
+        """The TL;DR per-tier rows are rich_text_list (no whitespace games)."""
+        blocks = self._make_blocks()
+        # Find rich_text blocks in the parent
+        rt_blocks = [b for b in blocks if b.get("type") == "rich_text"]
+        # At least one rich_text_list inside
+        has_list = False
+        for rt in rt_blocks:
+            for el in rt.get("elements", []):
+                if el.get("type") == "rich_text_list":
+                    has_list = True
+                    break
+        assert has_list, "TL;DR must use rich_text_list (no whitespace-faked bullets)"
+
+    def test_no_multiline_section_mrkdwn_in_tldr(self):
+        """Round 8 invariant: the multi-line section-mrkdwn whitespace
+        bug (#1 / #6 flush-left while siblings indent) is killed at root.
+        No section block in the parent carries multi-line `text` that
+        encodes a TL;DR list."""
+        blocks = self._make_blocks()
+        # Tier-anchor context blocks are fine; what we're checking is that
+        # no SECTION block carries a multi-line text encoding multiple
+        # verdict rows. Tier headers are context (single-line). Section
+        # blocks remaining are the judge's read or other prose.
+        for b in blocks:
+            if b.get("type") != "section":
+                continue
+            text = (b.get("text") or {}).get("text", "")
+            # Specifically: no section block contains multiple `#N` ranks
+            # — that would be the old whitespace-indented TL;DR pattern.
+            import re
+            rank_hits = re.findall(r"`#\d+`", text)
+            assert len(rank_hits) <= 1, (
+                f"Section block carries {len(rank_hits)} `#N` ranks — that's "
+                f"the old whitespace-faked TL;DR pattern. rich_text_list "
+                f"should carry these instead.\nText:\n{text}"
+            )
+
+    def test_tldr_bullets_carry_metadata(self):
+        """Each TL;DR bullet contains the tool URL, severity word, SOC2,
+        and the readiness meter — executive-grade signal per row."""
+        blocks = self._make_blocks()
+        # Collect every rich_text_list bullet
+        bullets_text = []
+        for b in blocks:
+            if b.get("type") != "rich_text":
+                continue
+            for el in b.get("elements", []):
+                if el.get("type") != "rich_text_list":
+                    continue
+                for bullet in el.get("elements", []):
+                    spans = bullet.get("elements", [])
+                    text = " ".join(
+                        s.get("text", "") for s in spans if isinstance(s, dict)
+                    )
+                    bullets_text.append(text)
+        assert len(bullets_text) >= 1, "Expected at least one rich_text_list bullet"
+        # Every bullet has the per-row metadata strip
+        for t in bullets_text:
+            assert "Readiness" in t, f"bullet missing readiness meter: {t!r}"
+            assert "SOC2-" in t, f"bullet missing SOC2 word: {t!r}"
+
+
+class TestRound8OverflowContract:
+    """Overflow options must stay Slack-valid.
+
+    Slack rejects `confirm` nested inside overflow options with `invalid_blocks`,
+    so these entries intentionally carry compact `value` payloads only.
+    """
+
+    def test_snooze_overflow_option_has_no_confirm(self):
+        import slack_post
+        v = {
+            "tool_name": "Test", "verdict": "trial", "category": "tool",
+            "soc2": "safe", "what": "x", "why_it_matters": "y",
+            "adoption_cost": "z", "next_action": "w",
+            "source_url": "https://github.com/foo/bar",
+            "severity": "standard", "readiness": 3,
+        }
+        outer, _atts = slack_post._threaded_verdict_card(1, v)
+        actions = next(b for b in outer if b.get("type") == "actions")
+        overflow = next(e for e in actions["elements"] if e.get("type") == "overflow")
+        # Look up the Snooze option by its value (compact `{a, t}` JSON)
+        import json
+        snooze_opt = next(
+            opt for opt in overflow["options"]
+            if json.loads(opt["value"]).get("a") == "snooze_30d"
+        )
+        assert "confirm" not in snooze_opt, "Slack overflow options cannot include confirm"
+
+    def test_mark_seen_overflow_option_has_no_confirm(self):
+        import slack_post
+        v = {
+            "tool_name": "Test", "verdict": "trial", "category": "tool",
+            "soc2": "safe", "what": "x", "why_it_matters": "y",
+            "adoption_cost": "z", "next_action": "w",
+            "source_url": "https://github.com/foo/bar",
+            "severity": "standard", "readiness": 3,
+        }
+        outer, _atts = slack_post._threaded_verdict_card(1, v)
+        actions = next(b for b in outer if b.get("type") == "actions")
+        overflow = next(e for e in actions["elements"] if e.get("type") == "overflow")
+        import json
+        mark_opt = next(
+            opt for opt in overflow["options"]
+            if json.loads(opt["value"]).get("a") == "mark_seen"
+        )
+        assert "confirm" not in mark_opt, "Slack overflow options cannot include confirm"
+
+    def test_copy_link_does_not_need_confirm(self):
+        """Read-only actions don't need a confirm dialog."""
+        import slack_post
+        v = {
+            "tool_name": "Test", "verdict": "trial", "category": "tool",
+            "soc2": "safe", "what": "x", "why_it_matters": "y",
+            "adoption_cost": "z", "next_action": "w",
+            "source_url": "https://github.com/foo/bar",
+            "severity": "standard", "readiness": 3,
+        }
+        outer, _atts = slack_post._threaded_verdict_card(1, v)
+        actions = next(b for b in outer if b.get("type") == "actions")
+        overflow = next(e for e in actions["elements"] if e.get("type") == "overflow")
+        import json
+        copy_opt = next(
+            opt for opt in overflow["options"]
+            if json.loads(opt["value"]).get("a") == "copy_link"
+        )
+        # copy_link is read-only; confirm is optional. Present or absent both OK.
+        # Just check it's still under the 150-char value limit.
+        assert len(copy_opt["value"]) < 151
+
+
+class TestRound8ImageAccessory:
+    """`section.accessory: image` resolves to tool-org avatars."""
+
+    def test_github_url_resolves_to_org_avatar(self):
+        import slack_post
+        acc = slack_post._image_accessory("https://github.com/stanfordnlp/dspy")
+        assert acc is not None
+        assert acc["type"] == "image"
+        assert "github.com/stanfordnlp.png" in acc["image_url"]
+        assert "alt_text" in acc and "stanfordnlp" in acc["alt_text"]
+
+    def test_huggingface_url_resolves_to_avatar(self):
+        import slack_post
+        acc = slack_post._image_accessory("https://huggingface.co/meta-llama/Llama-3")
+        assert acc is not None
+        assert "huggingface.co/avatars/meta-llama" in acc["image_url"]
+
+    def test_pypi_url_returns_none(self):
+        """PyPI URLs don't have a free avatar source — None is correct."""
+        import slack_post
+        assert slack_post._image_accessory("https://pypi.org/project/dspy/") is None
+
+    def test_empty_url_returns_none(self):
+        import slack_post
+        assert slack_post._image_accessory("") is None
+        assert slack_post._image_accessory("not-a-url") is None
+
+
+class TestRound8HeroTakeaway:
+    """`_hero_takeaway` trims long prose to a sensible hero length."""
+
+    def test_short_text_passes_through(self):
+        import slack_post
+        assert slack_post._hero_takeaway("Short sentence.") == "Short sentence."
+
+    def test_long_text_trimmed_at_sentence_boundary(self):
+        import slack_post
+        long = (
+            "First sentence is reasonable and ends here. " * 5
+            + "And then a second."
+        )
+        out = slack_post._hero_takeaway(long)
+        assert len(out) <= 181  # 180 + the trailing period
+        # Should end at a sentence boundary
+        assert out.endswith(".") or out.endswith("…")
+
+    def test_empty_returns_empty(self):
+        import slack_post
+        assert slack_post._hero_takeaway("") == ""
+        assert slack_post._hero_takeaway(None) == ""
+
+
+class TestRound8LabResultBlocks:
+    """The lab reply has ≤5 blocks (incl. attachment), recommendation pill
+    in the first block, attachment color matches the recommendation."""
+
+    def _common(self):
+        return {
+            "tool": "obra/superpowers",
+            "url": "https://github.com/obra/superpowers",
+            "classification": {"category": "agent_lib", "package": "superpowers"},
+            "sandbox": {"exit_code": 0, "stage": "run", "duration_s": 45.0,
+                        "stdout": "...", "stderr": ""},
+            "insights": {
+                "headline": "Solo-dev experimental skills package; not production-ready.",
+                "verdict_for_team": "skip",
+                "what_worked": "Package imports cleanly.",
+                "what_didnt": "Claude Code runtime not available.",
+                "next_step": "Monitor for stability; revisit in 3 months.",
+                "test_quality_self_rating": "low",
+            },
+            "cost": 0.35,
+        }
+
+    def test_skip_recommendation_gives_red_attachment(self):
+        import slack_post
+        _outer, atts = slack_post.lab_result_blocks(**self._common())
+        assert atts[0]["color"] == "#d93025", "skip → red"
+
+    def test_worth_trial_gives_amber(self):
+        import slack_post
+        common = self._common()
+        common["insights"]["verdict_for_team"] = "worth_trial"
+        _outer, atts = slack_post.lab_result_blocks(**common)
+        assert atts[0]["color"] == "#f2c744", "worth_trial → amber"
+
+    def test_monitor_gives_gray(self):
+        import slack_post
+        common = self._common()
+        common["insights"]["verdict_for_team"] = "monitor"
+        _outer, atts = slack_post.lab_result_blocks(**common)
+        assert atts[0]["color"] == "#9aa0a6", "monitor → gray"
+
+    def test_recommendation_pill_appears_in_first_block(self):
+        """Round 8 invariant: the recommendation (SKIP/TRIAL/MONITOR) is
+        the FIRST thing the reader sees, not buried on line 4 of 7."""
+        import slack_post
+        _outer, atts = slack_post.lab_result_blocks(**self._common())
+        first_block = atts[0]["blocks"][0]
+        first_text = (first_block.get("text") or {}).get("text", "")
+        assert "SKIP" in first_text, (
+            "Recommendation pill must be in the FIRST block — "
+            f"got: {first_text!r}"
+        )
+
+    def test_no_hermetic_footnote(self):
+        """The 'Hermetic subprocess…' footnote is dropped in Round 8 —
+        it was first-demo trust theater; lives in docs now."""
+        import slack_post
+        _outer, atts = slack_post.lab_result_blocks(**self._common())
+        for block in atts[0]["blocks"]:
+            block_str = str(block)
+            assert "Hermetic subprocess" not in block_str, (
+                "Round 8 dropped the Hermetic-subprocess footnote — "
+                "found it back in the reply"
+            )
+
+    def test_code_excerpt_renders_as_preformatted(self):
+        """When a test excerpt is provided, it appears as a
+        rich_text_preformatted block (proof, not theater)."""
+        import slack_post
+        common = self._common()
+        excerpt = "from superpowers import skills\nskills.list_available()"
+        _outer, atts = slack_post.lab_result_blocks(test_excerpt=excerpt, **common)
+        # Find the rich_text block with preformatted child
+        found = False
+        for block in atts[0]["blocks"]:
+            if block.get("type") != "rich_text":
+                continue
+            for child in block.get("elements", []):
+                if child.get("type") == "rich_text_preformatted":
+                    text = "".join(
+                        e.get("text", "") for e in child.get("elements", [])
+                    )
+                    if "from superpowers" in text:
+                        found = True
+        assert found, "Lab reply must include a rich_text_preformatted excerpt"
+
+
+class TestRound8TestExcerpt:
+    """`_test_excerpt` pulls a small representative slice from the
+    generated test script for the rich_text_preformatted block."""
+
+    def test_skips_docstring_and_comments(self):
+        import lab_runner
+        script = '''"""This is a docstring."""
+
+# A leading comment
+# Another comment
+
+import dspy
+print("OK: imported")
+obj = dspy.Predict("x -> y")
+'''
+        excerpt = lab_runner._test_excerpt(script, max_lines=3)
+        assert "docstring" not in excerpt
+        assert excerpt.startswith("import dspy")
+        assert excerpt.count("\n") <= 2  # 3 lines = 2 newlines max
+
+    def test_returns_empty_on_empty_input(self):
+        import lab_runner
+        assert lab_runner._test_excerpt("") == ""
+        assert lab_runner._test_excerpt(None) == ""
+
+    def test_caps_at_max_lines(self):
+        import lab_runner
+        script = "\n".join(f"line_{i}" for i in range(20))
+        excerpt = lab_runner._test_excerpt(script, max_lines=4)
+        assert excerpt.count("\n") == 3, "should cap at 4 lines"
 
 
 if __name__ == "__main__":

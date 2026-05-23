@@ -95,10 +95,11 @@ class Verdict(BaseModel):
     verdict: VerdictTier
     category: Category
     soc2: SOC2
-    what: str = Field(min_length=20, max_length=2000)
-    why_it_matters: str = Field(min_length=20, max_length=2000)
-    adoption_cost: str = Field(min_length=4, max_length=1000)
-    next_action: str = Field(min_length=20, max_length=2000)
+    what: str = Field(min_length=20, max_length=240)
+    why_this_week: str | None = Field(default=None, max_length=180)
+    why_it_matters: str = Field(min_length=20, max_length=420)
+    adoption_cost: str = Field(min_length=4, max_length=220)
+    next_action: str = Field(min_length=12, max_length=220)
     source_url: str = Field(min_length=8, max_length=500)
     severity: Severity | None = None
     readiness: int | None = Field(default=None, ge=0, le=5)
@@ -147,9 +148,11 @@ class Verdict(BaseModel):
             raise ValueError(f"source_url domain not in allowlist: {parsed.netloc}")
         return v
 
-    @field_validator("what", "why_it_matters")
+    @field_validator("what", "why_it_matters", "why_this_week")
     @classmethod
-    def no_injection(cls, v: str) -> str:
+    def no_injection(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
         if _INJECTION_PATTERNS.search(v):
             raise ValueError(f"prose contains prompt-injection signature: {v[:80]!r}")
         return v

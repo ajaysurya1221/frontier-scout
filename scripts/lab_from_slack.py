@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Slack 🧪 click → GitHub Actions entry point.
+Slack 🧪 click → GitHub Actions workflow entry point.
 
 Round 4: this script wrote a markdown TODO to `.scratch/labs/`. Round 7
 upgrades it to actually run the lab via `scripts/lab_runner.py`: pull the

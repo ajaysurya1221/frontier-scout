@@ -9,7 +9,7 @@ What the lab does (one click → one Slack reply, ~5–10 min):
 
   1. Classify the tool (1 Sonnet call) — {vector_db, llm_framework, …}
   2. Generate a stack-shaped synthetic test script (1 Sonnet call)
-     using the existing `cached_system_blocks` knowledge of the team stack
+     using the existing `cached_system_blocks` knowledge of the configured stack
      (FastAPI + LangGraph + Anthropic + Python 3.11)
   3. Safety-scan the script for secret-leak patterns; abort if found
   4. Subprocess `pip install <tool>` then run the test with env={} +
@@ -31,12 +31,12 @@ If either cap fires the lab posts a polite refusal instead of running.
 
 Trust boundary:
 
-  • subprocess.run(env={...minimal...}) — no application secret reaches the
+  • subprocess.run(env={...minimal...}) — no app secret reaches the
     generated script.
   • Synthetic-only generator prompt + a SECRET_LEAK_RE pre-check before
     execution.
   • Output is read-only: thread reply + .scratch/labs/ artifact only.
-    The lab never modifies application repositories or pushes a PR.
+    The lab never modifies any application repo or pushes a PR.
 
 Usage:
 
@@ -79,7 +79,7 @@ MODEL = "claude-sonnet-4-6"
 # ── Cost & safety guardrails ─────────────────────────────────────────────────
 #
 # Defaults are sized for normal team usage, not "demo at all costs."
-# Override via GitHub Actions variables/secrets if traffic patterns change.
+# Override via env vars in GitHub Actions repo variables if traffic patterns change.
 #
 #   LAB_RUNS_PER_DAY=10        — daily click count cap (per UTC day)
 #   LAB_DAILY_USD_CAP=5.00     — daily USD ceiling across all `lab-*` cost entries
@@ -95,6 +95,18 @@ LAB_DAILY_USD_CAP = float(os.environ.get("LAB_DAILY_USD_CAP", "5.00"))
 SUBPROCESS_TIMEOUT = int(os.environ.get("LAB_SUBPROCESS_TIMEOUT", "600"))  # seconds
 MAX_TOKENS_PER_CALL = int(os.environ.get("LAB_MAX_TOKENS", "3000"))
 
+# Round 10: HuggingFace model size cap. The HF dispatcher reads the model
+# repo's file manifest before downloading anything; if total weight files
+# exceed this, the lab skips with a clear message. Sized to leave headroom
+# in the 60 GB GitHub Actions disk while covering 80%+ of HF models
+# Scout surfaces (everything except the largest frontier checkpoints).
+_HF_MODEL_SIZE_CAP_GB = float(os.environ.get("LAB_HF_SIZE_CAP_GB", "5"))
+
+# Runtimes the polyglot dispatcher knows how to exercise (Round 10).
+# Cargo + Docker defer to Round 11 — each needs its own toolchain in the
+# pipeline image + its own generator prompt.
+_SUPPORTED_RUNTIMES = ("python", "node", "huggingface")
+
 # Only labs on real open-source URLs. Closed-source tools shouldn't even
 # have the button surfaced; this is the second line of defence.
 OPEN_SOURCE_URL_RE = re.compile(
@@ -104,7 +116,8 @@ OPEN_SOURCE_URL_RE = re.compile(
 
 # If Sonnet ever emits one of these in the generated test script, refuse to
 # execute. Belt-and-braces against prompt injection that tries to bake real
-# secrets into the script.
+# secrets into the script. Patterns cover every credential shape the lab
+# could plausibly receive across Python / Node / HF runtimes.
 SECRET_LEAK_RE = re.compile(
     r"(sk-ant-[A-Za-z0-9_-]{20,}"
     r"|sk-proj-[A-Za-z0-9_-]{20,}"
@@ -112,9 +125,17 @@ SECRET_LEAK_RE = re.compile(
     r"|xoxa-[A-Za-z0-9_-]{20,}"
     r"|ghp_[A-Za-z0-9]{20,}"
     r"|hf_[A-Za-z0-9]{20,}"
+    r"|npm_[A-Za-z0-9]{36,}"            # Round 10: npm personal access tokens
     r"|ASIA[A-Z0-9]{12,}"
     r"|AKIA[A-Z0-9]{12,})",
 )
+
+# Hermetic env keys that are SAFE to pass through to the child. Everything
+# else from os.environ is dropped — in particular the credentials. This is
+# the central anti-exfiltration guarantee; see `tests/test_pipeline_bits.py
+# ::TestLabRuntimeDispatch::test_subprocess_env_has_no_secrets` for the
+# regression test.
+_HERMETIC_ENV_PASSTHROUGH = ("PATH", "HOME")
 
 
 # ── Public entry points ──────────────────────────────────────────────────────
@@ -158,22 +179,53 @@ def run(tool: str, url: str, user: str = "", dry_run: bool | None = None) -> int
 
     client = _anthropic_client() if not dry_run or os.environ.get("ANTHROPIC_API_KEY") else None
 
-    # 1. Resolve tool (deterministic — README + PyPI metadata if available).
+    # 1. Resolve tool (deterministic — README + PyPI/HF metadata when reachable).
     tool_spec = _resolve_tool(tool, url)
     print(f"  Resolved: package={tool_spec.get('package')!r}, readme_chars={len(tool_spec.get('readme', ''))}")
 
-    # 2. Classify.
+    # 2. Classify — this picks both the category AND the runtime
+    #    (python / node / huggingface / unknown).
     if client is None:
         print("  Skipping LLM classification (DRY_RUN without ANTHROPIC_API_KEY)")
-        classification = {"category": "unknown", "package": tool_spec.get("package") or tool, "hint": "dry-run skip"}
+        # Best-effort runtime guess for dry-run: huggingface URL → HF, else python.
+        dry_runtime = "huggingface" if "huggingface.co" in url.lower() else "python"
+        classification = {
+            "category": "unknown",
+            "runtime": dry_runtime,
+            "package": tool_spec.get("package") or tool,
+            "hint": "dry-run skip",
+        }
         cost1 = 0.0
     else:
         classification, cost1 = _classify(client, tool_spec)
-    print(f"  Classified as: category={classification.get('category')!r}")
+    print(f"  Classified as: category={classification.get('category')!r} runtime={classification.get('runtime')!r}")
 
-    # 3. Generate test script.
+    # 2b. Pre-flight: can we actually exercise this with the picked runtime?
+    # Round 10 polyglot gate — replaces Round 9's pip-only check. Handles:
+    #   • unsupported runtimes (cargo, docker, unknown)
+    #   • non-library README signals (skill collections, prompt sets)
+    #   • HF gated/private/over-cap models
+    # The skip path posts an honest "lab can't exercise this" reply rather
+    # than wasting two more Sonnet calls + a doomed install on a no-op.
+    skip_reason = _unsupported_runtime_reason(tool_spec, classification, url)
+    if skip_reason is not None:
+        msg = (
+            f":information_source: *Lab skipped for {tool}* — {skip_reason} "
+            "The lab today exercises Python (pip), Node (npm), and HuggingFace "
+            "models (config + tokenizer only). For non-library assets (skill "
+            "collections, prompt sets, design docs), try `/recall <topic>` or "
+            "read the repo directly."
+        )
+        print(msg)
+        _post_thread_if_possible(tool, msg, dry_run=dry_run)
+        _write_transcript(tool, url, user, classification, "", None,
+                          {"skipped_reason": "unsupported_runtime",
+                           "skip_detail": skip_reason})
+        return 0
+
+    # 3. Generate test script (per-runtime system prompt).
     if client is None:
-        test_script = "# Dry-run without ANTHROPIC_API_KEY — script not generated.\n"
+        test_script = "// Dry-run without ANTHROPIC_API_KEY — script not generated.\n"
         cost2 = 0.0
     else:
         test_script, cost2 = _generate_test(client, tool_spec, classification)
@@ -193,13 +245,13 @@ def run(tool: str, url: str, user: str = "", dry_run: bool | None = None) -> int
 
     # 5. Run the script in a hermetic subprocess (unless dry-run).
     if dry_run:
-        print("─── DRY-RUN: generated test script ───")
+        print(f"─── DRY-RUN: generated {classification.get('runtime')} test script ───")
         print(test_script)
         print("─── END SCRIPT ───")
         return 0
 
-    sandbox_result = _run_subprocess(tool_spec, test_script)
-    print(f"  Subprocess: exit={sandbox_result['exit_code']} duration={sandbox_result['duration_s']:.1f}s")
+    sandbox_result = _dispatch_subprocess(tool_spec, classification, test_script)
+    print(f"  Subprocess: runtime={classification.get('runtime')!r} exit={sandbox_result['exit_code']} duration={sandbox_result['duration_s']:.1f}s")
 
     # 6. Interpret.
     insights, cost3 = _interpret(client, tool_spec, classification, test_script, sandbox_result)
@@ -208,8 +260,14 @@ def run(tool: str, url: str, user: str = "", dry_run: bool | None = None) -> int
     print(f"  Lab cost: ${total_cost:.4f}")
 
     # 7. Post + commit artifact.
-    reply = _format_reply(tool, url, classification, sandbox_result, insights, total_cost)
-    _post_thread_if_possible(tool, reply, dry_run=False)
+    excerpt = _test_excerpt(test_script)
+    _post_lab_reply(
+        tool=tool, url=url,
+        classification=classification, sandbox=sandbox_result,
+        insights=insights, cost=total_cost,
+        test_excerpt=excerpt,
+        dry_run=False,
+    )
     _write_transcript(tool, url, user, classification, test_script, sandbox_result, insights)
     return 0
 
@@ -269,9 +327,13 @@ def _today_lab_usage() -> tuple[int, float]:
 # ── Step 1: resolve tool metadata ────────────────────────────────────────────
 
 def _resolve_tool(tool: str, url: str) -> dict:
-    """Fetch README + (when reachable) PyPI metadata. Best-effort: missing
-    pieces just leave the dict thin; the generator prompt handles thin specs."""
-    spec: dict = {"name": tool, "url": url, "readme": "", "package": None, "pypi": {}}
+    """Fetch README + (when reachable) PyPI / HF metadata. Best-effort:
+    missing pieces just leave the dict thin; the generator prompt handles
+    thin specs."""
+    spec: dict = {
+        "name": tool, "url": url, "readme": "",
+        "package": None, "pypi": {}, "hf": {},
+    }
 
     # GitHub README via raw URL — try main/master/HEAD.
     m = re.match(r"https?://github\.com/([^/]+)/([^/?#]+)", url)
@@ -300,7 +362,77 @@ def _resolve_tool(tool: str, url: str) -> dict:
                 "home_page":   info.get("home_page"),
             }
 
+    # Round 10: HuggingFace manifest (cheap one-HTTP-GET, lets us size-cap
+    # the lab BEFORE downloading any weights).
+    hf_slug = _hf_slug_from_url(url)
+    if hf_slug:
+        spec["hf"] = _hf_manifest(hf_slug)
+        # If we have HF metadata, the package identifier becomes the slug.
+        if spec["hf"]:
+            spec["package"] = hf_slug
+
     return spec
+
+
+def _hf_slug_from_url(url: str) -> str | None:
+    """Extract `<owner>/<repo>` from a HuggingFace model URL. Returns None
+    for non-HF URLs or unparseable shapes."""
+    m = re.match(
+        r"https?://(?:www\.)?huggingface\.co/([^/?#]+)/([^/?#]+)",
+        url, re.IGNORECASE,
+    )
+    if not m:
+        return None
+    return f"{m.group(1)}/{m.group(2)}"
+
+
+# Weight-file extensions HuggingFace uses. Sums of these are what we cap
+# against — config.json / tokenizer.json are tiny and always allowed.
+_HF_WEIGHT_EXTENSIONS = (".safetensors", ".bin", ".pt", ".pth", ".gguf", ".onnx", ".msgpack")
+
+
+def _hf_manifest(slug: str) -> dict:
+    """Fetch HF model metadata + compute total weight-file bytes.
+
+    Returns a dict shaped like::
+
+        {
+            "model_type":         "qwen2",
+            "library_name":       "transformers",
+            "gated":              False,
+            "private":            False,
+            "total_weight_bytes": 7_834_829_312,
+            "weight_file_count":  4,
+        }
+
+    Returns ``{}`` on any error so the caller's gate can still decide.
+    """
+    meta = _http_get_json(f"https://huggingface.co/api/models/{slug}", timeout=8)
+    if not meta:
+        return {}
+    siblings = meta.get("siblings") or []
+    total = 0
+    n_weights = 0
+    for s in siblings:
+        name = (s.get("rfilename") or "").lower()
+        size = int(s.get("size") or 0)
+        if any(name.endswith(ext) for ext in _HF_WEIGHT_EXTENSIONS):
+            total += size
+            n_weights += 1
+    return {
+        "model_type":         (meta.get("config") or {}).get("model_type", ""),
+        "library_name":       meta.get("library_name", ""),
+        "gated":               bool(meta.get("gated", False)),
+        "private":             bool(meta.get("private", False)),
+        "total_weight_bytes":  total,
+        "weight_file_count":   n_weights,
+    }
+
+
+def _hf_total_weight_bytes(spec: dict) -> int:
+    """Convenience accessor — returns 0 when the manifest is missing."""
+    hf = spec.get("hf") or {}
+    return int(hf.get("total_weight_bytes") or 0)
 
 
 def _guess_pypi_name(tool: str, url: str) -> str | None:
@@ -311,6 +443,77 @@ def _guess_pypi_name(tool: str, url: str) -> str | None:
     # Otherwise, normalise the tool name and hope.
     candidate = re.sub(r"[^a-zA-Z0-9._-]+", "-", tool.strip()).strip("-").lower()
     return candidate or None
+
+
+# README signals that strongly suggest a repo is NOT a runnable library, even
+# if classification names a runtime. Skills repos / prompt sets / design docs.
+_NON_LIBRARY_README_HINTS = (
+    "skills are markdown",
+    "this repository contains skills",
+    "this repo contains prompt",
+    "collection of prompts",
+    "collection of skills",
+    "no python package",
+    "not a python library",
+    "not a package",
+)
+
+
+def _unsupported_runtime_reason(spec: dict, classification: dict, url: str) -> str | None:
+    """Return a one-line reason if the lab can't exercise this tool, else None.
+
+    Replaces Round 9's pip-only `_not_pip_installable_reason`. Round 10
+    supports python / node / huggingface; anything else (cargo, docker,
+    "this is just a skill collection") returns a skip reason so the caller
+    posts an honest "lab can't exercise this" reply rather than wasting
+    LLM tokens on a doomed install.
+    """
+    runtime = classification.get("runtime", "unknown")
+
+    if runtime not in _SUPPORTED_RUNTIMES:
+        return (
+            f"the lab classifier picked runtime={runtime!r}, which isn't "
+            f"in the supported set {_SUPPORTED_RUNTIMES}. (Cargo and Docker "
+            f"land in Round 11.)"
+        )
+
+    # Even when a runtime is picked, the README sometimes makes it obvious
+    # this isn't a runnable library at all (skill collections / prompt sets).
+    readme_lower = (spec.get("readme") or "").lower()
+    for hint in _NON_LIBRARY_README_HINTS:
+        if hint in readme_lower:
+            return f"the README indicates this isn't a runnable library ('{hint}')."
+
+    # Per-runtime sanity checks.
+    if runtime == "python":
+        pypi = spec.get("pypi") or {}
+        if not pypi.get("version") and not classification.get("package"):
+            return "no matching PyPI package found for this repo."
+
+    if runtime == "huggingface":
+        hf = spec.get("hf") or {}
+        if not hf:
+            return "this URL is on huggingface.co but the HF API returned no manifest."
+        if hf.get("gated"):
+            return "this HuggingFace model is gated — the lab runs unauthenticated and can't access it."
+        if hf.get("private"):
+            return "this HuggingFace model is private — the lab can't access it."
+        weight_bytes = int(hf.get("total_weight_bytes") or 0)
+        cap_bytes = int(_HF_MODEL_SIZE_CAP_GB * 1024 ** 3)
+        if weight_bytes > cap_bytes:
+            gb = weight_bytes / (1024 ** 3)
+            return (
+                f"model weights total {gb:.1f} GB, over the lab's "
+                f"{_HF_MODEL_SIZE_CAP_GB:.0f} GB cap. Set `LAB_HF_SIZE_CAP_GB` "
+                f"higher if you really want to override, but expect long pipeline times."
+            )
+
+    # Node sanity is minimal — npm registry lookups would add latency
+    # without much value over letting `npm install` fail cleanly. The
+    # generator prompt + interpreter pair handle missing-package failures
+    # with a clear MONITOR ("npm install: 404 Not Found") verdict.
+
+    return None
 
 
 def _http_get(url: str, timeout: int = 6) -> str:
@@ -339,7 +542,7 @@ def _http_get_json(url: str, timeout: int = 6) -> dict | None:
 
 _CLASSIFY_TOOL = {
     "name": "classify_tool",
-    "description": "Classify the tool into one of the known categories and emit minimal install metadata.",
+    "description": "Classify the tool into one of the known categories and emit minimal install metadata, including which runtime can exercise it.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -350,10 +553,32 @@ _CLASSIFY_TOOL = {
                     "orchestration", "data_util", "observability", "util",
                 ],
             },
-            "package": {"type": "string", "description": "PyPI install name. Use the verified pypi.summary if present; otherwise best guess."},
+            "runtime": {
+                "type": "string",
+                "description": (
+                    "Which runtime the lab should use. 'python' = pip-installable "
+                    "Python library. 'node' = npm-installable Node CLI or library "
+                    "(README mentions `npm install` / `npx` or repo has package.json). "
+                    "'huggingface' = HF model repo at huggingface.co (verify config + "
+                    "tokenizer loads, no inference). 'unknown' = none of the above — "
+                    "the dispatcher will skip with an honest message."
+                ),
+                "enum": ["python", "node", "huggingface", "unknown"],
+            },
+            "package": {
+                "type": "string",
+                "description": (
+                    "Install identifier for the chosen runtime. For runtime=python: "
+                    "the PyPI install name. For runtime=node: the npm package name "
+                    "(prefer the registry name; fall back to the github tarball URL "
+                    "only if no published package). For runtime=huggingface: the "
+                    "<owner>/<repo> slug exactly as it appears in the URL. For "
+                    "runtime=unknown: empty string."
+                ),
+            },
             "hint": {"type": "string", "description": "One-sentence note for the generator — what team usage would look most like this tool."},
         },
-        "required": ["category", "package"],
+        "required": ["category", "runtime", "package"],
     },
 }
 
@@ -362,7 +587,8 @@ def _classify(client: anthropic.Anthropic, spec: dict) -> tuple[dict, float]:
     user_msg = (
         f"Tool name: {spec['name']}\n"
         f"URL: {spec['url']}\n"
-        f"PyPI summary: {spec.get('pypi', {}).get('summary', '') or 'n/a'}\n\n"
+        f"PyPI summary: {spec.get('pypi', {}).get('summary', '') or 'n/a'}\n"
+        f"HF manifest weight bytes: {spec.get('hf', {}).get('total_weight_bytes', 'n/a')}\n\n"
         f"README excerpt (first 3000 chars):\n{spec.get('readme', '')[:3000]}"
     )
     resp = call_with_retry(
@@ -371,8 +597,22 @@ def _classify(client: anthropic.Anthropic, spec: dict) -> tuple[dict, float]:
         max_tokens=MAX_TOKENS_PER_CALL,
         system=[{"type": "text", "text": (
             "You are Frontier Scout's lab classifier. Given a tool, decide its "
-            "category and emit minimal install metadata via the classify_tool "
-            "tool. Be conservative — when in doubt, prefer 'util'."
+            "category AND which runtime can exercise it (python / node / "
+            "huggingface / unknown), and emit minimal install metadata via the "
+            "classify_tool tool.\n"
+            "\n"
+            "Runtime selection cues:\n"
+            "  - URL host huggingface.co → runtime='huggingface' (model repo)\n"
+            "  - PyPI summary present, or README has `pip install` → runtime='python'\n"
+            "  - README mentions `npm install` / `npx` / package.json, or URL "
+            "    points to a known JS tool → runtime='node'\n"
+            "  - None of the above → runtime='unknown' (lab will skip honestly)\n"
+            "\n"
+            "When the README signals both Python and Node (some MCP servers ship "
+            "both), prefer Python if a PyPI package exists, else Node.\n"
+            "\n"
+            "Be conservative — when in doubt about category, prefer 'util'. When "
+            "in doubt about runtime, prefer 'unknown' over guessing wrong."
         )}],
         tools=[_CLASSIFY_TOOL],
         tool_choice={"type": "tool", "name": "classify_tool"},
@@ -380,35 +620,39 @@ def _classify(client: anthropic.Anthropic, spec: dict) -> tuple[dict, float]:
     )
     cost = log_call("lab-classify", MODEL, resp.usage)
     tool_use = next(b for b in resp.content if b.type == "tool_use")
-    return dict(tool_use.input), cost
+    out = dict(tool_use.input)
+    # Backward-safety: if the classifier somehow omits runtime, default to
+    # 'unknown' so the unsupported-runtime gate handles it cleanly.
+    out.setdefault("runtime", "unknown")
+    return out, cost
 
 
 # ── Step 3: generate test script ─────────────────────────────────────────────
 
 _GENERATE_TEST_TOOL = {
     "name": "emit_test_script",
-    "description": "Emit a Python 3.11 test script that exercises the tool with synthetic stack-shaped inputs.",
+    "description": "Emit a short test script that exercises the tool with synthetic stack-shaped inputs in the chosen runtime.",
     "input_schema": {
         "type": "object",
         "properties": {
             "script": {
                 "type": "string",
-                "description": "Complete, runnable Python 3.11 script. Imports + main code in one file.",
+                "description": "Complete, runnable single-file script in the runtime the classifier picked.",
             },
             "explanation": {
                 "type": "string",
-                "description": "1–2 sentences explaining what the script exercises and why this shape is stack-relevant.",
+                "description": "1–2 sentences explaining what the script exercises and why this shape is team-relevant.",
             },
         },
         "required": ["script", "explanation"],
     },
 }
 
-_GENERATOR_SYSTEM = (
-    "You are Frontier Scout's lab test-script generator. You will receive a tool "
-    "name + classification + README + PyPI metadata. Emit a SHORT Python 3.11 "
-    "test script that exercises the tool using SYNTHETIC inputs shaped like "
-    "the configured stack usage.\n"
+_GENERATOR_SYSTEM_PYTHON = (
+    "You are Frontier Scout's lab test-script generator (Python runtime). You "
+    "will receive a tool name + classification + README + PyPI metadata. Emit "
+    "a SHORT Python 3.11 test script that exercises the tool using SYNTHETIC "
+    "inputs shaped like the configured stack usage.\n"
     "\n"
     "STRICT RULES:\n"
     "  1. The script runs with env={} + PATH + HOME ONLY. There is NO\n"
@@ -431,20 +675,98 @@ _GENERATOR_SYSTEM = (
     "     the right test is to verify import + class introspection + show what\n"
     "     'this would do if it had a key'. Don't try to fake a key.\n"
     "\n"
-    "TARGET STACK (so the synthetic inputs feel relevant):\n"
+    "REDICA STACK (so the synthetic inputs feel relevant):\n"
     f"{STACK}\n"
 )
 
+_GENERATOR_SYSTEM_NODE = (
+    "You are Frontier Scout's lab test-script generator (Node runtime). You "
+    "will receive a tool name + classification + README. Emit a SHORT "
+    "single-file Node.js (CommonJS, Node 20+) test script that exercises the "
+    "tool using SYNTHETIC inputs.\n"
+    "\n"
+    "STRICT RULES:\n"
+    "  1. The script runs with env={} + PATH + HOME + NODE_PATH ONLY. There "
+    "     are NO API keys, NO tokens, NO GitHub Actions credentials in the\n"
+    "     environment. Do NOT write code that calls any paid API requiring\n"
+    "     auth — it will fail. Focus on LOCAL behaviour: require + class\n"
+    "     instantiation + offline methods + package metadata.\n"
+    "  2. NEVER embed real secrets, real prompts, or production data.\n"
+    "     Use synthetic inputs like 'hello world' or trivial objects.\n"
+    "  3. Be DEFENSIVE: wrap risky `require()` and method calls in try/catch.\n"
+    "     Print clearly labelled milestones ('importing ...', 'OK:', 'FAILED:').\n"
+    "     NEVER let an uncaught exception abort silently — process exit 0 is\n"
+    "     for 'meaningful run completed', not 'never tried'.\n"
+    "  4. Be SHORT — aim for 30–80 lines. Print at most ~50 lines of stdout.\n"
+    "  5. Node 20+ syntax (CommonJS `require()` is fine). Use only the tool's\n"
+    "     package + Node stdlib. Do NOT add extra `npm install`s in the script.\n"
+    "  6. If the tool is an ESM-only package (no `main` export, only `exports`),\n"
+    "     use dynamic import: `(async () => { const m = await import('pkg'); … })()`.\n"
+    "  7. If the tool genuinely needs an LLM API key, the right test is to\n"
+    "     verify require + class introspection + show what 'this would do if\n"
+    "     it had a key'. Don't fake a key.\n"
+    "\n"
+    "REDICA STACK (so synthetic inputs feel relevant — this is a Python+Lambda\n"
+    f"stack, so JS tests should validate the JS tool's surface, not call into it):\n{STACK}\n"
+)
+
+_GENERATOR_SYSTEM_HF = (
+    "You are Frontier Scout's lab test-script generator (HuggingFace runtime). "
+    "You will receive a HF model repo slug + classification + README. Emit a "
+    "SHORT Python 3.11 test script that verifies the model can be LOADED — "
+    "config + tokenizer + architecture introspection only. NEVER run\n"
+    "inference. NEVER download full model weights.\n"
+    "\n"
+    "STRICT RULES:\n"
+    "  1. The script runs with env={} + PATH + HOME + PYTHONPATH ONLY. NO\n"
+    "     HF token, NO API keys. The model repo must be PUBLIC; if it's\n"
+    "     gated, print a clear 'FAILED: model is gated' and exit cleanly.\n"
+    "  2. Use only `huggingface_hub` and `transformers` (both already\n"
+    "     installed in the lab's site-packages target). Do NOT import torch,\n"
+    "     tensorflow, or jax. Do NOT call `from_pretrained` with\n"
+    "     `torch_dtype=` or similar weight-loading arguments.\n"
+    "  3. The canonical script shape:\n"
+    "       from huggingface_hub import hf_hub_download\n"
+    "       from transformers import AutoConfig, AutoTokenizer\n"
+    "       cfg = AutoConfig.from_pretrained('OWNER/REPO')\n"
+    "       tok = AutoTokenizer.from_pretrained('OWNER/REPO')\n"
+    "       print('OK: model_type =', cfg.model_type)\n"
+    "       print('OK: hidden_size =', getattr(cfg, 'hidden_size', 'n/a'))\n"
+    "       print('OK: vocab_size  =', cfg.vocab_size)\n"
+    "       print('OK: tokenizer encoded hello world =', tok.encode('hello world'))\n"
+    "  4. Wrap each step in try/except. Print 'FAILED: <step>: <err>' and\n"
+    "     exit 0 — interpretation is the judge's job.\n"
+    "  5. NEVER call `AutoModel.from_pretrained` — that downloads the\n"
+    "     weights. Stay at the config + tokenizer level.\n"
+    "  6. Be SHORT — aim for 20–50 lines.\n"
+    "\n"
+    "REDICA STACK (the model verdict is about whether this checkpoint fits\n"
+    f"our stack — we run on AWS Lambda + FastAPI, no GPU):\n{STACK}\n"
+)
+
+# Per-runtime generator system prompt dispatch.
+_GENERATOR_SYSTEM_BY_RUNTIME = {
+    "python":      _GENERATOR_SYSTEM_PYTHON,
+    "node":        _GENERATOR_SYSTEM_NODE,
+    "huggingface": _GENERATOR_SYSTEM_HF,
+}
+
 
 def _generate_test(client: anthropic.Anthropic, spec: dict, classification: dict) -> tuple[str, float]:
+    runtime = classification.get("runtime", "python")
+    system_prompt = _GENERATOR_SYSTEM_BY_RUNTIME.get(runtime, _GENERATOR_SYSTEM_PYTHON)
+    hf_meta = spec.get("hf", {}) or {}
     user_msg = (
         f"Tool: {spec['name']}\n"
         f"Category: {classification.get('category')}\n"
+        f"Runtime: {runtime}\n"
         f"Package: {classification.get('package')}\n"
         f"Hint: {classification.get('hint', '')}\n"
         f"URL: {spec['url']}\n\n"
         f"PyPI summary: {spec.get('pypi', {}).get('summary', '') or 'n/a'}\n"
-        f"PyPI version: {spec.get('pypi', {}).get('version', '') or 'n/a'}\n\n"
+        f"PyPI version: {spec.get('pypi', {}).get('version', '') or 'n/a'}\n"
+        f"HF model_type: {hf_meta.get('model_type', 'n/a')}\n"
+        f"HF total weight bytes: {hf_meta.get('total_weight_bytes', 'n/a')}\n\n"
         f"README excerpt (first 4000 chars):\n{spec.get('readme', '')[:4000]}\n\n"
         "Emit a single test script via emit_test_script."
     )
@@ -452,7 +774,7 @@ def _generate_test(client: anthropic.Anthropic, spec: dict, classification: dict
         client, "lab-generate",
         model=MODEL,
         max_tokens=MAX_TOKENS_PER_CALL,
-        system=[{"type": "text", "text": _GENERATOR_SYSTEM}],
+        system=[{"type": "text", "text": system_prompt}],
         tools=[_GENERATE_TEST_TOOL],
         tool_choice={"type": "tool", "name": "emit_test_script"},
         messages=[{"role": "user", "content": user_msg}],
@@ -463,15 +785,61 @@ def _generate_test(client: anthropic.Anthropic, spec: dict, classification: dict
     return script, cost
 
 
-# ── Step 5: run subprocess in hermetic env ───────────────────────────────────
+# ── Step 5: dispatch + per-runtime subprocess runners ────────────────────────
 
-def _run_subprocess(spec: dict, script: str) -> dict:
+
+def _hermetic_base_env() -> dict:
+    """Return the minimal pass-through env every runtime starts from.
+
+    Pulls ONLY the keys in `_HERMETIC_ENV_PASSTHROUGH` from os.environ. By
+    construction this never contains ANTHROPIC_API_KEY, GH_TOKEN,
+    SLACK_BOT_TOKEN, OPENAI_API_KEY, AWS_ACCESS_KEY_ID, or any other
+    credential the parent pipeline step has in env. The runtime-specific
+    runners layer their own non-secret keys (PYTHONPATH, NODE_PATH, …) on
+    top of this base. Tested by TestLabRuntimeDispatch::
+    test_subprocess_env_has_no_secrets — the test that backs the
+    README/SECURITY.md isolation claim.
+    """
+    return {
+        "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+        "HOME": os.environ.get("HOME", "/tmp"),
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+    }
+
+
+def _dispatch_subprocess(spec: dict, classification: dict, script: str) -> dict:
+    """Route to the right runtime's subprocess runner based on classification.
+
+    The caller (`run()`) has already enforced via `_unsupported_runtime_reason`
+    that classification['runtime'] is in `_SUPPORTED_RUNTIMES`. If a future
+    runtime slips through unguarded, we return a clear error rather than
+    crashing on a KeyError.
+    """
+    runtime = classification.get("runtime", "python")
+    if runtime == "python":
+        return _run_subprocess_python(spec, classification, script)
+    if runtime == "node":
+        return _run_subprocess_node(spec, classification, script)
+    if runtime == "huggingface":
+        return _run_subprocess_hf(spec, classification, script)
+    # Belt-and-braces — should never hit, since the pre-flight gate rejects
+    # unknown runtimes before we ever generate a script.
+    start = datetime.now()
+    return _result(
+        start, -1, "",
+        f"unsupported runtime {runtime!r} reached dispatcher (should be impossible)",
+        stage="install",
+    )
+
+
+def _run_subprocess_python(spec: dict, classification: dict, script: str) -> dict:
     """pip install the tool into a venv-less tempdir target, then run the
     generated test with a minimal env. Returns a dict the interpreter can
     reason about."""
-    package = spec.get("package") or spec["name"]
+    package = classification.get("package") or spec.get("package") or spec["name"]
     start = datetime.now()
-    with tempfile.TemporaryDirectory(prefix="ai-lab-") as td:
+    with tempfile.TemporaryDirectory(prefix="ai-lab-py-") as td:
         tdp = Path(td)
         # Install target dir for the tool's site-packages
         target = tdp / "pkg"
@@ -510,12 +878,9 @@ def _run_subprocess(spec: dict, script: str) -> dict:
         # NO Slack token, NO BB token — it physically cannot call any
         # paid API, so it can't burn quota and can't exfil secrets.
         run_env = {
-            "PATH":           os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
-            "HOME":           os.environ.get("HOME", "/tmp"),
+            **_hermetic_base_env(),
             "PYTHONPATH":     str(target),
             "PYTHONIOENCODING": "utf-8",
-            "LANG":           "C.UTF-8",
-            "LC_ALL":         "C.UTF-8",
         }
         try:
             run_proc = subprocess.run(
@@ -529,6 +894,163 @@ def _run_subprocess(spec: dict, script: str) -> dict:
         except subprocess.TimeoutExpired:
             return _result(
                 start, -1, "", f"test script timed out after {SUBPROCESS_TIMEOUT}s wall clock",
+                stage="run",
+            )
+
+        return _result(
+            start,
+            run_proc.returncode,
+            run_proc.stdout[-4000:],
+            run_proc.stderr[-4000:],
+            stage="run",
+        )
+
+
+def _run_subprocess_node(spec: dict, classification: dict, script: str) -> dict:
+    """`npm install --prefix <tmpdir>` then run the generated JS test with a
+    minimal env. Same hermetic guarantees as the Python path — no API keys,
+    no tokens reach the child."""
+    package = classification.get("package") or spec.get("package") or spec["name"]
+    start = datetime.now()
+    with tempfile.TemporaryDirectory(prefix="ai-lab-node-") as td:
+        tdp = Path(td)
+        script_path = tdp / "lab_test.js"
+        script_path.write_text(script)
+
+        # `npm install --prefix <tdp>` lands modules under <tdp>/node_modules.
+        # We do NOT pass --global, do NOT touch the runner's npm cache beyond
+        # what the runner caches at the pipeline level.
+        install_cmd = [
+            "npm", "install",
+            "--prefix", str(tdp),
+            "--no-audit", "--no-fund",
+            "--loglevel", "error",
+            package,
+        ]
+        try:
+            install_proc = subprocess.run(
+                install_cmd,
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT,
+                env={**_hermetic_base_env(), "NO_UPDATE_NOTIFIER": "1"},
+                cwd=str(tdp),
+            )
+        except subprocess.TimeoutExpired:
+            return _result(start, -1, "", f"npm install timed out after {SUBPROCESS_TIMEOUT}s")
+        except FileNotFoundError:
+            return _result(
+                start, -1, "",
+                "npm not found on PATH — the pipeline image needs `apt-get install nodejs npm`. "
+                "If you're running locally, install Node 20+.",
+                stage="install",
+            )
+
+        if install_proc.returncode != 0:
+            return _result(
+                start, install_proc.returncode,
+                install_proc.stdout[-2000:],
+                f"npm install failed:\n{install_proc.stderr[-2000:]}",
+                stage="install",
+            )
+
+        run_env = {
+            **_hermetic_base_env(),
+            "NODE_PATH":          str(tdp / "node_modules"),
+            "NO_UPDATE_NOTIFIER": "1",
+            "npm_config_loglevel": "error",
+        }
+        try:
+            run_proc = subprocess.run(
+                ["node", str(script_path)],
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT,
+                env=run_env,
+                cwd=str(tdp),
+            )
+        except subprocess.TimeoutExpired:
+            return _result(
+                start, -1, "",
+                f"node script timed out after {SUBPROCESS_TIMEOUT}s wall clock",
+                stage="run",
+            )
+
+        return _result(
+            start,
+            run_proc.returncode,
+            run_proc.stdout[-4000:],
+            run_proc.stderr[-4000:],
+            stage="run",
+        )
+
+
+def _run_subprocess_hf(spec: dict, classification: dict, script: str) -> dict:
+    """HuggingFace runtime — pip-installs `huggingface_hub` + `transformers`
+    (no torch) into a tempdir target, then runs the generated Python script
+    that loads config + tokenizer only. Weights are NOT downloaded; the
+    pre-flight `_unsupported_runtime_reason` already rejected models whose
+    total weight files exceed `_HF_MODEL_SIZE_CAP_GB`."""
+    start = datetime.now()
+    with tempfile.TemporaryDirectory(prefix="ai-lab-hf-") as td:
+        tdp = Path(td)
+        target = tdp / "pkg"
+        target.mkdir()
+        script_path = tdp / "lab_test.py"
+        script_path.write_text(script)
+
+        # huggingface_hub is light (~3MB). transformers without torch is ~80MB
+        # — bigger than typical pip installs but still fits in the pipeline
+        # disk + pip cache. NO torch on purpose: we don't run inference.
+        install_cmd = [
+            sys.executable, "-m", "pip", "install",
+            "--quiet",
+            "--target", str(target),
+            "--disable-pip-version-check",
+            "--no-input",
+            "huggingface_hub", "transformers",
+        ]
+        try:
+            install_proc = subprocess.run(
+                install_cmd,
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired:
+            return _result(start, -1, "", f"pip install (huggingface_hub + transformers) timed out after {SUBPROCESS_TIMEOUT}s")
+
+        if install_proc.returncode != 0:
+            return _result(
+                start, install_proc.returncode,
+                install_proc.stdout[-2000:],
+                f"HF runtime install failed:\n{install_proc.stderr[-2000:]}",
+                stage="install",
+            )
+
+        run_env = {
+            **_hermetic_base_env(),
+            "PYTHONPATH":     str(target),
+            "PYTHONIOENCODING": "utf-8",
+            # Force HF cache under tempdir so it dies with the container.
+            "HF_HOME":         str(tdp / "hf_cache"),
+            # Hard belt: refuse to use any HF token even if one leaked in.
+            "HF_HUB_DISABLE_IMPLICIT_TOKEN": "1",
+            "TRANSFORMERS_OFFLINE": "0",  # we DO need network for from_pretrained
+        }
+        try:
+            run_proc = subprocess.run(
+                [sys.executable, str(script_path)],
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT,
+                env=run_env,
+                cwd=str(tdp),
+            )
+        except subprocess.TimeoutExpired:
+            return _result(
+                start, -1, "",
+                f"HF test script timed out after {SUBPROCESS_TIMEOUT}s wall clock",
                 stage="run",
             )
 
@@ -559,7 +1081,7 @@ _INTERPRET_TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "headline": {"type": "string", "description": "One sentence: would this be useful for the team?"},
+            "headline": {"type": "string", "description": "One sentence: would this be useful for team?"},
             "verdict_for_team": {"type": "string", "enum": ["worth_trial", "monitor", "skip"]},
             "what_worked": {"type": "string", "description": "1–2 sentences on what the script confirmed."},
             "what_didnt": {"type": "string", "description": "1–2 sentences on what failed or was unclear (or 'nothing — clean run')."},
@@ -572,8 +1094,10 @@ _INTERPRET_TOOL = {
 
 
 def _interpret(client: anthropic.Anthropic, spec: dict, classification: dict, script: str, sandbox: dict) -> tuple[dict, float]:
+    runtime = classification.get("runtime", "python")
     user_msg = (
         f"Tool: {spec['name']}\nCategory: {classification.get('category')}\n"
+        f"Runtime: {runtime}\n"
         f"Subprocess exit_code: {sandbox['exit_code']} (stage: {sandbox['stage']})\n"
         f"Duration: {sandbox['duration_s']:.1f}s\n\n"
         f"--- generated test script ---\n{script}\n\n"
@@ -589,9 +1113,13 @@ def _interpret(client: anthropic.Anthropic, spec: dict, classification: dict, sc
         max_tokens=MAX_TOKENS_PER_CALL,
         system=[{"type": "text", "text": (
             "You are Frontier Scout's lab interpreter. Given a sandbox run, "
-            "emit structured insights for the team. Be terse, stack-specific, "
-            "and HONEST about confidence. Anchor the recommendation to the "
-            "Configured stack:\n" + STACK
+            "emit structured insights for the team. Be terse, team-specific, "
+            "and HONEST about confidence. The lab supports three runtimes "
+            "(python / node / huggingface) and the runtime name appears in "
+            "the user message — use it to recognise runtime-typical failure "
+            "modes (e.g. `npm install` 404, `from_pretrained` gated, native "
+            "build errors). Anchor the recommendation to the configured stack:\n"
+            + STACK
         )}],
         tools=[_INTERPRET_TOOL],
         tool_choice={"type": "tool", "name": "emit_lab_insights"},
@@ -604,68 +1132,164 @@ def _interpret(client: anthropic.Anthropic, spec: dict, classification: dict, sc
 
 # ── Step 7: format reply + post to Slack + write transcript ──────────────────
 
-_VERDICT_LABEL = {
-    "worth_trial": "🟡 worth a TRIAL",
-    "monitor":     "⚪ MONITOR for now",
-    "skip":        "🔴 SKIP",
-}
-_QUALITY_LABEL = {
-    "high":   ":white_check_mark: high-confidence test",
-    "medium": ":large_blue_circle: medium-confidence test",
-    "low":    ":warning: best-effort test (imports/smoke only)",
-}
+# ── Test-script excerpt extraction (Round 8) ─────────────────────────────────
+
+def _test_excerpt(test_script: str, max_lines: int = 6) -> str:
+    """Pull a small representative excerpt from the generated test script
+    for the lab reply's `rich_text_preformatted` code block. Skips the
+    file-level docstring + leading comments + blank lines, then takes the
+    first `max_lines` of actual code. Keeps the reply tight (≤6 lines)
+    and proves the test really ran rather than just claiming it did.
+
+    Handles both single-line (`\"\"\"foo\"\"\"`) and multi-line docstrings.
+    """
+    if not test_script:
+        return ""
+    lines = test_script.splitlines()
+    out: list[str] = []
+    in_docstring = False
+    docstring_open = ""
+    started = False
+
+    for line in lines:
+        if in_docstring:
+            # End of multi-line docstring on this line?
+            if docstring_open in line:
+                in_docstring = False
+            continue
+
+        # Detect docstring start (single-line OR multi-line opener)
+        is_docstring_line = False
+        for opener in ('"""', "'''"):
+            count = line.count(opener)
+            if count >= 2:
+                # Single-line docstring: skip the whole line.
+                is_docstring_line = True
+                break
+            if count == 1:
+                # Multi-line docstring opens here; skip subsequent lines.
+                in_docstring = True
+                docstring_open = opener
+                is_docstring_line = True
+                break
+        if is_docstring_line:
+            continue
+
+        stripped = line.strip()
+
+        # Before we've found a real code line, skip blanks + comment-only lines.
+        if not started:
+            if not stripped or stripped.startswith("#"):
+                continue
+            started = True
+
+        out.append(line)
+        if len(out) >= max_lines:
+            break
+
+    return "\n".join(out)
 
 
-def _format_reply(tool: str, url: str, classification: dict, sandbox: dict, insights: dict, cost: float) -> str:
-    pkg = classification.get("package") or tool
-    stage_label = "pip install" if sandbox["stage"] == "install" else "script run"
-    exit_line = (
-        f":white_check_mark: clean run (exit 0)" if sandbox["exit_code"] == 0
-        else f":x: {stage_label} failed (exit {sandbox['exit_code']})"
-    )
-    return (
-        f":test_tube: *Lab results — `{tool}`*\n"
-        f"_Category: {classification.get('category')} · Package: `{pkg}` · "
-        f"Duration: {sandbox['duration_s']:.1f}s · Cost: ${cost:.3f}_\n"
-        f"\n"
-        f"*Headline*: {insights['headline']}\n"
-        f"*Verdict for team*: {_VERDICT_LABEL.get(insights['verdict_for_team'], insights['verdict_for_team'])}\n"
-        f"*What worked*: {insights['what_worked']}\n"
-        f"*What didn't*: {insights['what_didnt']}\n"
-        f"*Next step*: {insights['next_step']}\n"
-        f"\n"
-        f"{exit_line}  ·  {_QUALITY_LABEL.get(insights['test_quality_self_rating'], '')}\n"
-        f"\n"
-        f"_Hermetic subprocess (no API keys in child env). Full transcript committed under `.scratch/labs/`._"
-    )
+# ── Step 7: post the structured lab reply to Slack ──────────────────────────
 
+def _post_lab_reply(
+    *,
+    tool: str,
+    url: str,
+    classification: dict,
+    sandbox: dict,
+    insights: dict,
+    cost: float,
+    test_excerpt: str,
+    dry_run: bool,
+) -> None:
+    """Post the lab result as a threaded reply on the verdict card for `tool`.
 
-def _post_thread_if_possible(tool: str, text: str, dry_run: bool) -> None:
-    """Post `text` as a threaded reply on the verdict card for `tool`.
+    Round 8 — uses slack_post.lab_result_blocks() to produce a structured
+    blocks+attachment payload (matching the verdict-card design dialect)
+    instead of the previous plain-text wall.
 
     Resolves the message_ts by walking briefings/*-meta.json newest first
     (same map Round 6's reaction dispatcher uses). Falls back to channel
     post if no match is found — better to ship the insight than swallow it.
     """
+    try:
+        from slack_post import lab_result_blocks, _post_thread_reply, post
+    except Exception as e:  # noqa: BLE001
+        print(f"  slack_post import failed: {e}")
+        return
+
+    blocks, attachments = lab_result_blocks(
+        tool=tool, url=url,
+        classification=classification, sandbox=sandbox,
+        insights=insights, cost=cost,
+        test_excerpt=test_excerpt,
+    )
+
+    # Meaningful fallback text for mobile push notifications + screen readers.
+    pill = {
+        "worth_trial": "worth a TRIAL",
+        "monitor":     "MONITOR",
+        "skip":        "SKIP",
+    }.get((insights or {}).get("verdict_for_team", ""), "MONITOR")
+    fallback = (
+        f"Lab: {tool} — {pill}. "
+        + (insights or {}).get("headline", "")[:160]
+    )
+
+    if dry_run:
+        print("─── DRY-RUN: would post lab reply ───")
+        print(f"  blocks={blocks!r}")
+        print(f"  attachments={attachments!r}")
+        print(f"  fallback={fallback!r}")
+        print("─── END ───")
+        return
+
+    thread_ts = _find_thread_ts(tool)
+    try:
+        if thread_ts:
+            _post_thread_reply(
+                thread_ts, blocks=blocks, attachments=attachments,
+                text_fallback=fallback,
+            )
+        else:
+            print(f"  No verdict thread found for {tool!r} — posting to channel")
+            # Channel post via `post()` doesn't support attachments today —
+            # render the same content as a single section block fallback.
+            fallback_blocks = blocks or [{
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": fallback},
+            }]
+            post(fallback_blocks)
+    except Exception as e:  # noqa: BLE001
+        print(f"  Slack post failed: {e}")
+
+
+# Backward-compat shim — `_post_thread_if_possible(tool, text, dry_run)` is
+# called from the cap/refusal paths above with a plain string. Keep it
+# working so those code paths don't need rewriting.
+def _post_thread_if_possible(tool: str, text: str, dry_run: bool) -> None:
+    """Post a plain-text status message as a threaded reply. Used by the
+    cap-refusal and URL-gate paths where there's no structured insight
+    to render, just a one-line operator message."""
     if dry_run:
         print("─── DRY-RUN: would post to Slack ───")
         print(text)
         print("─── END ───")
         return
 
-    thread_ts = _find_thread_ts(tool)
     try:
         from slack_post import _post_thread_reply, post
     except Exception as e:  # noqa: BLE001
         print(f"  slack_post import failed: {e}")
         return
 
+    thread_ts = _find_thread_ts(tool)
     try:
         if thread_ts:
-            _post_thread_reply(thread_ts, blocks=None, attachments=None, text_fallback=text)
-            # The above sends with no blocks — Slack treats `text` as the
-            # message body. Provide the text via the existing kwarg path.
-            # (Defensive: if blocks=None is rejected, fall back to channel.)
+            _post_thread_reply(
+                thread_ts, blocks=None, attachments=None, text_fallback=text,
+            )
         else:
             print(f"  No verdict thread found for {tool!r} — posting to channel")
             post([{"type": "section", "text": {"type": "mrkdwn", "text": text}}])
@@ -693,7 +1317,7 @@ def _find_thread_ts(tool: str) -> str | None:
 
 def _write_transcript(
     tool: str, url: str, user: str,
-    classification: dict, script: str,
+    classification: dict | None, script: str,
     sandbox: dict | None, insights: dict | None,
 ) -> Path:
     LABS_DIR.mkdir(parents=True, exist_ok=True)

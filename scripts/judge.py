@@ -26,18 +26,17 @@ from prompts import cached_judge_blocks
 from tools import JUDGE_TOOL
 
 CLIENT: anthropic.Anthropic | None = None
-JUDGE_MODEL = "claude-opus-4-7"
-THINKING_BUDGET = 4000  # tokens
-
 
 def _client() -> anthropic.Anthropic:
     global CLIENT
     if CLIENT is None:
         api_key = os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required for the judge pass")
+            raise RuntimeError("ANTHROPIC_API_KEY is required for this run")
         CLIENT = anthropic.Anthropic(api_key=api_key)
     return CLIENT
+JUDGE_MODEL = "claude-opus-4-7"
+THINKING_BUDGET = 4000  # tokens
 
 
 def critique(

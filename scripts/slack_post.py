@@ -43,6 +43,15 @@ CATEGORY_EMOJI = {
     "security":       "🔐 Security & Compliance",
 }
 
+CATEGORY_LABEL = {
+    "frontier_model": "Frontier Models",
+    "orchestration":  "Orchestration",
+    "tool":           "Tools & Frameworks",
+    "data":           "Data Ecosystem",
+    "compute":        "Compute & Hardware",
+    "security":       "Security & Compliance",
+}
+
 VERDICT_EMOJI = {
     "adopt":  "🟢 ADOPT",
     "trial":  "🟡 TRIAL",
@@ -50,10 +59,23 @@ VERDICT_EMOJI = {
     "hold":   "🔴 HOLD",
 }
 
+VERDICT_LABEL = {
+    "adopt":  "ADOPT",
+    "trial":  "TRIAL",
+    "assess": "ASSESS",
+    "hold":   "HOLD",
+}
+
 SOC2_BADGE = {
     "safe":        "✅ SOC2-safe",
     "conditional": "⚠️ SOC2-conditional",
     "blocked":     "❌ SOC2-blocked",
+}
+
+SOC2_LABEL = {
+    "safe": "SOC2-safe",
+    "conditional": "SOC2-conditional",
+    "blocked": "SOC2-blocked",
 }
 
 SEVERITY_ICON = {
@@ -106,6 +128,12 @@ JUDGE_CONFIDENCE = {
 }
 
 
+_MAX_JUDGE_SUMMARY_CHARS = 320
+_MAX_PARENT_HIGHLIGHTS = 5
+_MAX_PARENT_ACTIONS = 3
+_MAX_LINE_CHARS = 220
+
+
 def _header(text: str) -> dict:
     return {"type": "header", "text": {"type": "plain_text", "text": text, "emoji": True}}
 
@@ -128,18 +156,388 @@ def _readiness_meter(level: int) -> str:
     return "▰" * level + "▱" * (5 - level)
 
 
+def _clip(text: str | None, max_chars: int) -> str:
+    """Trim text to max_chars with ellipsis and normalized whitespace."""
+    s = " ".join((text or "").strip().split())
+    if len(s) <= max_chars:
+        return s
+    if max_chars < 2:
+        return s[:max_chars]
+    return s[: max_chars - 1].rstrip() + "…"
+
+
+def _escape_mrkdwn(text: str | None) -> str:
+    """Escape Slack mrkdwn control chars."""
+    escaped = (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # Prevent accidental channel-wide pings from model/user-provided text.
+    escaped = re.sub(r"@(?=channel\b|here\b|everyone\b)", "@\u200b", escaped, flags=re.I)
+    escaped = escaped.replace("&lt;!channel&gt;", "&lt;!\u200bchannel&gt;")
+    escaped = escaped.replace("&lt;!here&gt;", "&lt;!\u200bhere&gt;")
+    escaped = escaped.replace("&lt;!everyone&gt;", "&lt;!\u200beveryone&gt;")
+    return escaped
+
+
+def _sanitize_sensitive_text(text: str) -> str:
+    """Redact common secret-bearing values from logs."""
+    redacted = text or ""
+    patterns = [
+        (r"https://hooks\.slack\.com/services/[^\s'\"`]+", "https://hooks.slack.com/services/****"),
+        (r"https://hooks\.slack\.com/actions/[^\s'\"`]+", "https://hooks.slack.com/actions/****"),
+        (r"xox[baprs]-[A-Za-z0-9-]+", "xox*-REDACTED"),
+        (r"Bearer\s+[A-Za-z0-9\-._~+/]+=*", "Bearer REDACTED"),
+    ]
+    for pattern, repl in patterns:
+        redacted = re.sub(pattern, repl, redacted)
+    return redacted
+
+
+def _compact_badges(v: dict) -> str:
+    """One-line textual badges for tier/severity/soc2/readiness."""
+    tier = VERDICT_LABEL.get(v.get("verdict", "assess"), "ASSESS")
+    sev = (v.get("severity", "standard") or "standard").capitalize()
+    soc2 = SOC2_LABEL.get(v.get("soc2", "conditional"), "SOC2-conditional")
+    readiness = int(v.get("readiness", 3))
+    return f"{tier} · {sev} · {soc2} · Readiness {readiness}/5"
+
+
+def _a11y_label(text: str, max_chars: int = 75) -> str:
+    """Constrain accessibility labels to conservative Slack-safe length."""
+    return _clip(text, max_chars)
+
+
+# ── rich_text block helpers (Round 8) ────────────────────────────────────────
+#
+# Slack's `rich_text` block type supports proper bulleted lists, blockquotes,
+# inline styled spans, and code blocks — far better mobile rendering than the
+# older mrkdwn-in-section approach. We adopt it for the TL;DR list, judge's
+# read quote, lab-reply code excerpt, and verdict-card body. Everywhere else
+# (headers, context strips, fields layouts) stays on `section`+mrkdwn because
+# `rich_text` would be overkill for those.
+
+def _rich_text(*elements: dict) -> dict:
+    """Top-level rich_text block wrapping the given child elements
+    (rich_text_section / rich_text_list / rich_text_quote / rich_text_preformatted)."""
+    return {"type": "rich_text", "elements": list(elements)}
+
+
+def _rt_section(*spans: dict) -> dict:
+    """rich_text_section containing inline spans (text, link, emoji)."""
+    return {"type": "rich_text_section", "elements": list(spans)}
+
+
+def _rt_quote(*spans: dict) -> dict:
+    """rich_text_quote — proper blockquote rendering, consistent across
+    web/desktop/mobile (vs the `> ` mrkdwn prefix which varies)."""
+    return {"type": "rich_text_quote", "elements": list(spans)}
+
+
+def _rt_list(style: str, *bullets: dict, indent: int = 0) -> dict:
+    """rich_text_list. style is 'bullet' or 'ordered'. Each bullet is a
+    rich_text_section. Bullets render with platform-native indent —
+    no whitespace-string trickery."""
+    return {
+        "type": "rich_text_list",
+        "style": style,
+        "indent": indent,
+        "elements": list(bullets),
+    }
+
+
+def _rt_preformatted(text: str) -> dict:
+    """rich_text_preformatted — monospace code block. Used in the lab reply
+    to show the actual test excerpt that ran (proof, not theater)."""
+    return {
+        "type": "rich_text_preformatted",
+        "elements": [{"type": "text", "text": text}],
+    }
+
+
+def _rt_text(text: str, *, bold: bool = False, italic: bool = False,
+             code: bool = False, strike: bool = False) -> dict:
+    """Inline text span with optional styling."""
+    style = {}
+    if bold:    style["bold"] = True
+    if italic:  style["italic"] = True
+    if code:    style["code"] = True
+    if strike:  style["strike"] = True
+    out: dict = {"type": "text", "text": text}
+    if style:
+        out["style"] = style
+    return out
+
+
+def _rt_link(url: str, text: str, *, bold: bool = False) -> dict:
+    """Inline link span. `alt_text` is implicit via the link `text` field —
+    screen readers announce the visible text, so we don't need a separate
+    alt_text on each link."""
+    out: dict = {"type": "link", "url": url, "text": text}
+    if bold:
+        out["style"] = {"bold": True}
+    return out
+
+
+# ── Section-block accessories (Round 8) ──────────────────────────────────────
+
+def _image_accessory(source_url: str, category: str = "tool",
+                     alt_text: str | None = None) -> dict | None:
+    """Build a section block `accessory` dict pointing at the tool's logo.
+
+    Logic:
+      • github.com/<org>/<repo>  →  https://github.com/<org>.png?size=120
+      • huggingface.co/<user>/…   →  https://huggingface.co/avatars/<user>.png
+      • anything else             →  None (caller renders without accessory)
+
+    GitHub serves an identicon (auto-generated 4×4 grid) for personal accounts
+    that have no custom avatar — we accept those rather than skipping the
+    accessory entirely. The identicon at least gives consistent visual rhythm
+    down the card list.
+
+    All accessories carry `alt_text` for screen-reader users — falls back to
+    the org/user name if no explicit alt provided.
+    """
+    if not source_url:
+        return None
+
+    m = re.match(r"https?://(?:www\.)?github\.com/([^/]+)/", source_url)
+    if m:
+        org = m.group(1)
+        return {
+            "type": "image",
+            "image_url": f"https://github.com/{org}.png?size=120",
+            "alt_text": alt_text or f"{org} avatar",
+        }
+
+    m = re.match(r"https?://huggingface\.co/([^/]+)/", source_url)
+    if m:
+        user = m.group(1)
+        return {
+            "type": "image",
+            "image_url": f"https://huggingface.co/avatars/{user}.png",
+            "alt_text": alt_text or f"{user} avatar on Hugging Face",
+        }
+
+    return None
+
+
+# ── Hero takeaway line (Round 8) ─────────────────────────────────────────────
+
+# Maximum length for the hero "why_it_matters" prose before we trim with an
+# ellipsis. Picked so a typical card renders at ~2 lines on desktop, ~3 on
+# narrow mobile widths.
+_HERO_PROSE_MAX = 180
+
+
+def _hero_takeaway(why_it_matters: str) -> str:
+    """Trim `why_it_matters` to the first sentence (or first 180 chars) so
+    the hero line stays scannable. Preserves trailing punctuation when
+    cleanly cut at a sentence boundary; appends an ellipsis otherwise."""
+    text = (why_it_matters or "").strip()
+    if not text or len(text) <= _HERO_PROSE_MAX:
+        return text
+    # Prefer a sentence boundary near the cap
+    cap = _HERO_PROSE_MAX
+    cut = text[:cap].rfind(". ")
+    if cut > 80:
+        return text[:cut + 1]
+    # Fallback: hard cut at the cap, trim trailing whitespace, append ellipsis
+    return text[:cap].rstrip() + "…"
+
+
+# ── Memory trend lookup (Round 8) ────────────────────────────────────────────
+
+def _memory_trend_text(tool: str, current_verdict: str) -> str | None:
+    """Render a one-line "ASSESS (Mar 14) → TRIAL (today)" trend if Mem0
+    holds a prior verdict for this tool. Returns None on any failure —
+    caller skips the trend block silently."""
+    try:
+        from memory import is_available, mem
+    except Exception:
+        return None
+    if not is_available():
+        return None
+    try:
+        prior = mem.prior_verdict(tool, days=180, threshold=0.85)
+    except Exception:
+        return None
+    if not prior:
+        return None
+    prior_v = (prior.get("verdict") or "").upper()
+    if not prior_v or prior_v == (current_verdict or "").upper():
+        # Either no prior verdict word, or trajectory is flat — skip.
+        return None
+    prior_iso = prior.get("added_at") or ""
+    prior_date = "earlier"
+    if prior_iso:
+        try:
+            d = datetime.fromisoformat(prior_iso.replace("Z", "+00:00"))
+            prior_date = d.strftime("%b %d")
+        except (ValueError, TypeError):
+            pass
+    return (
+        f"🧠  Memory: *{prior_v}* ({prior_date})  →  "
+        f"*{current_verdict.upper()}* (today)"
+    )
+
+
 def _safe_link(url: str, text: str) -> str:
     """Render a Slack hyperlink only if the URL's domain is in the allowlist.
 
-    Untrusted/unknown domains fall back to bold text with the bare URL appended
-    so the reader can still see where the link would have gone (and forensically
-    review later) without risking a clickable redirect to a malicious target.
+    Untrusted/unknown domains fall back to plain text (non-clickable).
     """
+    label = _escape_mrkdwn(text)
     if not url:
-        return f"*{text}*"
+        return f"*{label}*"
     if domain_allowed(url):
-        return f"<{url}|{text}>"
-    return f"*{text}* (link withheld: untrusted domain — `{url[:80]}`)"
+        return f"<{url}|{label}>"
+    return f"*{label}*"
+
+
+def _tier_counts(verdicts: list[dict]) -> dict[str, int]:
+    counts = {t: 0 for t in TIER_ORDER}
+    for v in verdicts:
+        tier = v.get("verdict", "assess")
+        counts[tier] = counts.get(tier, 0) + 1
+    return counts
+
+
+def _severity_counts(verdicts: list[dict]) -> dict[str, int]:
+    counts = {"critical": 0, "high": 0, "standard": 0}
+    for v in verdicts:
+        sev = v.get("severity", "standard")
+        counts[sev] = counts.get(sev, 0) + 1
+    return counts
+
+
+def _sorted_verdicts(verdicts: list[dict]) -> list[dict]:
+    tier_rank = {tier: i for i, tier in enumerate(TIER_ORDER)}
+    sev_rank = {"critical": 0, "high": 1, "standard": 2}
+    return sorted(
+        verdicts,
+        key=lambda v: (
+            tier_rank.get(v.get("verdict", "assess"), 99),
+            sev_rank.get(v.get("severity", "standard"), 99),
+            -(int(v.get("readiness", 3))),
+            (v.get("tool_name") or "").lower(),
+        ),
+    )
+
+
+def _parent_action_lines(verdicts: list[dict], limit: int = _MAX_PARENT_ACTIONS) -> list[str]:
+    lines: list[str] = []
+    for v in _sorted_verdicts(verdicts):
+        action = _clip(v.get("next_action", ""), 110)
+        tool = _clip(v.get("tool_name", "Tool"), 40)
+        if action:
+            lines.append(f"{tool}: {action}")
+        if len(lines) >= limit:
+            break
+    if lines:
+        return lines
+    return ["Review thread verdict cards and pick one lab candidate."]
+
+
+def _briefing_overview_blocks(
+    *,
+    date: str,
+    scanned: int,
+    cost: float,
+    verdicts: list[dict],
+    judge_rating: str,
+    judge_summary: str,
+    dedup_drops: int,
+    prior_drops: int,
+    duration_s: float | None = None,
+    top_k: int = _MAX_PARENT_HIGHLIGHTS,
+) -> list[dict]:
+    """Shared parent summary for webhook and threaded briefing surfaces."""
+    considered = max(0, scanned - dedup_drops - prior_drops)
+    shipped = len(verdicts)
+    tiers = _tier_counts(verdicts)
+    severities = _severity_counts(verdicts)
+    judge_word = (judge_rating or "medium").upper()
+    duration_str = f"{int(duration_s)}s" if duration_s else "n/a"
+
+    summary = _clip(
+        judge_summary
+        or "Signals were evaluated against stack fit, SOC2 risk, and execution value.",
+        _MAX_JUDGE_SUMMARY_CHARS,
+    )
+    actions = _parent_action_lines(verdicts)
+    action_lines = "\n".join(f"• {_escape_mrkdwn(line)}" for line in actions)
+
+    blocks: list[dict] = [
+        _header(f"Frontier Scout — Weekly Briefing · {date}"),
+        _section(
+            "*What happened*\n"
+            f"{scanned} scanned → {considered} considered → {shipped} shipped\n\n"
+            "*Why it matters*\n"
+            f"{_escape_mrkdwn(summary)}\n\n"
+            "*What to do next*\n"
+            f"{action_lines}"
+        ),
+        {
+            "type": "section",
+            "fields": [
+                {
+                    "type": "mrkdwn",
+                    "text": (
+                        "*Pipeline*\n"
+                        f"Judge {judge_word}\n"
+                        f"Cost ${cost:.4f}\n"
+                        f"Runtime {duration_str}"
+                    ),
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": (
+                        "*Decision Mix*\n"
+                        f"{tiers.get('adopt', 0)} ADOPT · {tiers.get('trial', 0)} TRIAL · "
+                        f"{tiers.get('assess', 0)} ASSESS · {tiers.get('hold', 0)} HOLD\n"
+                        f"{severities.get('critical', 0)} critical · "
+                        f"{severities.get('high', 0)} high · "
+                        f"{severities.get('standard', 0)} standard"
+                    ),
+                },
+            ],
+        },
+    ]
+
+    tuned_line = _tuned_by_line()
+    if tuned_line:
+        blocks.append(_context(tuned_line))
+    blocks.append(_divider())
+
+    ranked = _sorted_verdicts(verdicts)
+    highlights = ranked[:top_k]
+    if highlights:
+        bullets: list[dict] = []
+        for v in highlights:
+            url = v.get("source_url", "")
+            tool = _clip(v.get("tool_name", "Tool"), 70)
+            takeaway = _clip(
+                _hero_takeaway(v.get("why_it_matters", "")) or v.get("what", ""),
+                140,
+            )
+            spans = []
+            if url and domain_allowed(url):
+                spans.append(_rt_link(url, tool, bold=True))
+            else:
+                spans.append(_rt_text(tool, bold=True))
+            if takeaway:
+                spans.append(_rt_text(f" — {takeaway}"))
+            spans.append(_rt_text(f"\n  {_compact_badges(v)}"))
+            bullets.append(_rt_section(*spans))
+
+        blocks.append(_section("*Top findings*"))
+        blocks.append(_rich_text(_rt_list("ordered", *bullets)))
+
+    hidden_count = max(0, shipped - len(highlights))
+    if hidden_count:
+        blocks.append(_context(f"{hidden_count} additional verdicts are available in the thread."))
+    blocks.append(
+        _context("Full verdict cards and actions are in thread · `/radar <tool>` · `/recall <topic>`")
+    )
+    return blocks
 
 
 def weekly_briefing_blocks(
@@ -152,71 +550,18 @@ def weekly_briefing_blocks(
     dedup_drops: int = 0,
     prior_drops: int = 0,
 ) -> list[dict]:
-    """
-    Build Slack blocks for the Monday Weekly Briefing.
-
-    `verdicts` items may include optional fields injected by the judge:
-      - severity: "critical" | "high" | "standard"
-      - readiness: 0..5
-    """
-    sev_counts = {"critical": 0, "high": 0, "standard": 0}
-    for v in verdicts:
-        sev_counts[v.get("severity", "standard")] = sev_counts.get(v.get("severity", "standard"), 0) + 1
-
-    funnel = f"*{scanned}* scanned"
-    if dedup_drops:
-        funnel += f" → *{scanned - dedup_drops}* unique"
-    if prior_drops:
-        funnel += f" → *{scanned - dedup_drops - prior_drops}* fresh"
-    funnel += f" → *{len(verdicts)}* verdicts"
-
-    sev_line = (
-        f"🔥 *{sev_counts.get('critical', 0)}* critical · "
-        f"⭐ *{sev_counts.get('high', 0)}* high · "
-        f"📌 *{sev_counts.get('standard', 0)}* standard"
+    return _briefing_overview_blocks(
+        date=date,
+        scanned=scanned,
+        cost=cost,
+        verdicts=verdicts,
+        judge_rating=judge_rating,
+        judge_summary=judge_summary,
+        dedup_drops=dedup_drops,
+        prior_drops=prior_drops,
+        duration_s=None,
+        top_k=6,
     )
-
-    blocks: list[dict] = [
-        _header(f"📡 Frontier Scout — Weekly Briefing · {date}"),
-        _context(f"{funnel}  ·  {JUDGE_CONFIDENCE.get(judge_rating, '')}  ·  💰 ${cost:.4f}"),
-        _context(sev_line),
-    ]
-    if judge_summary:
-        blocks.append(_section(f"🧠 _Judge's read:_ {judge_summary}"))
-    blocks.append(_divider())
-
-    # Group verdicts by tier in the canonical order
-    tier_order = ["adopt", "trial", "assess", "hold"]
-    grouped: dict[str, list[dict]] = {t: [] for t in tier_order}
-    for v in verdicts:
-        grouped.setdefault(v["verdict"], []).append(v)
-
-    for tier in tier_order:
-        items = grouped.get(tier, [])
-        if not items:
-            continue
-        blocks.append(_section(f"*{TIER_HEADER[tier]}*"))
-        for v in items:
-            sev = v.get("severity", "standard")
-            sev_icon = SEVERITY_ICON.get(sev, "📌")
-            readiness = v.get("readiness", 3)
-            meter = _readiness_meter(readiness)
-            link = _safe_link(v["source_url"], v["tool_name"])
-            body = (
-                f"{sev_icon}  {link}  "
-                f"·  {CATEGORY_EMOJI[v['category']]}  ·  {SOC2_BADGE[v['soc2']]}\n"
-                f"_{v['what']}_\n"
-                f"💡 {v['why_it_matters']}\n"
-                f"⏱ *Adoption*: {v['adoption_cost']}\n"
-                f"▶ *Next*: {v['next_action']}\n"
-                f"📊 Readiness: `{meter}` {readiness}/5"
-            )
-            blocks.append(_section(body))
-        blocks.append(_divider())
-
-    blocks.append(_context("🧪 react to any verdict to queue a lab  ·  💭 reply in thread to discuss"))
-    blocks.append(_context("`evaluate <tool>`  ·  `lab <tool>`  ·  `recall <topic>`"))
-    return blocks
 
 
 def pulse_blocks(
@@ -226,53 +571,88 @@ def pulse_blocks(
     when: str,
     verdict: dict | None = None,
 ) -> list[dict]:
-    """
-    Build Slack blocks for a Tier-S Pulse alert.
+    """Build Slack blocks for a Tier-S Pulse alert.
 
-    If `verdict` is provided (from the judge pass), render the full verdict card.
-    Otherwise just announce the drop with the standard reaction prompt.
+    Round 8 redesign — same design dialect as the Scout verdict cards:
+    bold-text labels (no emoji-as-labels), takeaway as hero, metadata
+    strip beneath, severity icon as a status badge only.
     """
-    blocks = [
-        _section(f"*⚡ Tier-S Drop · {source}*  ·  _{when}_"),
-        _section(_safe_link(url, title)),
+    sev = (verdict or {}).get("severity", "high")
+    sev_icon = SEVERITY_ICON.get(sev, "⭐")
+    link = _safe_link(url, title)
+
+    blocks: list[dict] = [
+        _section(f"*⚡  Tier-S Drop · {source}*  ·  _{when}_"),
     ]
+
     if verdict:
-        sev = verdict.get("severity", "high")
-        sev_icon = SEVERITY_ICON.get(sev, "⭐")
-        readiness = verdict.get("readiness", 3)
+        why_takeaway = _hero_takeaway(verdict.get("why_it_matters", ""))
+        readiness = int(verdict.get("readiness", 3))
         meter = _readiness_meter(readiness)
+        # Hero: bold link + why-it-matters takeaway + severity icon trail
         blocks.append(_section(
-            f"{sev_icon}  {VERDICT_EMOJI[verdict['verdict']]}  ·  "
-            f"{CATEGORY_EMOJI[verdict['category']]}  ·  {SOC2_BADGE[verdict['soc2']]}\n"
-            f"💡 {verdict['why_it_matters']}\n"
-            f"▶ *Next*: {verdict['next_action']}\n"
-            f"📊 Readiness: `{meter}` {readiness}/5"
+            f"*{link}* — {why_takeaway}   {sev_icon}"
         ))
-    blocks.append(_context("React: 👍 worth my time  ·  👎 skip  ·  🧪 lab it"))
+        # Metadata strip — verdict tier word + category + SOC2 + readiness
+        blocks.append(_context(
+            f"{VERDICT_EMOJI[verdict['verdict']]}  ·  "
+            f"{CATEGORY_EMOJI[verdict['category']]}  ·  "
+            f"{SOC2_BADGE[verdict['soc2']]}  ·  "
+            f"Readiness `{meter}` {readiness}/5"
+        ))
+        # Next-action gets its own block — operationally the most
+        # important line on the whole alert.
+        blocks.append(_section(f"*Next action* — {verdict['next_action']}"))
+    else:
+        # No verdict — just the headline link, no metadata
+        blocks.append(_section(link))
+
+    blocks.append(_context(
+        "React: 👍 worth my time  ·  👎 skip  ·  🧪 lab it"
+    ))
     return blocks
 
 
 def synth_blocks(month: str, synthesis: dict) -> list[dict]:
-    """Build Slack blocks for the monthly synthesis."""
+    """Build Slack blocks for the monthly synthesis.
+
+    Round 8 redesign — bold-text labels, no emoji-as-labels, single
+    divider rule between sections (was four). Uses rich_text bullet
+    lists for the Momentum check so it renders consistently across
+    web/desktop/mobile (vs the older `• ` mrkdwn convention).
+    """
     focus = synthesis["focus_this_month"]
+    adopted   = synthesis.get("adopted", []) or []
+    stalled   = synthesis.get("stalled", []) or []
+    blind     = synthesis.get("blind_spots", []) or []
+
+    def _kv_bullet(label: str, items: list[str]) -> dict:
+        """One rich_text_section showing 'Label: a, b, c' or 'Label: none'."""
+        joined = ", ".join(items) if items else "—"
+        return _rt_section(
+            _rt_text(label, bold=True),
+            _rt_text(f": {joined}"),
+        )
+
     return [
-        _header(f"📊 Frontier Scout — Monthly Synthesis · {month}"),
-        _section(f"*What you've been exploring*\n{synthesis['exploration_summary']}"),
-        _divider(),
+        _header(f"📊  Frontier Scout — Monthly Synthesis · {month}"),
         _section(
-            "*Momentum check*\n"
-            f"• *Adopted*: {', '.join(synthesis['adopted']) or '_nothing yet_'}\n"
-            f"• *Stalled*: {', '.join(synthesis['stalled']) or '_none_'}\n"
-            f"• *Blind spots*: {', '.join(synthesis['blind_spots']) or '_none_'}"
+            f"*What you've been exploring*\n{synthesis['exploration_summary']}"
         ),
         _divider(),
-        _section(
-            f"*Focus this month: {focus['tool']}*\n"
-            f"{focus['rationale']}\n"
-            f"🧪 _Lab suggestion_: {focus['lab_suggestion']}"
-        ),
+        _rich_text(_rt_list(
+            "bullet",
+            _kv_bullet("Adopted",     adopted),
+            _kv_bullet("Stalled",     stalled),
+            _kv_bullet("Blind spots", blind),
+        )),
         _divider(),
-        _section(f"*Org opportunity*\n{synthesis['org_opportunity']}"),
+        _section(
+            f"*Focus this month — {focus['tool']}*\n"
+            f"{focus['rationale']}\n\n"
+            f"*Lab suggestion* — {focus['lab_suggestion']}"
+        ),
+        _section(f"*Org opportunity* — {synthesis['org_opportunity']}"),
     ]
 
 
@@ -292,7 +672,7 @@ def _write_dead_letter(blocks: list[dict], err: str) -> None:
     DEAD_LETTER.parent.mkdir(parents=True, exist_ok=True)
     record = {
         "ts": datetime.now(timezone.utc).isoformat(),
-        "error": str(err)[:500],
+        "error": _sanitize_sensitive_text(str(err))[:500],
         "blocks": blocks,
     }
     with DEAD_LETTER.open("a") as f:
@@ -389,16 +769,44 @@ def _with_slack_retry(
     Used by both single-message `post()` and the new threaded helpers below.
     """
     delays = [1, 4, 16]
+    non_retryable_markers = (
+        "invalid_blocks",
+        "invalid_arguments",
+        "missing_scope",
+        "not_authed",
+        "invalid_auth",
+        "account_inactive",
+        "channel_not_found",
+        "no_team",
+    )
+
+    def _retry_after_hint(exc: Exception) -> int | None:
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", None)
+        if isinstance(headers, dict):
+            raw = headers.get("Retry-After") or headers.get("retry-after")
+            if raw and str(raw).isdigit():
+                return max(1, int(raw))
+        msg = str(exc)
+        m = re.search(r"retry(?:ing)? in (\d+)s", msg, re.I)
+        if m:
+            return max(1, int(m.group(1)))
+        return None
+
     last_err: Exception | None = None
     for attempt in range(max_retries):
         try:
             return fn(*args, **kwargs)
         except Exception as e:  # noqa: BLE001
             last_err = e
+            lower = str(e).lower()
+            if any(marker in lower for marker in non_retryable_markers):
+                break
             if attempt < max_retries - 1:
-                wait = delays[min(attempt, len(delays) - 1)]
+                wait = _retry_after_hint(e) or delays[min(attempt, len(delays) - 1)]
+                safe_err = _sanitize_sensitive_text(str(e))
                 print(
-                    f"  {op_label} failed ({e!s}); retrying in {wait}s "
+                    f"  {op_label} failed ({safe_err}); retrying in {wait}s "
                     f"[{attempt+1}/{max_retries}]"
                 )
                 time.sleep(wait)
@@ -585,6 +993,123 @@ def _add_reactions(message_ts: str, emojis=DEFAULT_VERDICT_REACTIONS) -> None:
             time.sleep(0.1)
 
 
+# ── Lab reply (Round 8) ──────────────────────────────────────────────────────
+#
+# Replaces the plain-text wall that lab_runner._format_reply produced before
+# Round 8. Same skeleton as a verdict card so both surfaces speak one design
+# dialect: attachment color carries the recommendation (red = skip,
+# amber = trial, gray = monitor), recommendation pill sits in the FIRST
+# block (not buried), *Worked* | *Didn't* renders as a two-column fields
+# section, and the next-step gets isolated visual prominence.
+
+_LAB_RECOMMENDATION_COLOR = {
+    "worth_trial": "#f2c744",  # amber — matches the TRIAL tier on Scout verdict cards
+    "monitor":     "#9aa0a6",  # gray  — matches ASSESS
+    "skip":        "#d93025",  # red   — matches HOLD
+}
+
+_LAB_RECOMMENDATION_PILL = {
+    "worth_trial": "🟡 worth a TRIAL",
+    "monitor":     "⚪ MONITOR for now",
+    "skip":        "🔴 SKIP",
+}
+
+_LAB_QUALITY_TRAIL = {
+    "high":   ":white_check_mark: high-confidence test",
+    "medium": ":large_blue_circle: medium-confidence test",
+    "low":    ":warning: best-effort test (imports/smoke only)",
+}
+
+
+def lab_result_blocks(
+    *,
+    tool: str,
+    url: str,
+    classification: dict,
+    sandbox: dict,
+    insights: dict,
+    cost: float,
+    test_excerpt: str | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """Build (outer_blocks, attachments) for a lab reply, same skeleton as
+    a verdict card. Returns an empty outer_blocks list because the lab
+    reply has no interactive actions yet — everything lives inside the
+    colored attachment.
+
+    Round 8 redesign — see plan for the before/after comparison.
+    """
+    rec = (insights or {}).get("verdict_for_team", "monitor")
+    color = _LAB_RECOMMENDATION_COLOR.get(rec, "#9aa0a6")
+    pill = _LAB_RECOMMENDATION_PILL.get(rec, rec.upper())
+    pkg = classification.get("package") or tool
+    duration = float((sandbox or {}).get("duration_s", 0))
+    exit_code = (sandbox or {}).get("exit_code", 0)
+    stage = (sandbox or {}).get("stage", "run")
+    quality = (insights or {}).get("test_quality_self_rating", "medium")
+
+    # Hero section — bold linked tool + recommendation pill on one line,
+    # italicized headline on a second line (same shape as verdict card hero).
+    link = _safe_link(url, tool)
+    headline = (insights or {}).get("headline", "").strip()
+    hero_lines = [f"🧪  Lab: *{link}*  ·  {pill}"]
+    if headline:
+        hero_lines.append(f"_{headline}_")
+    hero_block: dict = {
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": "\n".join(hero_lines)},
+    }
+    accessory = _image_accessory(url, classification.get("category", "tool"))
+    if accessory is not None:
+        hero_block["accessory"] = accessory
+
+    # Metadata strip — exit status + duration + cost + test-quality badge.
+    exit_label = (
+        "✅ clean run" if exit_code == 0
+        else f"❌ {stage} failed (exit {exit_code})"
+    )
+    meta_strip = (
+        f"{exit_label}  ·  {duration:.0f}s  ·  ${cost:.3f}  ·  "
+        f"{_LAB_QUALITY_TRAIL.get(quality, quality)}"
+    )
+
+    # Two-column fields — *Worked* | *Didn't*. Same layout as verdict
+    # card's *Adoption* | *Next action*.
+    worked = (insights or {}).get("what_worked", "").strip() or "—"
+    didnt = (insights or {}).get("what_didnt", "").strip() or "—"
+    fields_block = {
+        "type": "section",
+        "fields": [
+            {"type": "mrkdwn", "text": f"*Worked*\n{worked}"},
+            {"type": "mrkdwn", "text": f"*Didn't*\n{didnt}"},
+        ],
+    }
+
+    inner_blocks: list[dict] = [
+        hero_block,
+        _context(meta_strip),
+        fields_block,
+    ]
+
+    # Optional rich_text_preformatted code excerpt — proves the test
+    # really ran by showing the actual script lines (Round 8 credibility
+    # move). Only included when test_excerpt is non-empty.
+    if test_excerpt and test_excerpt.strip():
+        inner_blocks.append(_rich_text(_rt_preformatted(test_excerpt.strip())))
+
+    # Next step gets a context-block-isolated last line. Bold-text label,
+    # no emoji label.
+    next_step = (insights or {}).get("next_step", "").strip()
+    if next_step:
+        inner_blocks.append(_context(f"*Next step* — {next_step}"))
+
+    attachment = {
+        "color": color,
+        "blocks": inner_blocks,
+        "fallback": f"Lab: {tool} — {pill.split(' ', 1)[-1]}",
+    }
+    return [], [attachment]
+
+
 def quiet_week_blocks(
     *,
     date: str,
@@ -691,93 +1216,18 @@ def _threaded_parent_blocks(
     prior_drops: int,
     duration_s: float | None = None,
 ) -> list[dict]:
-    """Build the channel-visible parent message blocks: header + funnel +
-    judge's read + numbered TL;DR scanner grouped by tier."""
-    sev_counts = {"critical": 0, "high": 0, "standard": 0}
-    for v in verdicts:
-        sev_counts[v.get("severity", "standard")] = sev_counts.get(v.get("severity", "standard"), 0) + 1
-
-    considered = scanned - dedup_drops - prior_drops
-    duration_str = f" · ⏱ {int(duration_s)}s" if duration_s else ""
-
-    blocks: list[dict] = [
-        _header(f"📡  Frontier Scout — Weekly Briefing · {date}"),
-        _context(
-            f"*{scanned}* scanned  ·  *{considered}* considered  ·  *{len(verdicts)}* shipped"
-        ),
-        _context(
-            f"{JUDGE_CONFIDENCE.get(judge_rating, '')}  ·  💰 ${cost:.4f}{duration_str}"
-        ),
-        _context(
-            f"🔥 *{sev_counts['critical']}* critical  ·  ⭐ *{sev_counts['high']}* high  ·  "
-            f"📌 *{sev_counts['standard']}* standard"
-        ),
-    ]
-    if judge_summary:
-        blocks.append(_divider())
-        blocks.append(_section(f"🧠  *Judge's read*\n> {judge_summary}"))
-
-    # "Tuned by N reactions" — channel taste model badge. Only shown above
-    # the cold-start threshold so the team learns about it once it actually
-    # influences rankings, not before.
-    tuned_line = _tuned_by_line()
-    if tuned_line:
-        blocks.append(_context(tuned_line))
-
-    blocks.append(_divider())
-    blocks.append({
-        "type": "header",
-        "text": {"type": "plain_text", "text": "TL;DR", "emoji": True},
-    })
-
-    # Group by tier and number sequentially.
-    grouped: dict[str, list[tuple[int, dict]]] = {t: [] for t in TIER_ORDER}
-    counter = 0
-    for tier in TIER_ORDER:
-        for v in verdicts:
-            if v["verdict"] == tier:
-                counter += 1
-                grouped[tier].append((counter, v))
-
-    # Two blocks per non-empty tier:
-    #   1. Context block — colored emoji + tier label + count. Slack renders
-    #      emojis inside context at ~14px instead of section's ~22px, so the
-    #      colored circles stop dominating the layout.
-    #   2. Section block — verdict rows with `#N` inline-code pills and
-    #      bolded tool names. Tool name is the anchor; the index is a
-    #      quiet reference handle.
-    # No inter-tier dividers — context's smaller padding + section's natural
-    # spacing already separate the groups cleanly.
-    # Severity / category / SOC2 stay in the full verdict cards in the
-    # thread — repeating them here would turn the TL;DR back into a wall
-    # of symbols instead of a scanner.
-    for tier in TIER_ORDER:
-        items = grouped.get(tier, [])
-        if not items:
-            continue
-        count = len(items)
-        verdicts_word = "verdict" if count == 1 else "verdicts"
-        blocks.append({
-            "type": "context",
-            "elements": [
-                {
-                    "type": "mrkdwn",
-                    "text": f"*{VERDICT_EMOJI[tier]}*  ·  {count} {verdicts_word}",
-                }
-            ],
-        })
-        rows = [
-            f"  {_verdict_marker(num)}   *{v['tool_name']}*"
-            for num, v in items
-        ]
-        blocks.append(_section("\n".join(rows)))
-
-    blocks.append(_divider())
-    blocks.append(_context(
-        "🧵  Full verdicts in thread  ·  🧪 lab  ·  👍 worth it  ·  👎 skip  "
-        "·  `/radar <tool>`  ·  `/recall <topic>`"
-    ))
-    return blocks
+    return _briefing_overview_blocks(
+        date=date,
+        scanned=scanned,
+        cost=cost,
+        verdicts=verdicts,
+        judge_rating=judge_rating,
+        judge_summary=judge_summary,
+        dedup_drops=dedup_drops,
+        prior_drops=prior_drops,
+        duration_s=duration_s,
+        top_k=_MAX_PARENT_HIGHLIGHTS,
+    )
 
 
 # Slack hard-caps overflow option `value` at 150 chars and rejects the
@@ -830,126 +1280,151 @@ def _overflow_value(action: str, tool: str) -> str:
     return val
 
 
-def _threaded_verdict_card(num: int, v: dict) -> tuple[list[dict], list[dict]]:
-    """Build (blocks, attachments) for one verdict card in the thread.
-
-    Blocks go inside an attachment so we get the colored vertical bar matching
-    the tier (Slack's only mechanism for tier-color today).
-    """
-    sev_icon = SEVERITY_ICON.get(v.get("severity", "standard"), "📌")
+def _threaded_verdict_card(
+    num: int,
+    v: dict,
+    *,
+    include_actions: bool = True,
+    show_rank: bool = True,
+) -> tuple[list[dict], list[dict]]:
+    """Build one verdict card. Supports actionless reuse for deep-eval replies."""
+    url = v.get("source_url", "")
+    tool_name = _clip(v.get("tool_name", "Tool"), 80)
+    link = _safe_link(url, tool_name)
+    what = _clip(v.get("what", ""), 220)
+    why_matters = _clip(v.get("why_it_matters", ""), 420)
+    why_now = _clip(v.get("why_this_week", ""), 220)
     readiness = int(v.get("readiness", 3))
     meter = _readiness_meter(readiness)
-    link = _safe_link(v["source_url"], v["tool_name"])
+    sev_icon = SEVERITY_ICON.get(v.get("severity", "standard"), "📌")
+    tier_word = VERDICT_LABEL.get(v.get("verdict", "assess"), "ASSESS")
+    category_word = CATEGORY_LABEL.get(v.get("category", "tool"), "Tools & Frameworks")
+    soc2_word = SOC2_LABEL.get(v.get("soc2", "conditional"), "SOC2-conditional")
 
-    header_text = f"{_verdict_marker(num)}  ·  {sev_icon}  {link}"
-    badges = (
-        f"{VERDICT_EMOJI[v['verdict']]}  ·  "
-        f"{CATEGORY_EMOJI[v['category']]}  ·  {SOC2_BADGE[v['soc2']]}"
-    )
-
-    inner_blocks: list[dict] = [
-        _section(header_text),
-        _context(badges),
-        _section(f"_{v['what']}_"),
-        _section(f"💡  *Why it matters*\n{v['why_it_matters']}"),
+    badge_line = f"{tier_word} · {(v.get('severity', 'standard') or 'standard').capitalize()} · {soc2_word}"
+    rank_prefix = f"{_verdict_marker(num)}  " if show_rank else ""
+    hero_lines = [
+        f"{rank_prefix}*{link}*",
+        f"{badge_line} · Readiness `{meter}` {readiness}/5",
     ]
+    if what:
+        hero_lines.append(f"_{_escape_mrkdwn(what)}_")
 
-    why_now = (v.get("why_this_week") or "").strip()
-    if why_now:
-        inner_blocks.append(_section(f"📅  *Why this week*\n> {why_now}"))
+    hero_block: dict = {
+        "type": "section",
+        "text": {"type": "mrkdwn", "text": "\n".join(hero_lines)},
+    }
+    accessory = _image_accessory(url, v.get("category", "tool"))
+    if accessory is not None:
+        hero_block["accessory"] = accessory
 
-    # Two-column field layout for adoption cost + next action
-    inner_blocks.append({
+    why_block = _section(
+        "*Why it matters*\n"
+        f"{_escape_mrkdwn(why_matters or 'No impact rationale provided.')}"
+    )
+    fields_block = {
         "type": "section",
         "fields": [
-            {"type": "mrkdwn", "text": f"⏱  *Adoption*\n{v['adoption_cost']}"},
-            {"type": "mrkdwn", "text": f"▶  *Next action*\n{v['next_action']}"},
+            {"type": "mrkdwn", "text": f"*Adoption cost*\n{_escape_mrkdwn(_clip(v.get('adoption_cost', '—'), 240))}"},
+            {"type": "mrkdwn", "text": f"*Next action*\n{_escape_mrkdwn(_clip(v.get('next_action', '—'), 240))}"},
         ],
-    })
+    }
 
-    inner_blocks.append(_context(f"📊  Readiness  `{meter}`  *{readiness}/5*"))
+    inner_blocks: list[dict] = [
+        hero_block,
+        why_block,
+        fields_block,
+    ]
 
-    # Interactive components MUST live in the top-level `blocks` array — Slack
-    # silently drops `actions` blocks placed inside attachments. Card content
-    # stays in the attachment (so the tier-colored vertical bar still
-    # renders); actions + overflow menu go in `outer_blocks` below.
-    action_context = json.dumps({
-        "tool_name": v["tool_name"],
-        "verdict": v["verdict"],
-        "soc2": v["soc2"],
-        "category": v["category"],
-        "source_url": v["source_url"],
-    })
+    notes: list[str] = [f"Category {category_word}"]
+    if why_now:
+        notes.append(f"Why now: {why_now}")
+    trend = _memory_trend_text(v.get("tool_name", ""), v.get("verdict", "assess"))
+    if trend:
+        notes.append(trend)
+    if url and not domain_allowed(url):
+        notes.append("Source link hidden (domain not allowlisted).")
+    if notes:
+        notes_line = " · ".join(_clip(n, _MAX_LINE_CHARS) for n in notes)
+        inner_blocks.append(_context(_clip(notes_line, 320)))
 
     attachment = {
-        "color": TIER_COLOR.get(v["verdict"], "#9aa0a6"),
+        "color": TIER_COLOR.get(v.get("verdict", "assess"), "#9aa0a6"),
         "blocks": inner_blocks,
-        "fallback": f"{v['tool_name']} — {v['verdict'].upper()}",
+        "fallback": _clip(
+            f"{tool_name}: {tier_word} · {soc2_word} · next action {v.get('next_action', '')}",
+            220,
+        ),
     }
-    # `accessibility_label` is what Slack reads out to screen-reader users
-    # instead of the visible button text. Visible labels carry emoji for the
-    # sighted UI; the a11y label spells out the action plus the tool name so
-    # the user knows *what* the action will affect, not just "queue lab."
-    tool_label = v["tool_name"][:60]  # Slack caps a11y label at ~70 chars
 
-    # Round 7: the 🧪 button only appears when the verdict's source URL is
-    # an actually-open-source repository. Closed-source / vendor / paywalled
-    # tools simply don't get a lab button — the runner can't pull them, and
-    # surfacing a button that always fails would confuse operators.
-    lab_button_visible = _is_open_source_url(v.get("source_url", ""))
+    if not include_actions:
+        return [], [attachment]
+
+    action_payload = {
+        "tool_name": _clip(v.get("tool_name", ""), 120),
+        "verdict": v.get("verdict", ""),
+        "soc2": v.get("soc2", ""),
+        "category": v.get("category", ""),
+        "source_url": _clip(url, 1000),
+    }
+    action_context = json.dumps(action_payload, ensure_ascii=False)
+    if len(action_context) > 1900:
+        action_payload["source_url"] = _clip(url, 300)
+        action_context = json.dumps(action_payload, ensure_ascii=False)
+    tool_label = tool_name[:60]
+    lab_button_visible = _is_open_source_url(url)
     lab_button = {
         "type": "button",
-        "text": {"type": "plain_text", "text": "🧪  Run Lab", "emoji": True},
+        "text": {"type": "plain_text", "text": "Run Lab", "emoji": True},
         "action_id": "verdict_lab",
         "value": action_context,
         "style": "primary",
-        "accessibility_label": f"Run automated lab on {tool_label} against configured stack patterns",
+        "accessibility_label": _a11y_label(
+            f"Run automated lab on {tool_label} against your stack patterns"
+        ),
     } if lab_button_visible else None
 
-    outer_blocks: list[dict] = [
-        {
-            "type": "actions",
-            "block_id": f"verdict_actions_{num}",
-            "elements": [
-                *([lab_button] if lab_button is not None else []),
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "📚  Full evaluation", "emoji": True},
-                    "action_id": "verdict_evaluate",
-                    "value": action_context,
-                    "accessibility_label": f"Run full evaluation on {tool_label}",
-                },
-                {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "📊  Compare", "emoji": True},
-                    "action_id": "verdict_compare",
-                    "value": action_context,
-                    "accessibility_label": f"Compare current verdict on {tool_label} to prior verdicts",
-                },
-                {
-                    # Three-dot overflow menu for secondary actions. Keeps the
-                    # primary row uncluttered while exposing follow-ups that
-                    # become useful as the radar accumulates Mem0 history.
-                    "type": "overflow",
-                    "action_id": "verdict_overflow",
-                    "options": [
-                        {
-                            "text": {"type": "plain_text", "text": "✓ Mark as already evaluated", "emoji": True},
-                            "value": _overflow_value("mark_seen", v["tool_name"]),
-                        },
-                        {
-                            "text": {"type": "plain_text", "text": "🔕 Snooze this tool 30 days", "emoji": True},
-                            "value": _overflow_value("snooze_30d", v["tool_name"]),
-                        },
-                        {
-                            "text": {"type": "plain_text", "text": "🔗 Copy source link", "emoji": True},
-                            "value": _overflow_value("copy_link", v["tool_name"]),
-                        },
-                    ],
-                },
-            ],
-        },
-    ]
+    outer_blocks: list[dict] = [{
+        "type": "actions",
+        "block_id": f"verdict_actions_{num}",
+        "elements": [
+            *([lab_button] if lab_button is not None else []),
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Deep Evaluation", "emoji": True},
+                "action_id": "verdict_evaluate",
+                "value": action_context,
+                "accessibility_label": _a11y_label(f"Run full evaluation on {tool_label}"),
+            },
+            {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Compare", "emoji": True},
+                "action_id": "verdict_compare",
+                "value": action_context,
+                "accessibility_label": _a11y_label(
+                    f"Compare current verdict on {tool_label} to prior verdicts"
+                ),
+            },
+            {
+                "type": "overflow",
+                "action_id": "verdict_overflow",
+                "options": [
+                    {
+                        "text": {"type": "plain_text", "text": "Mark as evaluated", "emoji": True},
+                        "value": _overflow_value("mark_seen", v.get("tool_name", "")),
+                    },
+                    {
+                        "text": {"type": "plain_text", "text": "Snooze for 30 days", "emoji": True},
+                        "value": _overflow_value("snooze_30d", v.get("tool_name", "")),
+                    },
+                    {
+                        "text": {"type": "plain_text", "text": "Copy source link", "emoji": True},
+                        "value": _overflow_value("copy_link", v.get("tool_name", "")),
+                    },
+                ],
+            },
+        ],
+    }]
     return outer_blocks, [attachment]
 
 
@@ -1006,8 +1481,6 @@ def weekly_briefing_threaded(
             group = by_tier[tier]
             if not group:
                 continue
-            print(f"─── SLACK DRY RUN (thread anchor · {tier.upper()}) ───")
-            print(_tier_anchor_text(tier, len(group)))
             for num, v in group:
                 outer, atts = _threaded_verdict_card(num, v)
                 print(f"─── SLACK DRY RUN (threaded · #{num} {v['tool_name']}) ───")
@@ -1021,7 +1494,7 @@ def weekly_briefing_threaded(
     # thread-failure case is visible in quality-log.jsonl rather than silently
     # counting as a clean post.
     delivery: dict = {"parent": False, "anchors_attempted": 0, "anchors_failed": 0,
-                       "verdicts_attempted": 0, "verdicts_failed": 0}
+                      "verdicts_attempted": 0, "verdicts_failed": 0}
     # message_ts → verdict-card meta. Persisted to briefings/<date>-meta.json
     # so the Lambda reaction dispatcher can enrich incoming reactions with
     # {tool, category, tags} without having to grep the briefing markdown.
@@ -1043,36 +1516,19 @@ def weekly_briefing_threaded(
     )
     delivery["parent"] = True
 
-    # Then, for each tier with verdicts, post a tier-anchor reply followed by
-    # one colored attachment per verdict.
+    # Post each verdict card in tier order.
     for tier in TIER_ORDER:
         group = by_tier[tier]
         if not group:
             continue
-        anchor_blocks = [_section(_tier_anchor_text(tier, len(group)))]
-        anchor_fallback = f"{tier.upper()} tier — {len(group)} verdicts"
-        delivery["anchors_attempted"] += 1
-        try:
-            _with_slack_retry(
-                _post_thread_reply,
-                parent_ts,
-                anchor_blocks,
-                None,
-                op_label=f"slack tier-anchor {tier}",
-                dead_letter_payload={"thread_ts": parent_ts, "blocks": anchor_blocks},
-                text_fallback=anchor_fallback,
-            )
-        except Exception as e:  # noqa: BLE001
-            print(f"  ⚠️  tier anchor {tier} failed (continuing): {e}")
-            delivery["anchors_failed"] += 1
-
         for num, v in group:
             outer, atts = _threaded_verdict_card(num, v)
             # Per-card fallback names the tool + verdict so push notifications
             # and screen readers carry real meaning, not "Frontier Scout verdict".
             card_fallback = (
                 f"#{num} {v['tool_name']}: {v['verdict'].upper()} · "
-                f"{v.get('category', 'tool')} · SOC2-{v.get('soc2', '?')}"
+                f"{v.get('category', 'tool')} · SOC2-{v.get('soc2', '?')} · "
+                f"next: {_clip(v.get('next_action', ''), 70)}"
             )
             delivery["verdicts_attempted"] += 1
             try:
@@ -1100,6 +1556,27 @@ def weekly_briefing_threaded(
                     "soc2": v.get("soc2", ""),
                     "num": num,
                 }
+
+    if delivery["verdicts_failed"] > 0:
+        failure_blocks = [
+            _section(
+                ":warning: Some verdict cards could not be posted.\n"
+                f"{delivery['verdicts_failed']} of {delivery['verdicts_attempted']} failed. "
+                "The run summary is valid; check pipeline logs before sharing."
+            ),
+        ]
+        try:
+            _with_slack_retry(
+                _post_thread_reply,
+                parent_ts,
+                failure_blocks,
+                None,
+                op_label="slack thread failure notice",
+                dead_letter_payload={"thread_ts": parent_ts, "blocks": failure_blocks},
+                text_fallback="Frontier Scout warning: some verdict cards failed to post.",
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"  ⚠️  failed to post thread failure notice: {e}")
 
     # Persist the message_ts → meta map for the reaction dispatcher. Lives
     # under briefings/ so it's committed alongside the briefing markdown

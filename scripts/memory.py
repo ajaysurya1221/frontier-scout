@@ -1,9 +1,11 @@
 """
-Mem0 OSS wrapper — semantic memory over past Frontier Scout verdicts.
+Mem0 OSS wrapper — semantic memory over past radar verdicts.
 
 Storage: Chroma vector store persisted to memory/chroma/ (committed to repo).
-Embeddings: OpenAI text-embedding-3-small.
+Embeddings: OpenAI text-embedding-3-small (existing configured vendor).
 LLM (for memory consolidation): Anthropic Claude Sonnet 4.6.
+
+All three vendors are already in the configured SOC2 vendor list — zero new surface.
 
 Usage:
     from scripts.memory import mem
@@ -114,6 +116,7 @@ class RadarMemory:
             "verdict": meta.get("verdict"),
             "soc2": meta.get("soc2"),
             "category": meta.get("category"),
+            "added_at": meta.get("added_at"),
             "score": score,
             "text": top.get("memory"),
         }

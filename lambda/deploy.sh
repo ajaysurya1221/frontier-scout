@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Deploy the Frontier Scout Slack interactivity Lambda.
 #
-# Runs locally (with AWS credentials in env) or in the `deploy-lambda` custom
-# GitHub Actions workflow (credentials from repository secrets).
+# Runs locally (with AWS credentials in env) or in the `deploy-lambda`
+# GitHub Actions workflow (credentials from secrets).
 #
 # Required env:
 #   AWS_REGION            — e.g. us-east-1
@@ -34,6 +34,11 @@ pip install \
 
 # Copy our handler code on top
 cp "${LAMBDA_DIR}"/*.py "${BUILD_DIR}/pkg/"
+
+# Round 9: App Home dispatcher imports `home_view` (lives under scripts/ so
+# it can be unit-tested without an AWS runtime). Bundle it into the zip.
+REPO_ROOT="$(cd "${LAMBDA_DIR}/.." && pwd)"
+cp "${REPO_ROOT}/scripts/home_view.py" "${BUILD_DIR}/pkg/"
 
 # Zip everything (cd into pkg/ so paths inside the zip are relative)
 (cd "${BUILD_DIR}/pkg" && zip -qr "${ZIP_PATH}" .)

@@ -124,7 +124,7 @@ def handle(event: dict) -> dict:
         "log": log,
         "next_step": (
             "Set S3_MIRROR_BUCKET=" + bucket + " on the Lambda + in GitHub Actions "
-            "Repository Variables. Trigger one Scout run; aws s3 sync will "
+            "secrets if you use the optional S3 mirror. Trigger one Scout run; aws s3 sync will "
             "populate the mirror; /recall will start returning semantic results."
         ),
     }
