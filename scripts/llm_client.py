@@ -2,10 +2,9 @@
 Centralized Anthropic client with bounded exponential backoff + jitter.
 
 Every LLM call in the system routes through `call_with_retry()` so retry
-behavior is consistent across Scout score / Scout verdict / Pulse score /
-Pulse verdict / Judge / Synthesizer. The reviewer's final audit flagged a
-production-blocking Opus 529 OverloadedError that aborted a Scout run mid-way;
-this module fixes that by retrying:
+behavior is consistent across Scout score, Scout verdict, judge, and lab
+interpretation paths. A prior live run hit a provider-side Opus 529
+OverloadedError mid-scan; this module fixes that by retrying:
 
   - 529 OverloadedError  (provider-wide overload)
   - 5xx server errors    (provider-side transient)

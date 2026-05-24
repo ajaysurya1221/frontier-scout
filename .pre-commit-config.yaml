@@ -1,8 +1,8 @@
 # Run `pre-commit install` once after cloning to enable the hooks.
 # Required: pip install pre-commit  (and optionally detect-secrets locally).
 #
-# The CI gate (bitbucket-pipelines.yml pull-requests) also runs detect-secrets
-# — pre-commit is the local fast-feedback layer; CI is the authoritative gate.
+# GitHub Actions also runs detect-secrets. Pre-commit is the local
+# fast-feedback layer; CI is the authoritative gate.
 
 repos:
   - repo: https://github.com/Yelp/detect-secrets
@@ -12,7 +12,7 @@ repos:
         args:
           - --baseline
           - .secrets.baseline
-        exclude: '\.git/|memory/chroma/|costs\.jsonl|quality-log\.jsonl|briefings/|archive/'
+        exclude: '\.git/|\.pytest_cache/|costs\.jsonl|quality-log\.jsonl|demo/'
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0

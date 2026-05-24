@@ -1,10 +1,8 @@
 """Lab-runner regression tests — polyglot dispatcher, hermetic env,
 cost caps, secret-leak guard, URL classification, test excerpt.
 
-These were salvaged from the Round-10 era ``tests/test_pipeline_bits.py``
-when the Slack / Lambda / Pulse surface was removed. The lab runner
-itself was untouched in the v0.1 refocus — these are the behavioural
-contracts every public release MUST hold.
+These are the behavioural contracts every public release MUST hold for the
+local polyglot lab runner.
 """
 
 from __future__ import annotations

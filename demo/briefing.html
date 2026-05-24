@@ -1,270 +1,173 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Frontier Scout — Demo Briefing</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frontier Scout Radar · 2026-05-21</title>
 <style>
 :root {
-  --bg: #f8f8f8;
-  --card: #ffffff;
-  --text: #1d1c1d;
-  --muted: #616061;
-  --border: #e1e1e1;
-  --link: #1264a3;
-  --code-bg: #f4ede4;
-  --quote-border: #e1e1e1;
-  --adopt: #36a64f;
-  --trial: #f2c744;
-  --assess: #9aa0a6;
-  --hold: #d93025;
+  color-scheme: light;
+  --ink: #17202a;
+  --muted: #5f6b7a;
+  --line: #d9e1ea;
+  --paper: #fbfcfe;
+  --panel: #ffffff;
+  --adopt: #137a4b;
+  --trial: #9a6700;
+  --assess: #52616f;
+  --hold: #b42318;
+  --accent: #2454d6;
 }
-html, body { margin: 0; padding: 0; background: var(--bg); }
+* { box-sizing: border-box; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-  color: var(--text);
-  font-size: 15px;
-  line-height: 1.46;
+  margin: 0;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.55;
 }
-.wrap { max-width: 760px; margin: 32px auto; padding: 0 16px; }
-header { margin-bottom: 24px; }
-header h1 { font-size: 18px; margin: 0 0 4px 0; }
-header .meta { color: var(--muted); font-size: 13px; }
-
-.parent {
-  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
-  padding: 20px 24px; margin-bottom: 16px;
-}
-.parent h2 { font-size: 22px; margin: 0 0 8px 0; }
-.parent .stats { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
-.parent .sev-counts { color: var(--text); font-size: 14px; margin-bottom: 16px; }
-.parent blockquote {
-  border-left: 4px solid var(--quote-border); margin: 0 0 16px 0;
-  padding: 4px 12px; color: var(--text); font-size: 14px;
-}
-.parent .tier-tldr { margin-top: 18px; }
-.parent .tier-tldr h3 { font-size: 15px; margin: 12px 0 6px 0; }
-.parent .tier-tldr ul { margin: 0; padding-left: 24px; }
-.parent .tier-tldr li { padding: 2px 0; }
-.parent .footer { color: var(--muted); font-size: 13px; margin-top: 16px;
-                   padding-top: 12px; border-top: 1px solid var(--border); }
-
-.thread-anchor {
-  text-align: center; color: var(--muted); font-size: 13px;
-  margin: 14px 0 8px 0;
-}
-
-.card {
-  background: var(--card); border-radius: 8px;
-  border-left: 4px solid var(--assess);
-  margin-bottom: 12px; padding: 16px 20px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-}
+main { max-width: 1120px; margin: 0 auto; padding: 40px 22px 56px; }
+.hero { border-bottom: 1px solid var(--line); padding-bottom: 26px; }
+.kicker { color: var(--accent); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 12px; }
+h1 { margin: 8px 0 10px; font-size: clamp(34px, 5vw, 64px); line-height: 1.02; letter-spacing: 0; }
+.promise { max-width: 760px; color: var(--muted); font-size: 19px; }
+.metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 26px 0 0; }
+.metric { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
+.metric b { display: block; font-size: 20px; }
+.metric span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.judge { margin-top: 16px; max-width: 900px; color: var(--muted); }
+.section-title { margin: 34px 0 10px; display: flex; justify-content: space-between; gap: 16px; align-items: end; }
+.section-title h2 { margin: 0; font-size: 24px; }
+.section-title p { margin: 0; color: var(--muted); }
+.cards { display: grid; gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-left: 5px solid var(--assess); border-radius: 8px; padding: 18px; }
 .card.adopt { border-left-color: var(--adopt); }
 .card.trial { border-left-color: var(--trial); }
 .card.assess { border-left-color: var(--assess); }
 .card.hold { border-left-color: var(--hold); }
-
-.card .head { font-size: 15px; }
-.card .head a { color: var(--link); text-decoration: none; font-weight: 700; }
-.card .head a:hover { text-decoration: underline; }
-.card .badges { color: var(--muted); font-size: 13px; margin: 4px 0 10px 0; }
-.card .what { font-style: italic; color: var(--text); margin-bottom: 12px; }
-.card .field { margin: 8px 0; }
-.card .field .label { font-weight: 700; }
-.card .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
-.card .meter { color: var(--muted); font-size: 13px; margin-top: 10px;
-                font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.card blockquote {
-  border-left: 3px solid var(--quote-border); margin: 6px 0;
-  padding: 2px 10px; font-size: 14px; color: var(--text);
+.card-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+.tier { font-weight: 800; font-size: 12px; letter-spacing: .08em; }
+.adopt .tier { color: var(--adopt); }
+.trial .tier { color: var(--trial); }
+.assess .tier { color: var(--assess); }
+.hold .tier { color: var(--hold); }
+.meta { color: var(--muted); font-size: 13px; }
+h3 { margin: 7px 0 8px; font-size: 22px; letter-spacing: 0; }
+a { color: var(--accent); text-decoration: none; }
+.what { font-size: 16px; margin: 0 0 12px; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+.field { border-top: 1px solid var(--line); padding-top: 10px; }
+.field b { display: block; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-bottom: 2px; }
+code { background: #eef2f7; border: 1px solid #dfe6ef; border-radius: 5px; padding: 1px 5px; }
+footer { color: var(--muted); margin-top: 34px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 13px; }
+@media (max-width: 760px) {
+  main { padding-top: 28px; }
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid { grid-template-columns: 1fr; }
 }
-.actions {
-  display: flex; gap: 8px; margin-top: 14px; padding-top: 10px;
-  border-top: 1px solid var(--border);
-}
-.btn {
-  background: #f8f8f8; border: 1px solid var(--border); border-radius: 4px;
-  padding: 6px 12px; font-size: 13px; color: var(--text); cursor: default;
-}
-.btn.primary { background: var(--adopt); color: white; border-color: var(--adopt); }
-
-footer { color: var(--muted); font-size: 12px; text-align: center; margin: 24px 0; }
-footer a { color: var(--link); }
 </style>
 </head>
 <body>
-<div class="wrap">
-<header>
-  <h1>#frontier-scout · Slack preview</h1>
-  <div class="meta">This is what the bot posts every Monday. Generated locally — no Slack workspace required.</div>
-</header>
-
-<div class="parent">
-  <h2>📡 Frontier Scout — Weekly Briefing · 2026-05-21</h2>
-  <div class="stats">
-    <strong>377</strong> scanned ·
-    <strong>350</strong> considered ·
-    <strong>6</strong> shipped
+<main>
+  <section class="hero">
+    <div class="kicker">Frontier Scout · Local AI Radar · 2026-05-21</div>
+    <h1>Know which AI tools are worth trying this week.</h1>
+    <p class="promise">A local briefing for AI engineers and technical leaders: source-backed verdicts, risk, stack fit, adoption cost, and the next lab test. No SaaS account. No hosted telemetry. Bring your own API key.</p>
+    <div class="metrics">
+      <div class="metric"><b>377</b><span>scanned</span></div>
+      <div class="metric"><b>350</b><span>considered</span></div>
+      <div class="metric"><b>5</b><span>verdicts</span></div>
+      <div class="metric"><b>$0.31</b><span>run cost</span></div>
+      <div class="metric"><b>high</b><span>judge</span></div>
+    </div>
+    <p class="judge"><strong>Summary:</strong> ADOPT 1 · TRIAL 2 · ASSESS 1 · HOLD 1 · Tight upstream pass: vetoed patch-release noise, kept source-backed verdicts, and preserved conservative risk calls.</p>
+  </section>
+  <section>
+    <div class="section-title">
+      <h2>Verdicts</h2>
+      <p>ADOPT / TRIAL / ASSESS / HOLD</p>
+    </div>
+    <div class="cards">
+      <article class="card adopt">
+  <div class="card-head">
+    <span class="tier">01 · ADOPT</span>
+    <span class="meta">Skill · low risk · fit HIGH · readiness <code>[#####]</code></span>
   </div>
-  <div class="stats">
-    🤖 Judge: <strong>HIGH</strong> ·
-    💰 $0.3100 ·
-    ⏱ 232s
-  </div>
-  <div class="sev-counts">
-    🔥 <strong>1</strong> critical ·
-    ⭐ <strong>3</strong> high ·
-    📌 <strong>2</strong> standard
-  </div>
-
-  <blockquote>🧠 <strong>Judge's read</strong><br>Tight upstream pass — vetoed two noise items, promoted one stack-direct trending repo. SOC2 calls are conservative and well-reasoned.</blockquote>
-
-  <div class="tier-tldr">
-    <h3 style="text-align:center;color:var(--muted);">━━━━━━━━━━  TL;DR  ━━━━━━━━━━</h3>
-    <h3>🟢 ADOPT · 2</h3>
-<ul>
-<li>1️⃣ 🔥 <strong>anthropics/skills</strong> · 🛠️ · ✅</li>
-<li>2️⃣ ⭐ <strong>obra/superpowers</strong> · 🛠️ · ⚠️</li>
-</ul>
-<h3>🟡 TRIAL · 2</h3>
-<ul>
-<li>3️⃣ ⭐ <strong>Gemini 3.5 Flash</strong> · 🧠 · ⚠️</li>
-<li>4️⃣ ⭐ <strong>Forge (Guardrails for Agentic Tasks)</strong> · 🤖 · ⚠️</li>
-</ul>
-<h3>⚪ ASSESS · 1</h3>
-<ul>
-<li>5️⃣ 📌 <strong>Qwen3.6-35B-A3B</strong> · 🧠 · ⚠️</li>
-</ul>
-<h3>🔴 HOLD · 1</h3>
-<ul>
-<li>6️⃣ 📌 <strong>DeepSeek-V4-Pro</strong> · 🧠 · ❌</li>
-</ul>
-  </div>
-
-  <div class="footer">
-    🧵 Full verdicts in thread →  react 🧪 to lab · 👍 worth it · 👎 skip
-  </div>
-</div>
-
-<div class="thread-anchor">━━━━━━━━━━ 🟢 ADOPT · 2 ━━━━━━━━━━</div>
-
-<div class="card adopt">
-  <div class="head">1️⃣ · 🔥 <a href="https://github.com/anthropics/skills">anthropics/skills</a></div>
-  <div class="badges">🟢 ADOPT · 🛠️ Tools & Frameworks · ✅ SOC2-safe</div>
-  <div class="what">Anthropic's official public repository of Agent Skills — reusable, composable capability modules for Claude-based agents.</div>
-  <div class="field"><span class="label">💡 Why it matters</span><br>Skills primitives accelerate building agentic capabilities (retrieval, structured extraction, tool-use patterns) without reinventing plumbing, and carry implicit compatibility guarantees with Claude model updates.</div>
-  <div class="field"><blockquote>📅 <strong>Why this week</strong><br>Public release this week with broad surge in adoption across Claude Code, Codex and Cursor integrations.</blockquote></div>
+  <h3><a href="https://github.com/anthropics/skills" rel="noopener">anthropics/skills</a></h3>
+  <p class="what">Anthropic's official repo of reusable Skill bundles for AI coding agents.</p>
   <div class="grid">
-    <div><strong>⏱ Adoption</strong><br>~2 hrs to audit + prototype one skill in an existing agent · low risk</div>
-    <div><strong>▶ Next action</strong><br>Lab — clone, identify one skill applicable to document extraction, integrate into one LangGraph node, demo to the team within 1 sprint.</div>
+    <div class="field"><b>Why it matters</b>If you already work inside Claude Code, Codex, or Cursor, reusable skill bundles turn repeat prompts into durable operating procedure.</div>
+    <div class="field"><b>Why this week</b>A new batch expanded the catalogue beyond the first few coding workflows.</div>
+    <div class="field"><b>Adoption cost</b>~10 min to inspect one skill and test it in a non-production repo. Low risk.</div>
+    <div class="field"><b>Next action</b>Run a local lab on one skill, then install only the workflow you would actually use this week.</div>
   </div>
-  <div class="meter">📊 Readiness <code>▰▰▰▰▰</code> 5/5</div>
-  <div class="actions">
-    <button class="btn primary" disabled>🧪 Queue lab</button>
-    <button class="btn" disabled>📚 Full evaluation</button>
-    <button class="btn" disabled>📊 Compare</button>
+  <p class="meta"><strong>Use now</strong> · provenance: https://github.com/anthropics/skills</p>
+</article>
+<article class="card trial">
+  <div class="card-head">
+    <span class="tier">02 · TRIAL</span>
+    <span class="meta">MCP Server · medium risk · fit HIGH · readiness <code>[####-]</code></span>
   </div>
-</div>
-
-
-<div class="card adopt">
-  <div class="head">2️⃣ · ⭐ <a href="https://github.com/obra/superpowers">obra/superpowers</a></div>
-  <div class="badges">🟢 ADOPT · 🛠️ Tools & Frameworks · ⚠️ SOC2-conditional</div>
-  <div class="what">Agentic skills framework + software development methodology already on our dev stack.</div>
-  <div class="field"><span class="label">💡 Why it matters</span><br>Stack-direct hit. 10,577 stars this week signals a major version or surge — check if our pinned version is current and whether new skills are relevant to ongoing work.</div>
-  <div class="field"><blockquote>📅 <strong>Why this week</strong><br>Trending hard on GitHub this week (+10.5k stars in 7 days) — strong signal something changed.</blockquote></div>
+  <h3><a href="https://github.com/modelcontextprotocol/servers" rel="noopener">modelcontextprotocol/servers</a></h3>
+  <p class="what">Reference MCP servers that connect AI agents to databases, filesystems, browser tools, and developer APIs.</p>
   <div class="grid">
-    <div><strong>⏱ Adoption</strong><br>Already on the dev stack · upgrade audit is ~1 hr</div>
-    <div><strong>▶ Next action</strong><br>Audit current pin against latest release; review changelog for breaking changes; bump version if compatible.</div>
+    <div class="field"><b>Why it matters</b>Teams adopting AI coding agents need tool access that is explicit, auditable, and easy to revoke. MCP is becoming that contract.</div>
+    <div class="field"><b>Why this week</b>MCP adoption is accelerating across coding agents, and reference servers are becoming the default integration path.</div>
+    <div class="field"><b>Adoption cost</b>~30 min to test one read-only server with throwaway credentials. Medium risk until permissions are reviewed.</div>
+    <div class="field"><b>Next action</b>Trial one read-only MCP server against a sandbox project and document the permission boundary.</div>
   </div>
-  <div class="meter">📊 Readiness <code>▰▰▰▰▱</code> 4/5</div>
-  <div class="actions">
-    <button class="btn primary" disabled>🧪 Queue lab</button>
-    <button class="btn" disabled>📚 Full evaluation</button>
-    <button class="btn" disabled>📊 Compare</button>
+  <p class="meta"><strong>Test next</strong> · provenance: https://github.com/modelcontextprotocol/servers</p>
+</article>
+<article class="card trial">
+  <div class="card-head">
+    <span class="tier">03 · TRIAL</span>
+    <span class="meta">Agent Framework · medium risk · fit MEDIUM · readiness <code>[####-]</code></span>
   </div>
-</div>
-
-<div class="thread-anchor">━━━━━━━━━━ 🟡 TRIAL · 2 ━━━━━━━━━━</div>
-
-<div class="card trial">
-  <div class="head">3️⃣ · ⭐ <a href="https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-3-5/">Gemini 3.5 Flash</a></div>
-  <div class="badges">🟡 TRIAL · 🧠 Frontier Models · ⚠️ SOC2-conditional</div>
-  <div class="what">Google's new GA fast/cheap frontier model, deployed across Search and Gemini app at scale.</div>
-  <div class="field"><span class="label">💡 Why it matters</span><br>Flash-tier pricing makes it a credible candidate for high-volume document classification where Sonnet cost dominates. GA-from-day-one signals production readiness; SOC2 conditional pending Vertex AI data residency confirmation.</div>
-  <div class="field"><blockquote>📅 <strong>Why this week</strong><br>Skipped preview and jumped straight to GA — Google is signaling production-confidence on the Flash tier.</blockquote></div>
+  <h3><a href="https://github.com/browser-use/browser-use" rel="noopener">browser-use/browser-use</a></h3>
+  <p class="what">Python framework for browser-driving agents powered by Playwright and LLM tool calls.</p>
   <div class="grid">
-    <div><strong>⏱ Adoption</strong><br>~3 hrs benchmark vs Sonnet on 50 classification samples · medium risk (verify Vertex training opt-out)</div>
-    <div><strong>▶ Next action</strong><br>Evaluate — run head-to-head benchmark on document classification; check Vertex AI data-processing addendum for training opt-out before any prod data path.</div>
+    <div class="field"><b>Why it matters</b>Research, QA, and competitive-intel workflows often need real browser interaction. This can replace brittle one-off scripts when tested carefully.</div>
+    <div class="field"><b>Why this week</b>Recent structured-output support makes browser tasks easier to evaluate and retry.</div>
+    <div class="field"><b>Adoption cost</b>~45 min to lab-test on a public site. Medium risk because browser automation is dependency-heavy.</div>
+    <div class="field"><b>Next action</b>Lab-test one public browsing workflow and compare success rate, cost, and maintenance against a plain Playwright script.</div>
   </div>
-  <div class="meter">📊 Readiness <code>▰▰▰▰▰</code> 5/5</div>
-  <div class="actions">
-    <button class="btn primary" disabled>🧪 Queue lab</button>
-    <button class="btn" disabled>📚 Full evaluation</button>
-    <button class="btn" disabled>📊 Compare</button>
+  <p class="meta"><strong>Test next</strong> · provenance: https://github.com/browser-use/browser-use</p>
+</article>
+<article class="card assess">
+  <div class="card-head">
+    <span class="tier">04 · ASSESS</span>
+    <span class="meta">Model Drop · medium risk · fit LOW · readiness <code>[###--]</code></span>
   </div>
-</div>
-
-
-<div class="card trial">
-  <div class="head">4️⃣ · ⭐ <a href="https://github.com/antoinezambelli/forge">Forge (Guardrails for Agentic Tasks)</a></div>
-  <div class="badges">🟡 TRIAL · 🤖 Orchestration & Agents · ⚠️ SOC2-conditional</div>
-  <div class="what">Open-source guardrail framework that lifts an 8B-model task-completion rate from 53% to 99% on agentic benchmarks via proposer + verifier loops.</div>
-  <div class="field"><span class="label">💡 Why it matters</span><br>Reliability claim is compelling for domains where a hallucinated extraction or citation is a trust-killer. Complements deepeval already in the stack.</div>
+  <h3><a href="https://huggingface.co/Qwen/Qwen3-Coder-30B" rel="noopener">Qwen/Qwen3-Coder-30B</a></h3>
+  <p class="what">Open-weight coding model aimed at local or self-hosted code generation workflows.</p>
   <div class="grid">
-    <div><strong>⏱ Adoption</strong><br>~4-6 hrs to wrap one LangGraph node · medium risk (early-stage project, API may shift)</div>
-    <div><strong>▶ Next action</strong><br>Lab — apply Forge guardrails to one agent node; compare output validity rate against baseline using deepeval; timebox to 4 hrs.</div>
+    <div class="field"><b>Why it matters</b>Hosted frontier models still win for many teams, but local coding models can matter for privacy, latency, and fallback paths.</div>
+    <div class="field"><b>Why this week</b>Fresh model release with enough community attention to watch independent evals closely.</div>
+    <div class="field"><b>Adoption cost</b>~2 hrs to benchmark if you already have GPU capacity; otherwise not worth the infrastructure work yet.</div>
+    <div class="field"><b>Next action</b>Monitor independent coding-agent evals for 30 days before spending integration time.</div>
   </div>
-  <div class="meter">📊 Readiness <code>▰▰▱▱▱</code> 2/5</div>
-  <div class="actions">
-    <button class="btn primary" disabled>🧪 Queue lab</button>
-    <button class="btn" disabled>📚 Full evaluation</button>
-    <button class="btn" disabled>📊 Compare</button>
+  <p class="meta"><strong>Watch closely</strong> · provenance: https://huggingface.co/Qwen/Qwen3-Coder-30B</p>
+</article>
+<article class="card hold">
+  <div class="card-head">
+    <span class="tier">05 · HOLD</span>
+    <span class="meta">Model Drop · high risk · fit LOW · readiness <code>[####-]</code></span>
   </div>
-</div>
-
-<div class="thread-anchor">━━━━━━━━━━ ⚪ ASSESS · 1 ━━━━━━━━━━</div>
-
-<div class="card assess">
-  <div class="head">5️⃣ · 📌 <a href="https://huggingface.co/Qwen/Qwen3.6-35B-A3B">Qwen3.6-35B-A3B</a></div>
-  <div class="badges">⚪ ASSESS · 🧠 Frontier Models · ⚠️ SOC2-conditional</div>
-  <div class="what">Alibaba open-weight multimodal MoE (35B total / 3B active), Apache-2.0, 5.8M downloads on HuggingFace.</div>
-  <div class="field"><span class="label">💡 Why it matters</span><br>Apache-2.0 + MoE efficiency makes this interesting for self-hosted inference. 3B active params runs on smaller GPU instances. Alibaba provenance needs legal sign-off before any prod path.</div>
+  <h3><a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro" rel="noopener">deepseek-ai/DeepSeek-V4-Pro</a></h3>
+  <p class="what">Large open-weight reasoning model with a footprint beyond a normal laptop or small CI runner.</p>
   <div class="grid">
-    <div><strong>⏱ Adoption</strong><br>1-2 days to stand up on SageMaker for benchmarking · medium risk (legal review required)</div>
-    <div><strong>▶ Next action</strong><br>Monitor 3 months — watch for independent evals on document-heavy tasks; revisit when self-host fallback is a real need.</div>
+    <div class="field"><b>Why it matters</b>It is important ecosystem signal, not an immediate adoption candidate for a lean engineering team.</div>
+    <div class="field"><b>Why this week</b>High-visibility release, but size and operational requirements make it a poor first trial for most teams.</div>
+    <div class="field"><b>Adoption cost</b>Weekend-scale GPU setup plus ongoing compute. High risk unless a real self-hosting need exists.</div>
+    <div class="field"><b>Next action</b>Hold until smaller quantized variants and credible independent evals are available.</div>
   </div>
-  <div class="meter">📊 Readiness <code>▰▰▰▰▱</code> 4/5</div>
-  <div class="actions">
-    <button class="btn primary" disabled>🧪 Queue lab</button>
-    <button class="btn" disabled>📚 Full evaluation</button>
-    <button class="btn" disabled>📊 Compare</button>
-  </div>
-</div>
-
-<div class="thread-anchor">━━━━━━━━━━ 🔴 HOLD · 1 ━━━━━━━━━━</div>
-
-<div class="card hold">
-  <div class="head">6️⃣ · 📌 <a href="https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro">DeepSeek-V4-Pro</a></div>
-  <div class="badges">🔴 HOLD · 🧠 Frontier Models · ❌ SOC2-blocked</div>
-  <div class="what">DeepSeek open-weight frontier model, MIT license, 3.8M downloads on HuggingFace.</div>
-  <div class="field"><span class="label">💡 Why it matters</span><br>Chinese AI lab with documented data-residency ambiguity and ongoing compliance scrutiny. Prior versions had telemetry questions never fully resolved.</div>
-  <div class="grid">
-    <div><strong>⏱ Adoption</strong><br>N/A — blocked on SOC2 and compliance grounds regardless of self-hosting posture.</div>
-    <div><strong>▶ Next action</strong><br>Hold indefinitely. Revisit only if legal counsel explicitly clears it.</div>
-  </div>
-  <div class="meter">📊 Readiness <code>▰▰▰▰▱</code> 4/5</div>
-  <div class="actions">
-    <button class="btn primary" disabled>🧪 Queue lab</button>
-    <button class="btn" disabled>📚 Full evaluation</button>
-    <button class="btn" disabled>📊 Compare</button>
-  </div>
-</div>
-
-<footer>
-  Generated by <code>scripts/demo.py</code> — open the file to regenerate with your own seeded data.<br>
-  Hover any verdict card; the 🧪/📚/📊 actions are wired to AWS Lambda in real deployments.
-</footer>
-</div>
+  <p class="meta"><strong>Do not spend time yet</strong> · provenance: https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro</p>
+</article>
+    </div>
+  </section>
+  <footer>
+    Generated locally by <code>frontier-scout demo</code>. Source links are preserved for provenance; run labs before installing anything in production.
+  </footer>
+</main>
 </body>
 </html>

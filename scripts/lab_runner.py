@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 """
-Frontier Scout — Lab Runner (Round 7, Phase A).
+Frontier Scout — local polyglot lab runner.
 
-When a teammate clicks 🧪 Run Lab on a verdict card in Slack, the Lambda
-triggers the `lab-from-slack` GitHub Actions workflow, which invokes this script.
-
-What the lab does (one click → one Slack reply, ~5–10 min):
+What the lab does (`frontier-scout lab`, ~5-10 min):
 
   1. Classify the tool (1 Sonnet call) — {vector_db, llm_framework, …}
   2. Generate a stack-shaped synthetic test script (1 Sonnet call)
@@ -16,9 +13,7 @@ What the lab does (one click → one Slack reply, ~5–10 min):
      PATH + HOME ONLY. The child process literally cannot call any paid
      API because it has no key. 3-min wall-clock timeout.
   5. Interpret the captured stdout/stderr/exit_code (1 Sonnet call)
-  6. Post a threaded reply on the original verdict card (found via the
-     briefings/<date>-meta.json map written by Round 6's threaded poster)
-  7. Commit a full transcript to .scratch/labs/<date>-<tool>.md
+  6. Write a full local transcript to .scratch/labs/<date>-<tool>.md
 
 Cost guardrails (all in this file, all overridable via env):
 
@@ -35,15 +30,15 @@ Trust boundary:
     generated script.
   • Synthetic-only generator prompt + a SECRET_LEAK_RE pre-check before
     execution.
-  • Output is read-only: thread reply + .scratch/labs/ artifact only.
-    The lab never modifies any application repo or pushes a PR.
+  • Output is read-only: .scratch/labs/ artifact plus terminal output.
+    The lab never modifies any application repo, posts remotely, or pushes a PR.
 
 Usage:
 
   python scripts/lab_runner.py --tool dspy \\
-      --url https://github.com/stanfordnlp/dspy --user U123456
+      --url https://github.com/stanfordnlp/dspy
 
-  # Dry-run (no subprocess, no Slack call, no committed artifact):
+  # Dry-run (no subprocess, no API calls when ANTHROPIC_API_KEY is absent):
   DRY_RUN=1 python scripts/lab_runner.py --tool dspy \\
       --url https://github.com/stanfordnlp/dspy
 """
@@ -83,7 +78,6 @@ def _fs_home() -> Path:
 
 REPO_ROOT = _fs_home()
 LABS_DIR = REPO_ROOT / ".scratch" / "labs"
-BRIEFINGS_DIR = REPO_ROOT / "briefings"
 COSTS_LEDGER = REPO_ROOT / "costs.jsonl"
 
 
@@ -104,8 +98,8 @@ MODEL = "claude-sonnet-4-6"
 
 # ── Cost & safety guardrails ─────────────────────────────────────────────────
 #
-# Defaults are sized for normal team usage, not "demo at all costs."
-# Override via env vars in GitHub Actions repo variables if traffic patterns change.
+# Defaults are sized for normal local usage, not "demo at all costs."
+# Override via env vars when a particular lab run needs more room.
 #
 #   LAB_RUNS_PER_DAY=10        — daily click count cap (per UTC day)
 #   LAB_DAILY_USD_CAP=5.00     — daily USD ceiling across all `lab-*` cost entries
@@ -124,8 +118,8 @@ MAX_TOKENS_PER_CALL = int(os.environ.get("LAB_MAX_TOKENS", "3000"))
 # Round 10: HuggingFace model size cap. The HF dispatcher reads the model
 # repo's file manifest before downloading anything; if total weight files
 # exceed this, the lab skips with a clear message. Sized to leave headroom
-# in the 60 GB GitHub Actions disk while covering 80%+ of HF models
-# Scout surfaces (everything except the largest frontier checkpoints).
+# in a normal hosted runner or developer workstation while covering most HF
+# models Scout surfaces (everything except the largest frontier checkpoints).
 _HF_MODEL_SIZE_CAP_GB = float(os.environ.get("LAB_HF_SIZE_CAP_GB", "5"))
 
 # Runtimes the polyglot dispatcher knows how to exercise (Round 10).
@@ -179,10 +173,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Frontier Scout lab runner")
     parser.add_argument("--tool", required=True, help="Tool name as it appears on the verdict card")
     parser.add_argument("--url", required=True, help="Open-source source URL")
-    parser.add_argument("--user", default="", help="Slack username who clicked 🧪")
+    parser.add_argument("--user", default="", help="Optional label for the transcript")
     parser.add_argument(
         "--dry-run", action="store_true",
-        help="Skip subprocess + Slack call; print classification/script/would-be-reply only",
+        help="Skip subprocess execution; print classification/script preview only",
     )
     args = parser.parse_args()
     return run(tool=args.tool, url=args.url, user=args.user, dry_run=args.dry_run)
@@ -294,7 +288,7 @@ def run(tool: str, url: str, user: str = "", dry_run: bool | None = None) -> int
     total_cost = cost1 + cost2 + cost3
     print(f"  Lab cost: ${total_cost:.4f}")
 
-    # 7. Post + commit artifact.
+    # 7. Print summary + write local artifact.
     excerpt = _test_excerpt(test_script)
     _post_lab_reply(
         tool=tool, url=url,
@@ -721,7 +715,7 @@ _GENERATOR_SYSTEM_NODE = (
     "\n"
     "STRICT RULES:\n"
     "  1. The script runs with env={} + PATH + HOME + NODE_PATH ONLY. There "
-    "     are NO API keys, NO tokens, NO GitHub Actions credentials in the\n"
+    "     are NO API keys, NO tokens, NO CI credentials in the\n"
     "     environment. Do NOT write code that calls any paid API requiring\n"
     "     auth — it will fail. Focus on LOCAL behaviour: require + class\n"
     "     instantiation + offline methods + package metadata.\n"
@@ -911,7 +905,7 @@ def _run_subprocess_python(spec: dict, classification: dict, script: str) -> dic
             )
 
         # Run the script with HERMETIC env. The child has NO API keys,
-        # NO Slack token, NO BB token — it physically cannot call any
+        # NO API token, NO repo token — it physically cannot call any
         # paid API, so it can't burn quota and can't exfil secrets.
         run_env = {
             **_hermetic_base_env(),
@@ -1113,7 +1107,7 @@ def _result(start: datetime, exit_code: int, stdout: str, stderr: str, stage: st
 
 _INTERPRET_TOOL = {
     "name": "emit_lab_insights",
-    "description": "Interpret the lab run and emit structured insights for the Slack thread reply.",
+    "description": "Interpret the lab run and emit structured local insights.",
     "input_schema": {
         "type": "object",
         "properties": {
@@ -1167,7 +1161,7 @@ def _interpret(client: anthropic.Anthropic, spec: dict, classification: dict, sc
     return dict(tool_use.input), cost
 
 
-# ── Step 7: format reply + post to Slack + write transcript ──────────────────
+# ── Step 7: format local lab summary + write transcript ─────────────────────
 
 # ── Test-script excerpt extraction (Round 8) ─────────────────────────────────
 
@@ -1227,7 +1221,7 @@ def _test_excerpt(test_script: str, max_lines: int = 6) -> str:
     return "\n".join(out)
 
 
-# ── Step 7: post the structured lab reply to Slack ──────────────────────────
+# ── Step 7: print the structured lab summary ────────────────────────────────
 
 def _post_lab_reply(
     *,
@@ -1240,116 +1234,32 @@ def _post_lab_reply(
     test_excerpt: str,
     dry_run: bool,
 ) -> None:
-    """Post the lab result as a threaded reply on the verdict card for `tool`.
+    """Print the lab result in a compact local summary."""
 
-    Round 8 — uses slack_post.lab_result_blocks() to produce a structured
-    blocks+attachment payload (matching the verdict-card design dialect)
-    instead of the previous plain-text wall.
-
-    Resolves the message_ts by walking briefings/*-meta.json newest first
-    (same map Round 6's reaction dispatcher uses). Falls back to channel
-    post if no match is found — better to ship the insight than swallow it.
-    """
-    try:
-        from slack_post import lab_result_blocks, _post_thread_reply, post
-    except Exception as e:  # noqa: BLE001
-        print(f"  slack_post import failed: {e}")
-        return
-
-    blocks, attachments = lab_result_blocks(
-        tool=tool, url=url,
-        classification=classification, sandbox=sandbox,
-        insights=insights, cost=cost,
-        test_excerpt=test_excerpt,
-    )
-
-    # Meaningful fallback text for mobile push notifications + screen readers.
     pill = {
         "worth_trial": "worth a TRIAL",
         "monitor":     "MONITOR",
         "skip":        "SKIP",
     }.get((insights or {}).get("verdict_for_team", ""), "MONITOR")
-    fallback = (
-        f"Lab: {tool} — {pill}. "
-        + (insights or {}).get("headline", "")[:160]
-    )
-
-    if dry_run:
-        print("─── DRY-RUN: would post lab reply ───")
-        print(f"  blocks={blocks!r}")
-        print(f"  attachments={attachments!r}")
-        print(f"  fallback={fallback!r}")
-        print("─── END ───")
-        return
-
-    thread_ts = _find_thread_ts(tool)
-    try:
-        if thread_ts:
-            _post_thread_reply(
-                thread_ts, blocks=blocks, attachments=attachments,
-                text_fallback=fallback,
-            )
-        else:
-            print(f"  No verdict thread found for {tool!r} — posting to channel")
-            # Channel post via `post()` doesn't support attachments today —
-            # render the same content as a single section block fallback.
-            fallback_blocks = blocks or [{
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": fallback},
-            }]
-            post(fallback_blocks)
-    except Exception as e:  # noqa: BLE001
-        print(f"  Slack post failed: {e}")
+    print("─── Frontier Scout lab summary ───")
+    print(f"Tool: {tool}")
+    print(f"Source: {url}")
+    print(f"Verdict: {pill}")
+    if headline := (insights or {}).get("headline"):
+        print(f"Headline: {headline}")
+    if next_step := (insights or {}).get("next_step"):
+        print(f"Next step: {next_step}")
+    print(f"Runtime: {classification.get('runtime')} · exit={sandbox.get('exit_code')} · cost=${cost:.4f}")
+    if test_excerpt:
+        print("Test excerpt:")
+        print(test_excerpt)
+    print("─── END ───")
 
 
-# Backward-compat shim — `_post_thread_if_possible(tool, text, dry_run)` is
-# called from the cap/refusal paths above with a plain string. Keep it
-# working so those code paths don't need rewriting.
 def _post_thread_if_possible(tool: str, text: str, dry_run: bool) -> None:
-    """Post a plain-text status message as a threaded reply. Used by the
-    cap-refusal and URL-gate paths where there's no structured insight
-    to render, just a one-line operator message."""
-    if dry_run:
-        print("─── DRY-RUN: would post to Slack ───")
-        print(text)
-        print("─── END ───")
-        return
-
-    try:
-        from slack_post import _post_thread_reply, post
-    except Exception as e:  # noqa: BLE001
-        print(f"  slack_post import failed: {e}")
-        return
-
-    thread_ts = _find_thread_ts(tool)
-    try:
-        if thread_ts:
-            _post_thread_reply(
-                thread_ts, blocks=None, attachments=None, text_fallback=text,
-            )
-        else:
-            print(f"  No verdict thread found for {tool!r} — posting to channel")
-            post([{"type": "section", "text": {"type": "mrkdwn", "text": text}}])
-    except Exception as e:  # noqa: BLE001
-        print(f"  Slack post failed: {e}")
-
-
-def _find_thread_ts(tool: str) -> str | None:
-    """Find the most recent verdict card message_ts whose tool matches."""
-    if not BRIEFINGS_DIR.exists():
-        return None
-    tool_lc = tool.strip().lower()
-    if not tool_lc:
-        return None
-    for path in sorted(BRIEFINGS_DIR.glob("*-meta.json"), reverse=True)[:8]:
-        try:
-            data = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError):
-            continue
-        for ts, meta in (data.get("verdicts") or {}).items():
-            if (meta.get("tool") or "").strip().lower() == tool_lc:
-                return ts
-    return None
+    """Print a local one-line lab status message."""
+    prefix = "DRY-RUN" if dry_run else "LAB"
+    print(f"{prefix}: {tool}: {text}")
 
 
 def _write_transcript(
@@ -1363,7 +1273,7 @@ def _write_transcript(
     path = LABS_DIR / f"{today}-{slug}.md"
     body = (
         f"# Lab transcript: {tool}\n\n"
-        f"_Ran by @{user or 'anon'} on {today} via the Frontier Scout lab._\n\n"
+        f"_Ran by {user or 'local user'} on {today} via the Frontier Scout lab._\n\n"
         f"Source: {url}\n\n"
         f"## Classification\n```json\n{json.dumps(classification, indent=2)}\n```\n\n"
         f"## Generated test script\n```python\n{script}\n```\n\n"
