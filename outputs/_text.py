@@ -1,10 +1,4 @@
-"""Shared text utilities.
-
-Salvaged from the legacy `scripts/slack_post.py` (now deleted) — these
-clip / escape / sanitize helpers are not Slack-specific and are reused
-across the terminal output, the HTML report, and the MCP server's
-tool responses.
-"""
+"""Shared text utilities for reports, logs, and future integrations."""
 
 from __future__ import annotations
 
@@ -42,7 +36,7 @@ def escape_html(text: str | None) -> str:
 # Patterns whose matches must be redacted from any log line that could
 # end up in a public artifact (briefing markdown, GitHub Actions log,
 # bug-report attachment, etc.). Keep in sync with the equivalent table
-# in any future `outputs/slack.py` plugin.
+# in any future output plugin.
 _SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"sk-ant-[A-Za-z0-9\-_]{20,}"), "sk-ant-REDACTED"),
     (re.compile(r"sk-[A-Za-z0-9]{20,}"), "sk-REDACTED"),

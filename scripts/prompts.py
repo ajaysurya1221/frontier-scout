@@ -6,9 +6,8 @@ is parameterised on the user's ``stack.yaml`` profile (auto-detected at
 Next.js + Postgres + Anthropic stack you build with" for one user and
 "this fits the FastAPI + Rust + Ollama stack you build with" for another.
 
-Anthropic prompt-cache blocks are marked ephemeral — Pulse-style daily
-re-runs would land within the 5-min window for free cache reads. Keep
-edits infrequent: every change invalidates the cache.
+Anthropic prompt-cache blocks are marked ephemeral. Keep edits infrequent:
+every change invalidates the cache.
 """
 
 from __future__ import annotations
@@ -38,7 +37,7 @@ a tokenizer-only release is still model_drop.
 """.strip()
 
 
-# ── Risk replaces SOC2 ──────────────────────────────────────────────────────
+# ── Risk rubric ─────────────────────────────────────────────────────────────
 
 RISK_RUBRIC = """
 Risk is the cost of being wrong about this tool. Be conservative — when in
@@ -82,7 +81,7 @@ trigger that surfaced this item now — release, adoption spike, security event.
 **Adoption cost**: Concrete estimate (minutes / hours / days) + the risk
 level. "30 min to lab-test, low risk" beats "easy."
 **Next action**: One concrete step. ``lab <tool>`` (a single try-before-install
-run), ``compare <tool>`` (against the prior verdict if Mem0 has one),
+run), ``compare <tool>`` (against the prior local verdict when available),
 ``Monitor 3 months``, or a specific patch / swap. Never "awareness only."
 
 Tier meaning:
