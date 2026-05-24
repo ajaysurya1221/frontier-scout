@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Build distribution
+        run: |
+          pip install -e ".[dev]"
+          python -m build
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/frontier-scout
+    permissions:
+      id-token: write
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  github_release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Extract changelog section
+        id: changelog
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          export TAG_VERSION
+          python - <<'PY' > release_notes.md
+          import os
+          import pathlib
+          import re
+          import sys
+
+          changelog = pathlib.Path("CHANGELOG.md").read_text()
+          tag = os.environ["TAG_VERSION"]
+
+          pattern = re.compile(
+              rf"^##\s+{re.escape(tag)}\s*-\s*.*$",
+              flags=re.MULTILINE,
+          )
+          match = pattern.search(changelog)
+          if not match:
+              print(
+                  f"Release tag v{tag} has no matching section in CHANGELOG.md",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          start = match.end()
+          next_section = re.search(r"^##\s+.+$", changelog[start:], flags=re.MULTILINE)
+          end = start + next_section.start() if next_section else len(changelog)
+          section_body = changelog[start:end].strip()
+          if not section_body:
+              print(f"CHANGELOG.md section for {tag} is empty", file=sys.stderr)
+              sys.exit(1)
+          print(section_body)
+          PY
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: release_notes.md
+          files: |
+            dist/*.tar.gz
+            dist/*.whl
