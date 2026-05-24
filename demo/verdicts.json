@@ -1,0 +1,118 @@
+{
+  "date": "2026-05-21",
+  "funnel": {
+    "items_scanned": 377,
+    "dedup_drops": 22,
+    "seen_drops": 5,
+    "candidates": 350,
+    "scored_above_threshold": 19,
+    "verdicts_pre_judge": 8,
+    "verdicts_post_judge": 5,
+    "judge_self_rating": "high",
+    "judge_summary": "Tight upstream pass: vetoed patch-release noise, kept source-backed verdicts, and preserved conservative risk calls.",
+    "total_cost_usd": 0.31,
+    "duration_s": 232.4
+  },
+  "verdicts": [
+    {
+      "tool_name": "anthropics/skills",
+      "verdict": "adopt",
+      "category": "skill",
+      "risk": "low",
+      "fit": "high",
+      "what": "Anthropic's official repo of reusable Skill bundles for AI coding agents.",
+      "why_this_week": "A new batch expanded the catalogue beyond the first few coding workflows.",
+      "why_it_matters": "If you already work inside Claude Code, Codex, or Cursor, reusable skill bundles turn repeat prompts into durable operating procedure.",
+      "adoption_cost": "~10 min to inspect one skill and test it in a non-production repo. Low risk.",
+      "next_action": "Run a local lab on one skill, then install only the workflow you would actually use this week.",
+      "source_url": "https://github.com/anthropics/skills",
+      "severity": "critical",
+      "readiness": 5,
+      "tags": [
+        "skill",
+        "claude-code",
+        "agentic-coding"
+      ]
+    },
+    {
+      "tool_name": "modelcontextprotocol/servers",
+      "verdict": "trial",
+      "category": "mcp_server",
+      "risk": "medium",
+      "fit": "high",
+      "what": "Reference MCP servers that connect AI agents to databases, filesystems, browser tools, and developer APIs.",
+      "why_this_week": "MCP adoption is accelerating across coding agents, and reference servers are becoming the default integration path.",
+      "why_it_matters": "Teams adopting AI coding agents need tool access that is explicit, auditable, and easy to revoke. MCP is becoming that contract.",
+      "adoption_cost": "~30 min to test one read-only server with throwaway credentials. Medium risk until permissions are reviewed.",
+      "next_action": "Trial one read-only MCP server against a sandbox project and document the permission boundary.",
+      "source_url": "https://github.com/modelcontextprotocol/servers",
+      "severity": "high",
+      "readiness": 4,
+      "tags": [
+        "mcp",
+        "agent-tools",
+        "developer-tools"
+      ]
+    },
+    {
+      "tool_name": "browser-use/browser-use",
+      "verdict": "trial",
+      "category": "agent_framework",
+      "risk": "medium",
+      "fit": "medium",
+      "what": "Python framework for browser-driving agents powered by Playwright and LLM tool calls.",
+      "why_this_week": "Recent structured-output support makes browser tasks easier to evaluate and retry.",
+      "why_it_matters": "Research, QA, and competitive-intel workflows often need real browser interaction. This can replace brittle one-off scripts when tested carefully.",
+      "adoption_cost": "~45 min to lab-test on a public site. Medium risk because browser automation is dependency-heavy.",
+      "next_action": "Lab-test one public browsing workflow and compare success rate, cost, and maintenance against a plain Playwright script.",
+      "source_url": "https://github.com/browser-use/browser-use",
+      "severity": "high",
+      "readiness": 4,
+      "tags": [
+        "browser",
+        "agent-framework",
+        "automation"
+      ]
+    },
+    {
+      "tool_name": "Qwen/Qwen3-Coder-30B",
+      "verdict": "assess",
+      "category": "model_drop",
+      "risk": "medium",
+      "fit": "low",
+      "what": "Open-weight coding model aimed at local or self-hosted code generation workflows.",
+      "why_this_week": "Fresh model release with enough community attention to watch independent evals closely.",
+      "why_it_matters": "Hosted frontier models still win for many teams, but local coding models can matter for privacy, latency, and fallback paths.",
+      "adoption_cost": "~2 hrs to benchmark if you already have GPU capacity; otherwise not worth the infrastructure work yet.",
+      "next_action": "Monitor independent coding-agent evals for 30 days before spending integration time.",
+      "source_url": "https://huggingface.co/Qwen/Qwen3-Coder-30B",
+      "severity": "standard",
+      "readiness": 3,
+      "tags": [
+        "model-drop",
+        "coding-model",
+        "local-inference"
+      ]
+    },
+    {
+      "tool_name": "deepseek-ai/DeepSeek-V4-Pro",
+      "verdict": "hold",
+      "category": "model_drop",
+      "risk": "high",
+      "fit": "low",
+      "what": "Large open-weight reasoning model with a footprint beyond a normal laptop or small CI runner.",
+      "why_this_week": "High-visibility release, but size and operational requirements make it a poor first trial for most teams.",
+      "why_it_matters": "It is important ecosystem signal, not an immediate adoption candidate for a lean engineering team.",
+      "adoption_cost": "Weekend-scale GPU setup plus ongoing compute. High risk unless a real self-hosting need exists.",
+      "next_action": "Hold until smaller quantized variants and credible independent evals are available.",
+      "source_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+      "severity": "standard",
+      "readiness": 4,
+      "tags": [
+        "model-drop",
+        "reasoning",
+        "large-model"
+      ]
+    }
+  ]
+}

@@ -1,60 +1,46 @@
 # Roadmap
 
-Public, opinionated, ordered. Items at the top are the next thing in line.
+Public, local-first, and ordered by launch value.
 
-## v0.1 — the launchable slice (in progress)
+## v0.1 - launchable local radar
 
-Detailed phase table in [`README.md`](README.md#status). The headline:
+- Installable Python package with `frontier-scout` console entry point.
+- `frontier-scout demo` for a no-key static report.
+- `frontier-scout init --repo .` for stack-signal detection.
+- `frontier-scout scan --dry-run` for seeded local output.
+- Live Scout engine wired to the CLI for BYO-key scans.
+- SQLite store under `~/.frontier-scout/db.sqlite`.
+- Static HTML/Markdown report rendering.
+- GitHub Actions CI: compile, non-live tests, secret scan.
+- Clean public docs: README, SECURITY, CONTRIBUTING, AGENTS, CHANGELOG.
 
-- `fs_cli/` — Typer CLI: `init`, `scan`, `latest`, `lab`, `where`
-- `fs_cli/db.py` — SQLite store at `~/.frontier-scout/db.sqlite`
-- `fs_cli/stack_detect.py` — auto-detect the user's stack on first run
-- `fs_cli/scheduler.py` — cron / launchd / Task Scheduler install
-- `fs_mcp/server.py` — FastMCP server exposing six tools
-- `outputs/` — terminal (Rich) + static HTML report
-- `skill/` — Claude Code skill bundle that lands under `~/.claude/skills/`
-- `pyproject.toml`, GitHub Actions test workflow, README polish
+## v0.2 - repo-aware intelligence
 
-## v0.2
+- Deeper stack detection from lockfiles, dependency manifests, MCP config,
+  Docker files, and README signals.
+- `frontier-scout latest` to print recent verdicts in a compact terminal view.
+- `frontier-scout compare <tool>` to explain what changed since the prior verdict.
+- `frontier-scout evaluate <url>` for one-off deep evaluation of a user-named tool.
+- Semantic search over past verdicts using a local, optional embedding index.
+- Better report filtering by tier, category, risk, and fit.
 
-- **Semantic search over past verdicts** — bring back lightweight
-  embeddings (only for the on-demand `search` MCP tool, not at scan time).
-- **Email digest output** — opt-in weekly email when the user prefers
-  pull-from-inbox over pull-from-agent.
-- **`compare <tool>` MCP tool** — when the SQLite store has a prior
-  verdict on the same tool, return the delta (was ASSESS in March, now
-  TRIAL — what changed?).
-- **`evaluate <tool>` MCP tool** — on-demand deep evaluation that runs
-  the full score + verdict + judge funnel for a single user-named tool.
+## v0.3 - agent surfaces
 
-## v0.3
-
-- **`frontier rate <id> +1/-1`** — CLI taste-model surface. Ratings
-  feed a small bandit that biases future scoring within the
-  "never silence novelty" guardrails the original taste model had.
-- **Output plug-ins** — Slack, Discord, generic webhook. Each is a small
-  module under `outputs/` behind a feature flag.
-- **App Home tab equivalent** — for users who do use Slack and want a
-  pinned weekly dashboard, ship the Slack plug-in with an App Home view.
+- FastMCP server reading the local SQLite store.
+- Claude Code / Codex / Cursor setup helpers that point agents at the local store.
+- Optional output plugins for teams that want email, Slack, Discord, or generic webhooks.
+- Taste feedback with `frontier-scout rate <id> +1/-1`, feeding a local preference model.
 
 ## v0.4+
 
-- **Cargo + Docker lab runtimes** — extend the polyglot dispatcher.
-  Each one's a substantial own-its-own change (Rust toolchain in the
-  pipeline image; per-image size caps and `services: [docker]` for
-  Docker), so they're deferred.
-- **E2B sandbox** — move the lab's untrusted-package execution into a
-  proper per-run sandbox once the polyglot dispatcher's surface area
-  justifies the operational weight.
-- **Per-user dashboards** — for teams sharing one repo, optional
-  per-user taste-model state.
+- Cargo and Docker lab runtimes with runtime-specific safety gates.
+- Optional E2B or similar sandbox for users who want stronger isolation than local subprocesses.
+- GitHub Pages export for sharing a redacted static radar report.
+- Team mode only if it can remain local-first and low-ops.
 
-## Explicitly NOT on the roadmap
+## Non-goals
 
-- **Hosted SaaS.** Frontier Scout is local-only — your verdicts live on
-  your laptop, your stack profile never leaves the machine.
-- **Auto-installing recommended tools.** The lab runs a synthetic
-  test. The user decides what to install for real. Always.
-- **Agent frameworks (CrewAI / AutoGen / LangGraph) in the scheduled
-  scan loop.** Linear Python is the architectural choice.
-- **Multi-tenancy.** One radar per user, one user per radar.
+- Hosted SaaS as the default product.
+- Auto-installing recommended tools into a user's real project.
+- Multi-tenant sync.
+- Replacing human engineering judgment. Frontier Scout recommends what to inspect; the user decides what to adopt.
