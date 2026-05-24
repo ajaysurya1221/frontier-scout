@@ -1,12 +1,13 @@
 # frontier-scout
 
-> Your local AI adoption radar: scout, judge, lab-test, and remember the AI
-> tools worth trying before everyone else.
+> Local AI adoption radar for tools, MCP servers, agent frameworks, and model drops.
 
 ![python](https://img.shields.io/badge/python-3.11-3776ab?logo=python&logoColor=white)
 ![status](https://img.shields.io/badge/status-v0.1%20alpha-orange)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![local-first](https://img.shields.io/badge/local--first-SQLite%20%2B%20static%20reports-0f766e)
+
+![Frontier Scout report preview](docs/assets/frontier-scout-demo.gif)
 
 [Demo](#60-second-demo) · [What You Get](#what-you-get) · [Architecture](#architecture) · [Safety](#safety-model) · [Quickstart](#quickstart) · [Roadmap](ROADMAP.md) · [Security](SECURITY.md)
 
@@ -15,11 +16,15 @@ ship every day. Frontier Scout turns that firehose into a local weekly radar:
 what changed, why it matters for your stack, what to try, what to ignore, and
 what to lab-test before adopting.
 
+Each recommendation is an **adoption receipt**: source evidence, verdict tier,
+risk, stack fit, readiness, estimated adoption cost, and the next lab action.
+
 The product surface is deliberately simple:
 
 - **CLI first**: run scans, render reports, and test tools from your terminal.
 - **Local by default**: SQLite under `~/.frontier-scout`, static HTML/Markdown reports, no hosted backend.
 - **Agent-ready later**: Claude Code, Codex, Cursor, and MCP integrations consume the same local store.
+- **Small-maintainer alpha**: v0.1 is public and usable, but intentionally conservative about scope.
 
 ## 60-second demo
 
@@ -112,15 +117,16 @@ frontier-scout scan --repo .
 frontier-scout report
 ```
 
-Expected package install paths for public release:
+After the first PyPI publish, the expected package install paths are:
 
 ```bash
 pipx install frontier-scout
 uvx frontier-scout demo
 ```
 
-An `npx frontier-scout` wrapper is intentionally a later distribution layer,
-not the core implementation.
+Until then, the checkout install above is the supported path. An
+`npx frontier-scout` wrapper is intentionally a later distribution layer, not
+the core implementation.
 
 ## Safety model
 
@@ -186,6 +192,7 @@ See [ROADMAP.md](ROADMAP.md). The short version:
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md). The fastest useful PRs improve the
 CLI/report path, validator coverage, source quality, or lab isolation.
+Please also read the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 

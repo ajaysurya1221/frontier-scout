@@ -234,7 +234,7 @@ footer {{ color: var(--muted); margin-top: 34px; padding-top: 20px; border-top: 
   <section class="hero">
     <div class="kicker">Frontier Scout · Local AI Radar · {date}</div>
     <h1>Know which AI tools are worth trying this week.</h1>
-    <p class="promise">A local briefing for AI engineers and technical leaders: source-backed verdicts, risk, stack fit, adoption cost, and the next lab test. No SaaS account. No hosted telemetry. Bring your own API key.</p>
+    <p class="promise">A local briefing for AI engineers and technical leaders: source-backed adoption receipts with verdict, risk, stack fit, adoption cost, and the next lab test. No SaaS account. No hosted telemetry. Bring your own API key.</p>
     <div class="metrics">
       <div class="metric"><b>{funnel.get("items_scanned", 0)}</b><span>scanned</span></div>
       <div class="metric"><b>{funnel.get("candidates", 0)}</b><span>considered</span></div>
@@ -246,7 +246,7 @@ footer {{ color: var(--muted); margin-top: 34px; padding-top: 20px; border-top: 
   </section>
   <section>
     <div class="section-title">
-      <h2>Verdicts</h2>
+      <h2>Adoption receipts</h2>
       <p>ADOPT / TRIAL / ASSESS / HOLD</p>
     </div>
     <div class="cards">
@@ -254,7 +254,7 @@ footer {{ color: var(--muted); margin-top: 34px; padding-top: 20px; border-top: 
     </div>
   </section>
   <footer>
-    Generated locally by <code>frontier-scout demo</code>. Source links are preserved for provenance; run labs before installing anything in production.
+    Generated locally by <code>frontier-scout demo</code>. Each receipt preserves source provenance; run labs before installing anything in production.
   </footer>
 </main>
 </body>
@@ -288,7 +288,7 @@ def render_markdown(
         fit = (v.get("fit") or "universal").upper()
         lines.extend(
             [
-                f"## {tier}: [{v.get('tool_name')}]({v.get('source_url')})",
+                f"## {tier} receipt: [{v.get('tool_name')}]({v.get('source_url')})",
                 "",
                 f"**Meta:** {category} · {risk} · fit {fit} · readiness {v.get('readiness', 'n/a')}/5",
                 "",
