@@ -4,7 +4,7 @@ Scanned **377** items, considered **350**, shipped **5** verdicts. Estimated run
 
 > Tight upstream pass: vetoed patch-release noise, kept source-backed verdicts, and preserved conservative risk calls.
 
-## ADOPT: [anthropics/skills](https://github.com/anthropics/skills)
+## ADOPT receipt: [anthropics/skills](https://github.com/anthropics/skills)
 
 **Meta:** Skill · low risk · fit HIGH · readiness 5/5
 
@@ -18,7 +18,7 @@ Scanned **377** items, considered **350**, shipped **5** verdicts. Estimated run
 
 **Next action:** Run a local lab on one skill, then install only the workflow you would actually use this week.
 
-## TRIAL: [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers)
+## TRIAL receipt: [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers)
 
 **Meta:** MCP Server · medium risk · fit HIGH · readiness 4/5
 
@@ -32,7 +32,7 @@ Scanned **377** items, considered **350**, shipped **5** verdicts. Estimated run
 
 **Next action:** Trial one read-only MCP server against a sandbox project and document the permission boundary.
 
-## TRIAL: [browser-use/browser-use](https://github.com/browser-use/browser-use)
+## TRIAL receipt: [browser-use/browser-use](https://github.com/browser-use/browser-use)
 
 **Meta:** Agent Framework · medium risk · fit MEDIUM · readiness 4/5
 
@@ -46,7 +46,7 @@ Scanned **377** items, considered **350**, shipped **5** verdicts. Estimated run
 
 **Next action:** Lab-test one public browsing workflow and compare success rate, cost, and maintenance against a plain Playwright script.
 
-## ASSESS: [Qwen/Qwen3-Coder-30B](https://huggingface.co/Qwen/Qwen3-Coder-30B)
+## ASSESS receipt: [Qwen/Qwen3-Coder-30B](https://huggingface.co/Qwen/Qwen3-Coder-30B)
 
 **Meta:** Model Drop · medium risk · fit LOW · readiness 3/5
 
@@ -60,7 +60,7 @@ Scanned **377** items, considered **350**, shipped **5** verdicts. Estimated run
 
 **Next action:** Monitor independent coding-agent evals for 30 days before spending integration time.
 
-## HOLD: [deepseek-ai/DeepSeek-V4-Pro](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro)
+## HOLD receipt: [deepseek-ai/DeepSeek-V4-Pro](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro)
 
 **Meta:** Model Drop · high risk · fit LOW · readiness 4/5
 

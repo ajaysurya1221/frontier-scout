@@ -3,6 +3,10 @@
 PRs are welcome. Keep them small, testable, and grounded in the local-first
 CLI architecture.
 
+This is a small-maintainer alpha project. Be direct, kind, and specific:
+criticize behavior and code, not people; assume good intent; and keep security
+details out of public issues.
+
 ## Local setup
 
 ```bash
@@ -52,8 +56,10 @@ local-first: static reports and SQLite history before plugins or integrations.
 
 ## Security issues
 
-Do not file a public issue for vulnerabilities. Email the repository owner
-directly with reproduction steps and impact.
+Do not file a public issue for vulnerabilities. Use GitHub private
+vulnerability reporting when it is enabled for the repository. If private
+reporting is unavailable, open a minimal public issue asking for a private
+contact path without disclosing details.
 
 ## Versioning and release (v0.1 policy)
 

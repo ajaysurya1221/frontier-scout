@@ -54,5 +54,13 @@ These files are local operator state, not source-controlled project assets.
 
 ## Reporting a security issue
 
-Do not file public issues for vulnerabilities. Email the repository owner
-with reproduction steps, affected version/commit, and impact assessment.
+Do not file public issues for vulnerabilities.
+
+Preferred channel: use GitHub private vulnerability reporting for this
+repository. If private reporting is unavailable, open a minimal public issue
+that asks for a private contact path without disclosing the vulnerability
+details.
+
+Include reproduction steps, affected version/commit, expected impact, and any
+relevant local configuration. Redact API keys, tokens, private repository names,
+and local filesystem paths.
