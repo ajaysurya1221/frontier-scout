@@ -7,7 +7,7 @@
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![local-first](https://img.shields.io/badge/local--first-SQLite%20%2B%20static%20reports-0f766e)
 
-![Frontier Scout try-before-trust workflow](docs/assets/frontier-scout-hero.png)
+![Frontier Scout personalized AI adoption mission control](docs/assets/frontier-scout-mission-control.gif)
 
 [Killer Workflow](#killer-workflow) · [Demo](#60-second-demo) · [What You Get](#what-you-get) · [Questions](#questions-people-ask) · [Architecture](#architecture) · [Safety](#safety-model) · [Quickstart](#quickstart) · [Roadmap](ROADMAP.md) · [Security](SECURITY.md)
 
