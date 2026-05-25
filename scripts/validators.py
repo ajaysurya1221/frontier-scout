@@ -119,6 +119,8 @@ class Verdict(BaseModel):
     source_url: str = Field(min_length=8, max_length=500)
     severity: Severity | None = None
     readiness: int | None = Field(default=None, ge=0, le=5)
+    permission_risk: Risk | None = None
+    evidence: list[str] = Field(default_factory=list, max_length=8)
 
     @field_validator("tool_name")
     @classmethod

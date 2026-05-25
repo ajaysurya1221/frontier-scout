@@ -1,0 +1,21 @@
+services:
+  app:
+    build: .
+    environment:
+      FRONTIER_SCOUT_HOME: /app/.scratch/docker-home
+    volumes:
+      - .:/app
+    depends_on:
+      - qdrant
+      - otel-collector
+
+  qdrant:
+    image: qdrant/qdrant:v1.14.1
+    ports:
+      - "6333:6333"
+
+  otel-collector:
+    image: otel/opentelemetry-collector:0.101.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./infra/otel-collector.yaml:/etc/otelcol/config.yaml:ro

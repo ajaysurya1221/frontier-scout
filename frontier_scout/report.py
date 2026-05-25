@@ -155,6 +155,7 @@ def render_html(
     funnel = {**SAMPLE_FUNNEL, **(funnel or {})}
     grouped = _group_by_tier(verdicts)
     cards = "\n".join(_render_card(v, i + 1) for i, v in enumerate(verdicts))
+    trial_section = _render_trial_section_html()
     summary = " · ".join(
         f"{VERDICT_LABEL[tier]} {len(grouped[tier])}"
         for tier in ("adopt", "trial", "assess", "hold")
@@ -252,7 +253,7 @@ footer {{ color: var(--muted); margin-top: 34px; padding-top: 20px; border-top: 
     <div class="cards">
       {cards}
     </div>
-  </section>
+  </section>{trial_section}
   <footer>
     Generated locally by <code>frontier-scout demo</code>. Each receipt preserves source provenance; run labs before installing anything in production.
   </footer>
@@ -304,6 +305,17 @@ def render_markdown(
                 "",
             ]
         )
+    trials = _trial_summaries()
+    if trials:
+        lines.extend(["## Adoption Firewall trials", ""])
+        for trial in trials:
+            lines.extend(
+                [
+                    f"- **{trial.get('tool_name')}**: {str(trial.get('decision') or trial.get('status') or 'unknown').upper()} "
+                    f"({trial.get('requested_action') or 'trial'})",
+                ]
+            )
+        lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -422,6 +434,43 @@ def _render_card(v: dict[str, Any], index: int) -> str:
   </div>
   <p class="meta"><strong>{TIER_HINT.get(tier, "Review")}</strong> · provenance: {_esc(v.get('source_url', ''))}</p>
 </article>"""
+
+
+def _render_trial_section_html() -> str:
+    trials = _trial_summaries()
+    if not trials:
+        return ""
+    rows = "\n".join(
+        f"""<article class="card trial">
+  <div class="card-head">
+    <span class="tier">TRIAL</span>
+    <span class="meta">{_esc(trial.get('requested_action') or 'trial')} · {_esc(trial.get('status') or 'unknown')}</span>
+  </div>
+  <h3>{_esc(trial.get('tool_name'))}</h3>
+  <p class="what">Decision: <strong>{_esc(str(trial.get('decision') or 'pending').upper())}</strong></p>
+  <p class="meta">Recorded locally at {_esc(trial.get('created_at'))}</p>
+</article>"""
+        for trial in trials
+    )
+    return f"""
+  <section>
+    <div class="section-title">
+      <h2>Adoption Firewall trials</h2>
+      <p>Local try-before-trust receipts</p>
+    </div>
+    <div class="cards">
+      {rows}
+    </div>
+  </section>"""
+
+
+def _trial_summaries() -> list[dict[str, Any]]:
+    try:
+        from .store import list_trial_summaries
+
+        return list_trial_summaries(limit=8)
+    except Exception:
+        return []
 
 
 def _esc(value: Any) -> str:

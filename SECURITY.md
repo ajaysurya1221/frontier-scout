@@ -15,6 +15,7 @@ and no required webhook surface.
 | Incident-as-tool confusion | A breach, CVE, outage, or leaked-key story is labeled as ADOPT | Incident-like tool names are rejected by policy regexes. ADOPT verdicts with low readiness are automatically demoted. |
 | Secret leakage through logs or artifacts | API keys appear in caught exceptions, lab output, or generated reports | `.env` is ignored, CI runs `detect-secrets`, and shared text helpers redact common Anthropic, OpenAI, GitHub, Slack, AWS, npm, and bearer token shapes. |
 | Untrusted package execution in the lab | `frontier-scout lab` installs and imports third-party packages | The lab only accepts open-source URLs, strips the child process environment to a tiny allowlist, enforces wall-clock timeouts, caps daily cost/runs, scans generated scripts for secret-shaped strings, and writes local transcripts only. |
+| Risky AI-tool adoption | A new MCP server, skill, browser tool, or agent framework asks for broad permissions | Adoption Firewall records a permission manifest, fails closed on unknown capabilities, requires trial receipts for dangerous surfaces, and exposes `frontier-scout guard` for local/CI checks. |
 | Oversized model downloads | A Hugging Face candidate pulls huge weights | The HF lab path reads the model manifest and refuses weight files above `LAB_HF_SIZE_CAP_GB` before download. |
 | Cost runaway | Repeated scans or lab runs consume too much LLM spend | The lab has daily run and USD caps. The Scout judge is optional via `JUDGE_ENABLED=false`; every call is logged to `costs.jsonl`. |
 
@@ -49,6 +50,7 @@ Frontier Scout stores runtime data under `~/.frontier-scout/` by default:
 - `costs.jsonl` — API usage and estimated spend.
 - `quality-log.jsonl` — scan quality metrics.
 - `.scratch/labs/` — local lab transcripts when run from a checkout.
+- `reports/trials/` — local Adoption Firewall trial receipts.
 
 These files are local operator state, not source-controlled project assets.
 

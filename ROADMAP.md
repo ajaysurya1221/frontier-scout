@@ -14,13 +14,17 @@ Public, local-first, and ordered by launch value.
 - GitHub Actions CI: compile, non-live tests, secret scan.
 - Clean public docs: README, SECURITY, CONTRIBUTING, AGENTS, CHANGELOG.
 
-## v0.2 - repo-aware intelligence
+## v0.2 - Adoption Firewall
 
+- `frontier-scout evaluate <url>` for one-off, local try-before-trust evaluation.
+- `frontier-scout trial <tool-or-url>` for durable sandbox trial receipts.
+- `frontier-scout guard --repo .` for deterministic local/CI policy checks.
+- SQLite evidence ledger for tools, evaluations, permission manifests, lab results, trial runs, policy findings, adoption decisions, and exceptions.
+- Static report sections for Adoption Firewall trial receipts.
 - Deeper stack detection from lockfiles, dependency manifests, MCP config,
   Docker files, and README signals.
 - `frontier-scout latest` to print recent verdicts in a compact terminal view.
 - `frontier-scout compare <tool>` to explain what changed since the prior verdict.
-- `frontier-scout evaluate <url>` for one-off deep evaluation of a user-named tool.
 - Semantic search over past verdicts using a local, optional embedding index.
 - Better report filtering by tier, category, risk, and fit.
 

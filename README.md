@@ -1,6 +1,6 @@
-# frontier-scout
+# Frontier Scout
 
-> Local AI adoption radar for tools, MCP servers, agent frameworks, and model drops.
+> Policy-first, graph-aware intelligence for deciding which AI tools and engineering changes are safe to trust.
 
 ![python](https://img.shields.io/badge/python-3.11-3776ab?logo=python&logoColor=white)
 ![status](https://img.shields.io/badge/status-v0.1%20alpha-orange)
@@ -11,10 +11,18 @@
 
 [Demo](#60-second-demo) · [What You Get](#what-you-get) · [Architecture](#architecture) · [Safety](#safety-model) · [Quickstart](#quickstart) · [Roadmap](ROADMAP.md) · [Security](SECURITY.md)
 
-New AI tools, MCP servers, agent frameworks, coding models, and agent skills
-ship every day. Frontier Scout turns that firehose into a local weekly radar:
-what changed, why it matters for your stack, what to try, what to ignore, and
-what to lab-test before adopting.
+Frontier Scout now has two compatible layers:
+
+- **Radar / Adoption Firewall:** local AI-tool scouting, sandbox trials, policy
+  receipts, and static reports.
+- **Engineering Scout platform:** graph-aware retrieval, typed context
+  packets, bounded DCG execution, ReBAC authorization, HITL interrupts,
+  traces, audit logs, and evals.
+
+The first full platform slice is **Incident Change Scout**: paste an incident
+ticket or engineering question, reconstruct the evidence graph, enforce
+authorization, compile cited context, propose a bounded remediation plan, pause
+before risky actions, and write trace/audit/eval artifacts.
 
 Each recommendation is an **adoption receipt**: source evidence, verdict tier,
 risk, stack fit, readiness, estimated adoption cost, and the next lab action.
@@ -39,6 +47,23 @@ frontier-scout demo
 open demo/briefing.html
 ```
 
+## Engineering Scout demo
+
+No API key is required.
+
+```bash
+pip install -e ".[dev]"
+make demo
+open .scratch/incident-demo/answer.md
+```
+
+The demo writes:
+
+- `.scratch/incident-demo/answer.md` — cited remediation answer.
+- `.scratch/incident-demo/trace.jsonl` — local OpenTelemetry-shaped spans.
+- `.scratch/incident-demo/audit.jsonl` — Cloudflare-style audit records.
+- `.scratch/incident-demo/eval.json` — golden eval score.
+
 The demo writes:
 
 - [`demo/briefing.html`](demo/briefing.html) — static executive radar.
@@ -51,6 +76,7 @@ The demo writes:
 
 - **AI ecosystem scouting** across GitHub releases, trending repos, MCP/skills sources, RSS, HN, Hugging Face, and a small arXiv slice.
 - **ADOPT / TRIAL / ASSESS / HOLD verdicts** with risk, stack fit, readiness, adoption cost, provenance, and next action.
+- **Adoption Firewall** commands for try-before-trust evaluation: local evidence ledger, permission manifests, sandbox trial receipts, and CI-friendly guard checks.
 - **Optional Opus judge pass** that vetoes patch-release noise, incident-as-tool mistakes, unsupported claims, and weak ADOPT calls.
 - **Repo-aware stack detection** from common manifests and agent config files.
 - **Polyglot lab runner** for Python, Node, and Hugging Face packages with hermetic subprocess execution.
@@ -69,6 +95,15 @@ The demo writes:
 
 ```mermaid
 flowchart LR
+  Ticket["Incident ticket"] --> DCG["Typed DCG runtime"]
+  Corpus["Seed corpus"] --> Memory["Memory + graph"]
+  Memory --> Authz["ReBAC check"]
+  Authz --> Retrieval["Hybrid retrieval"]
+  Retrieval --> Context["Context compiler"]
+  Context --> Gateway["Model gateway"]
+  Gateway --> DCG
+  DCG --> Approval["Approval interrupt"]
+  DCG --> Audit["Trace + audit + eval"]
   Sources["Public sources"] --> Scout["Scout funnel"]
   Scout --> Score["Sonnet score pass"]
   Score --> Verdict["Sonnet verdict pass"]
@@ -117,6 +152,19 @@ frontier-scout scan --repo .
 frontier-scout report
 ```
 
+Try-before-trust a single tool before granting it project permissions:
+
+```bash
+frontier-scout evaluate https://github.com/modelcontextprotocol/servers
+frontier-scout trial browser-use/browser-use --url https://github.com/browser-use/browser-use --dry-run
+frontier-scout guard --repo .
+```
+
+`evaluate` records source-backed local evidence and a permission manifest.
+`trial --dry-run` writes an adoption receipt without installing anything.
+`guard` checks the local evidence ledger for risky tools that still need a
+stored trial receipt.
+
 After the first PyPI publish, the expected package install paths are:
 
 ```bash
@@ -138,6 +186,8 @@ untrusted packages in the lab, so the safety rails are load-bearing:
 - Source URLs must pass a domain allowlist.
 - Incident and breach headlines are blocked from becoming tool recommendations.
 - ADOPT requires enough readiness evidence or gets demoted.
+- Adoption Firewall fails closed on unknown MCP/tool capability surfaces.
+- `guard` never modifies the repo; it only reads local evidence and policy.
 - Lab subprocesses receive a stripped environment, wall-clock timeout, size caps, and generated-script secret scanning.
 
 See [SECURITY.md](SECURITY.md) for the threat model.
@@ -159,6 +209,11 @@ possible run.
 ## Development
 
 ```bash
+make setup
+make demo
+make test
+make eval
+make audit
 python -m compileall scripts outputs tests frontier_scout
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
 frontier-scout demo
@@ -185,7 +240,7 @@ the matching changelog section.
 See [ROADMAP.md](ROADMAP.md). The short version:
 
 - **v0.1** — local CLI, static reports, SQLite, demo, GitHub Actions, clean public docs.
-- **v0.2** — richer repo-aware stack detection, semantic search over prior verdicts, compare/evaluate commands.
+- **v0.2** — Adoption Firewall v0: evaluate, trial receipts, permission manifests, guard, richer repo-aware stack detection.
 - **v0.3** — MCP/plugin surfaces for Claude Code, Codex, Cursor, and optional output plugins.
 
 ## Contributing

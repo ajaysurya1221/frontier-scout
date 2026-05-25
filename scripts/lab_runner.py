@@ -1281,7 +1281,24 @@ def _write_transcript(
         f"## Insights\n```json\n{json.dumps(insights or {}, indent=2)}\n```\n"
     )
     path.write_text(body)
+    json_path = path.with_suffix(".json")
+    json_path.write_text(
+        json.dumps(
+            {
+                "tool": tool,
+                "url": url,
+                "user": user or "local user",
+                "classification": classification or {},
+                "sandbox": sandbox or {},
+                "insights": insights or {},
+                "transcript_path": str(path),
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     print(f"  Transcript → {path}")
+    print(f"  Structured result → {json_path}")
     return path
 
 

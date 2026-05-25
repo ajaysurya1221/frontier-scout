@@ -13,6 +13,11 @@ frontier_scout/     # installable CLI package
   report.py         # static HTML/Markdown report renderer + demo fixtures
   store.py          # local SQLite store under ~/.frontier-scout
   lab.py            # wrapper around scripts/lab_runner.py
+  evaluate.py       # one-off local tool evaluation
+  trials.py         # trial receipts + lab-result ingestion
+  policy.py         # deterministic Adoption Firewall policy
+  mcp_audit.py      # static MCP/tool permission classifier
+  guard.py          # local/CI policy guard output
 
 scripts/            # mature engine modules
   scout.py          # fetch -> score -> verdict -> judge -> validate
@@ -37,6 +42,9 @@ pip install -e ".[dev]"
 frontier-scout demo
 frontier-scout init --repo .
 frontier-scout scan --dry-run --repo .
+frontier-scout evaluate https://github.com/modelcontextprotocol/servers
+frontier-scout trial browser-use/browser-use --url https://github.com/browser-use/browser-use --dry-run
+frontier-scout guard --repo .
 ```
 
 Live scans need `ANTHROPIC_API_KEY`. `GITHUB_TOKEN` is optional and only raises
@@ -47,6 +55,7 @@ GitHub REST rate limits.
 - Full non-live suite: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q`
 - Lab regressions: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_lab.py`
 - Validator gates: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_validators.py`
+- Adoption Firewall: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_policy.py tests/test_mcp_audit.py tests/test_trials.py tests/test_guard.py`
 - Syntax sweep: `python -m compileall scripts outputs tests frontier_scout`
 - Demo smoke: `frontier-scout demo`
 
@@ -58,6 +67,9 @@ GitHub REST rate limits.
 - **All Anthropic calls go through `scripts/llm_client.py`.**
 - **Lab subprocesses must stay hermetic.** Reuse `_hermetic_base_env()`; never pass `os.environ` into untrusted package code.
 - **Do not auto-install recommendations.** The lab tests; the user chooses.
+- **Adoption Firewall is evidence, not autonomy.** `evaluate`, `trial`, and
+  `guard` record local receipts and policy findings; they must not silently
+  grant repo, shell, browser, network, or credential permissions.
 
 ## Definition of done
 
