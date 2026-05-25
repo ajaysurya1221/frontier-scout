@@ -7,7 +7,7 @@
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![local-first](https://img.shields.io/badge/local--first-SQLite%20%2B%20static%20reports-0f766e)
 
-![Frontier Scout report preview](docs/assets/frontier-scout-report-preview.png)
+![Frontier Scout product tour](docs/assets/frontier-scout-demo.gif)
 
 [Demo](#60-second-demo) · [What You Get](#what-you-get) · [Architecture](#architecture) · [Safety](#safety-model) · [Quickstart](#quickstart) · [Roadmap](ROADMAP.md) · [Security](SECURITY.md)
 
