@@ -191,6 +191,23 @@ VERDICT_TOOL = {
                                 "if no primary source is identifiable."
                             ),
                         },
+                        "permission_risk": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high"],
+                            "description": (
+                                "Optional. Local permission risk if the item clearly asks "
+                                "for repo, shell, browser, network, or credential access."
+                            ),
+                        },
+                        "evidence": {
+                            "type": "array",
+                            "description": (
+                                "Optional short source-backed evidence bullets for future "
+                                "Adoption Firewall receipts."
+                            ),
+                            "items": {"type": "string"},
+                            "maxItems": 5,
+                        },
                     },
                     "required": [
                         "tool_name",

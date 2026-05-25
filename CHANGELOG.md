@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Added Adoption Firewall v0 commands: `evaluate`, `trial`, `guard`, and `policy init`.
+- Added local evidence-ledger tables for tools, evaluations, permission manifests, trial runs, lab results, policy findings, adoption decisions, and policy exceptions.
+- Added deterministic MCP/tool capability classification and local policy decisions.
+- Added trial receipt rendering and report sections for local try-before-trust records.
+- Added structured JSON lab sidecars alongside Markdown transcripts.
+
 ## 0.1.0 - 2026-05-24
 
 - Added installable `frontier-scout` CLI package.

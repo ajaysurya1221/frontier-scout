@@ -33,6 +33,7 @@ detect-secrets scan --all-files --force-use-all-plugins
 - **Source additions** in `scripts/scout.py` with clear quota/rationale notes.
 - **Validator hardening** in `scripts/validators.py` with regression tests.
 - **Lab safety improvements** in `scripts/lab_runner.py` that preserve hermetic subprocess execution.
+- **Adoption Firewall improvements** to `evaluate`, `trial`, `guard`, policy rules, permission manifests, and receipt rendering.
 - **Documentation fixes** that keep README, ROADMAP, SECURITY, and AGENTS aligned.
 
 ## What gets pushback
@@ -42,12 +43,14 @@ detect-secrets scan --all-files --force-use-all-plugins
 - New LLM vendors without a strong reason and tests around cost/error handling.
 - Bypassing `scripts/validators.py` before writing verdicts.
 - Passing `os.environ` into lab subprocesses.
+- Letting `guard` mutate project files or silently approve dangerous capabilities without a stored trial receipt.
 
 ## Architecture sketch
 
 ```text
 sources -> dedupe -> score -> verdict -> optional judge -> validators
        -> SQLite store -> CLI/report/MCP surfaces -> optional lab
+       -> evaluate/trial/guard -> local adoption receipts
 ```
 
 Every Anthropic call routes through `scripts/llm_client.py` with retry and

@@ -1,0 +1,9 @@
+[
+  {
+    "id": "incident-cache-storm-001",
+    "question": "checkout-api latency increased after cache-service rollout; propose safest remediation",
+    "required_terms": ["cache", "approval", "redis"],
+    "min_citations": 2
+  }
+]
+

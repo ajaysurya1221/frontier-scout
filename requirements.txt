@@ -8,6 +8,8 @@ beautifulsoup4>=4.12.0
 
 # Deterministic policy gates around LLM output
 pydantic>=2.0
+packaging>=24.0
+tomli-w>=1.0.0
 
 # Round 10: HuggingFace runtime for the polyglot lab dispatcher. We
 # deliberately do NOT depend on torch/tensorflow/jax — the HF lab loads
@@ -19,3 +21,8 @@ transformers>=4.40.0
 # Verdict quality CI (used in tests/, not at runtime)
 pytest>=8.0.0
 build>=1.2.0
+pip-audit>=2.7.0
+ruff>=0.6.0
+mypy>=1.10.0
+coverage>=7.6.0
+bandit>=1.7.10
