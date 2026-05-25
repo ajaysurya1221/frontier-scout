@@ -18,6 +18,8 @@ frontier_scout/     # installable CLI package
   policy.py         # deterministic Adoption Firewall policy
   mcp_audit.py      # static MCP/tool permission classifier
   guard.py          # local/CI policy guard output
+  profile.py        # local Scout Profile for repo-aware recommendations
+  dossier.py        # adoption dossiers with fit, risk, gaps, and next steps
 
 scripts/            # mature engine modules
   scout.py          # fetch -> score -> verdict -> judge -> validate
@@ -41,7 +43,9 @@ pip install -e ".[dev]"
 
 frontier-scout demo
 frontier-scout init --repo .
+frontier-scout profile --repo .
 frontier-scout scan --dry-run --repo .
+frontier-scout dossier modelcontextprotocol/servers
 frontier-scout evaluate https://github.com/modelcontextprotocol/servers
 frontier-scout trial browser-use/browser-use --url https://github.com/browser-use/browser-use --dry-run
 frontier-scout guard --repo .
@@ -56,6 +60,7 @@ GitHub REST rate limits.
 - Lab regressions: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_lab.py`
 - Validator gates: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_validators.py`
 - Adoption Firewall: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_policy.py tests/test_mcp_audit.py tests/test_trials.py tests/test_guard.py`
+- Personalized Scout: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_profile_dossier.py`
 - Syntax sweep: `python -m compileall scripts outputs tests frontier_scout`
 - Demo smoke: `frontier-scout demo`
 
@@ -70,6 +75,9 @@ GitHub REST rate limits.
 - **Adoption Firewall is evidence, not autonomy.** `evaluate`, `trial`, and
   `guard` record local receipts and policy findings; they must not silently
   grant repo, shell, browser, network, or credential permissions.
+- **Scout Profile is metadata, not code upload.** Profile/dossier features use
+  manifests, config filenames, local history, and policy signals; do not read
+  `.env.local` or upload source content for personalization.
 
 ## Definition of done
 

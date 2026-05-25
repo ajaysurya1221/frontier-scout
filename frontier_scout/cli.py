@@ -7,13 +7,15 @@ import json
 from pathlib import Path
 
 from . import __version__
+from .dossier import build_dossier
 from .evaluate import evaluate_url
 from .guard import format_findings, run_guard
 from .lab import run_lab
 from .mcp_audit import classify_mcp_capabilities
 from .platform.incident_change_scout.workflow import run_incident_demo
 from .policy import default_policy_toml, evaluate_policy
-from .report import load_verdict_file, render_html, write_demo, write_report
+from .profile import build_scout_profile, export_profile
+from .report import load_verdict_file, render_html, write_demo
 from .scout import detect_stack, run_scan
 from .store import (
     home_dir,
@@ -22,6 +24,7 @@ from .store import (
     save_evaluation,
     save_permission_manifest,
     save_policy_findings,
+    save_repo_profile,
 )
 from .trials import run_trial
 
@@ -36,6 +39,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_cmd = sub.add_parser("init", help="Create the local Frontier Scout home and print detected stack signals.")
     init_cmd.add_argument("--repo", default=".", help="Repository to inspect for stack signals.")
+
+    profile_cmd = sub.add_parser("profile", help="Build a local Scout Profile for repo-aware recommendations.")
+    profile_cmd.add_argument("--repo", default=".", help="Repository to inspect for local signals.")
+    profile_cmd.add_argument("--json", action="store_true", help="Print the profile as JSON.")
+    profile_cmd.add_argument(
+        "--write-repo",
+        action="store_true",
+        help="Also write .frontier-scout/profile.json inside the target repo.",
+    )
 
     demo_cmd = sub.add_parser("demo", help="Generate an offline demo report with no API keys or network calls.")
     demo_cmd.add_argument("--output-dir", default="demo", help="Directory for demo artifacts.")
@@ -60,11 +72,21 @@ def build_parser() -> argparse.ArgumentParser:
     eval_cmd.add_argument("--repo", default=".", help="Repository used for stack-fit detection.")
     eval_cmd.add_argument("--json", action="store_true", help="Print the evaluation payload as JSON.")
 
+    dossier_cmd = sub.add_parser("dossier", help="Explain one tool's local fit, risks, gaps, and next safe step.")
+    dossier_cmd.add_argument("target", help="Tool name, GitHub repo, package name, or URL.")
+    dossier_cmd.add_argument("--repo", default=".", help="Repository used for personalization.")
+    dossier_cmd.add_argument("--json", action="store_true", help="Print the dossier payload as JSON.")
+
     trial_cmd = sub.add_parser("trial", help="Create a local try-before-trust trial receipt.")
     trial_cmd.add_argument("tool", help="Tool name or URL.")
     trial_cmd.add_argument("--url", help="Canonical open-source URL for the tool.")
     trial_cmd.add_argument("--repo", default=".", help="Repository used for stack-fit detection.")
     trial_cmd.add_argument("--dry-run", action="store_true", help="Write a receipt without subprocess execution.")
+    trial_cmd.add_argument(
+        "--sandbox",
+        choices=["local", "report-only"],
+        help="Sandbox profile. local uses the existing hermetic lab; report-only forces a dry-run receipt.",
+    )
     trial_cmd.add_argument("--json", action="store_true", help="Print the trial payload as JSON.")
 
     guard_cmd = sub.add_parser("guard", help="Run deterministic local adoption policy checks.")
@@ -86,10 +108,26 @@ def build_parser() -> argparse.ArgumentParser:
     incident_cmd = sub.add_parser("incident", help="Run the Engineering Scout incident-forensics vertical slice.")
     incident_sub = incident_cmd.add_subparsers(dest="incident_command")
     incident_demo = incident_sub.add_parser("demo", help="Run the local Incident Change Scout demo.")
-    incident_demo.add_argument("--corpus", default="examples/incident_change_scout/corpus", help="Seed corpus directory.")
-    incident_demo.add_argument("--ticket", default="examples/incident_change_scout/tickets/cache-storm.md", help="Incident ticket path.")
-    incident_demo.add_argument("--output", default=".scratch/incident-demo", help="Output directory for answer, trace, audit, and eval.")
-    incident_demo.add_argument("--approved", action="store_true", help="Simulate explicit approval for the high-risk action.")
+    incident_demo.add_argument(
+        "--corpus",
+        default="examples/incident_change_scout/corpus",
+        help="Seed corpus directory.",
+    )
+    incident_demo.add_argument(
+        "--ticket",
+        default="examples/incident_change_scout/tickets/cache-storm.md",
+        help="Incident ticket path.",
+    )
+    incident_demo.add_argument(
+        "--output",
+        default=".scratch/incident-demo",
+        help="Output directory for answer, trace, audit, and eval.",
+    )
+    incident_demo.add_argument(
+        "--approved",
+        action="store_true",
+        help="Simulate explicit approval for the high-risk action.",
+    )
 
     return parser
 
@@ -108,6 +146,30 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Frontier Scout home: {home}")
         print(f"Stack profile: {stack_path}")
         print(json.dumps(stack, indent=2))
+        return 0
+    if args.command == "profile":
+        home = init_home()
+        profile = build_scout_profile(Path(args.repo))
+        save_repo_profile(profile)
+        profile_path = home / "profiles" / f"{profile.repo_id}.json"
+        export_profile(profile, profile_path)
+        repo_profile_path = None
+        if args.write_repo:
+            repo_profile_path = export_profile(profile, Path(args.repo) / ".frontier-scout" / "profile.json")
+        if args.json:
+            payload = profile.model_dump()
+            payload["profile_path"] = str(profile_path)
+            if repo_profile_path:
+                payload["repo_profile_path"] = str(repo_profile_path)
+            print(json.dumps(payload, indent=2))
+        else:
+            print(f"Scout profile: {profile_path}")
+            if repo_profile_path:
+                print(f"Repo export: {repo_profile_path}")
+            print(f"languages: {', '.join(profile.languages) or 'unknown'}")
+            print(f"frameworks: {', '.join(profile.frameworks) or 'none detected'}")
+            print(f"agent configs: {', '.join(profile.agent_configs) or 'none detected'}")
+            print(f"risk flags: {', '.join(profile.risk_flags) or 'none'}")
         return 0
     if args.command == "demo":
         paths = write_demo(Path(args.output_dir))
@@ -183,9 +245,27 @@ def main(argv: list[str] | None = None) -> int:
             print(f"policy: {decision.summary}")
             print(f"next: frontier-scout trial {evaluation.tool_name} --url {evaluation.source_url} --dry-run")
         return 0
+    if args.command == "dossier":
+        payload = build_dossier(args.target, repo=Path(args.repo))
+        if args.json:
+            print(json.dumps(payload, indent=2))
+        else:
+            print(f"DOSSIER {payload['tool_name']}")
+            print(f"verdict: {str(payload['verdict']).upper()}")
+            print(f"fit: {payload['fit']}")
+            print(f"risk: {payload['risk']}")
+            print(f"policy: {payload['policy_summary']}")
+            print("unknowns:")
+            for gap in payload.get("unknowns") or []:
+                print(f"- {gap}")
+            print(f"next: {payload['next_safe_step']}")
+            print(f"receipt: {payload['receipt_path']}")
+        return 0
     if args.command == "trial":
         stack = detect_stack(Path(args.repo))
-        result = run_trial(args.tool, url=args.url, dry_run=args.dry_run, stack=stack)
+        dry_run = args.dry_run or args.sandbox == "report-only"
+        result = run_trial(args.tool, url=args.url, dry_run=dry_run, stack=stack)
+        result["sandbox"] = args.sandbox or ("report-only" if dry_run else "local")
         if args.json:
             print(json.dumps(result, indent=2))
         else:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -186,6 +186,31 @@ def init_db(path: Path | None = None) -> Path:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS repo_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id TEXT NOT NULL,
+                repo_path TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                payload_json TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS scout_graph_edges (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT NOT NULL,
+                source_type TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                relation TEXT NOT NULL,
+                target_type TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                payload_json TEXT NOT NULL DEFAULT '{}'
+            )
+            """
+        )
         for statement in (
             "CREATE INDEX IF NOT EXISTS idx_tools_name ON tools(tool_name)",
             "CREATE INDEX IF NOT EXISTS idx_evaluations_tool ON evaluations(tool_id)",
@@ -193,6 +218,9 @@ def init_db(path: Path | None = None) -> Path:
             "CREATE INDEX IF NOT EXISTS idx_trials_tool ON trial_runs(tool_id)",
             "CREATE INDEX IF NOT EXISTS idx_lab_trial ON lab_results(trial_id)",
             "CREATE INDEX IF NOT EXISTS idx_findings_tool ON policy_findings(tool_id)",
+            "CREATE INDEX IF NOT EXISTS idx_profiles_repo ON repo_profiles(repo_id)",
+            "CREATE INDEX IF NOT EXISTS idx_graph_source ON scout_graph_edges(source_type, source_id)",
+            "CREATE INDEX IF NOT EXISTS idx_graph_target ON scout_graph_edges(target_type, target_id)",
         ):
             conn.execute(statement)
         conn.execute(
@@ -214,7 +242,7 @@ def save_scan(payload: dict[str, Any], *, repo: str | None = None) -> int:
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
                 repo,
                 int(payload.get("scanned") or payload.get("items_scanned") or 0),
                 int(payload.get("candidates") or 0),
@@ -260,6 +288,97 @@ def latest_scan() -> dict[str, Any] | None:
     if not row:
         return None
     return json.loads(row[0])
+
+
+def save_repo_profile(profile: Any) -> int:
+    payload = _dump_model(profile)
+    with sqlite3.connect(init_db()) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO repo_profiles(repo_id, repo_path, created_at, payload_json)
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                payload.get("repo_id", ""),
+                payload.get("repo", ""),
+                _now(),
+                json.dumps(payload),
+            ),
+        )
+        profile_id = int(cur.lastrowid)
+        rows = []
+        for key in (
+            "languages",
+            "frameworks",
+            "package_managers",
+            "ci",
+            "containers",
+            "agent_configs",
+            "ai_tooling",
+            "risk_flags",
+        ):
+            for value in payload.get(key) or []:
+                rows.append(
+                    (
+                        _now(),
+                        "repo_profile",
+                        payload.get("repo_id", ""),
+                        f"has_{key[:-1] if key.endswith('s') else key}",
+                        "signal",
+                        str(value),
+                        json.dumps({"profile_id": profile_id, "field": key}),
+                    )
+                )
+        if rows:
+            conn.executemany(
+                """
+                INSERT INTO scout_graph_edges(
+                    created_at, source_type, source_id, relation,
+                    target_type, target_id, payload_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows,
+            )
+        return profile_id
+
+
+def latest_repo_profile(repo: str | None = None) -> dict[str, Any] | None:
+    path = db_path()
+    if not path.exists():
+        return None
+    query = "SELECT payload_json FROM repo_profiles"
+    params: tuple[Any, ...] = ()
+    if repo:
+        query += " WHERE repo_path = ?"
+        params = (repo,)
+    query += " ORDER BY id DESC LIMIT 1"
+    with sqlite3.connect(path) as conn:
+        row = conn.execute(query, params).fetchone()
+    return json.loads(row[0]) if row else None
+
+
+def find_latest_verdict(tool: str) -> dict[str, Any] | None:
+    path = init_db()
+    if not path.exists():
+        return None
+    needle = tool.lower()
+    with sqlite3.connect(path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT payload_json FROM verdicts
+            ORDER BY id DESC
+            """
+        ).fetchall()
+    for row in rows:
+        payload = json.loads(row["payload_json"])
+        haystacks = [
+            str(payload.get("tool_name", "")).lower(),
+            str(payload.get("source_url", "")).lower(),
+        ]
+        if any(needle in haystack or haystack in needle for haystack in haystacks if haystack):
+            return payload
+    return None
 
 
 def upsert_tool(
@@ -530,4 +649,4 @@ def _dump_model(value: Any) -> dict[str, Any]:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
