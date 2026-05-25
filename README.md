@@ -7,9 +7,9 @@
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![local-first](https://img.shields.io/badge/local--first-SQLite%20%2B%20static%20reports-0f766e)
 
-![Frontier Scout product tour](docs/assets/frontier-scout-demo.gif)
+![Frontier Scout try-before-trust workflow](docs/assets/frontier-scout-hero.png)
 
-[Demo](#60-second-demo) · [What You Get](#what-you-get) · [Architecture](#architecture) · [Safety](#safety-model) · [Quickstart](#quickstart) · [Roadmap](ROADMAP.md) · [Security](SECURITY.md)
+[Killer Workflow](#killer-workflow) · [Demo](#60-second-demo) · [What You Get](#what-you-get) · [Questions](#questions-people-ask) · [Architecture](#architecture) · [Safety](#safety-model) · [Quickstart](#quickstart) · [Roadmap](ROADMAP.md) · [Security](SECURITY.md)
 
 Frontier Scout answers the question technical teams now hit every week:
 
@@ -18,18 +18,36 @@ Frontier Scout answers the question technical teams now hit every week:
 
 It has three compatible surfaces:
 
+- **Tool Test Lab / Adoption Firewall**: one-link `evaluate`, `trial`, and
+  `guard` workflows that record permission manifests and try-before-trust
+  receipts before a tool touches a real project.
+- **AI Tool Radar**: a local adoption radar that turns public AI-tool signals
+  into ADOPT / TRIAL / ASSESS / HOLD verdicts with source evidence.
 - **Incident Change Scout**: a graph-aware engineering workflow that turns an
   incident ticket into cited context, a bounded remediation plan, approval
   interrupts, trace/audit logs, and an eval result.
-- **AI Tool Radar**: a local adoption radar that turns public AI-tool signals
-  into ADOPT / TRIAL / ASSESS / HOLD verdicts with source evidence.
-- **Adoption Firewall**: evaluate, trial, and guard commands that record
-  permission manifests and try-before-trust receipts before a tool touches a
-  real project.
 
 The posture is deliberately boring in the good way: CLI first, SQLite/local
 files by default, static reports, no hosted telemetry, no hidden auto-installs,
 and explicit approval before risky actions.
+
+## Killer workflow
+
+Someone drops a GitHub repo, MCP server, plugin, model, or agent framework in a
+newsletter or team chat. Frontier Scout turns that link into a local adoption
+decision instead of a vibes-based "looks safe" answer:
+
+```bash
+frontier-scout init --repo .
+frontier-scout evaluate <tool-url>
+frontier-scout trial <tool-or-url> --dry-run
+frontier-scout guard --repo .
+frontier-scout report
+```
+
+That flow compares the tool to lightweight local repo signals, classifies the
+permission surface, runs safe probes when the runtime is supported, stores a
+local receipt, and tells CI whether risky adoption evidence is missing.
 
 ## 60-second demo
 
@@ -86,6 +104,38 @@ Radar demo writes:
 | GitHub Trending | Popularity signal | No risk/fit/adoption-cost judgment. |
 | Manual research | Highest nuance | Slow, inconsistent, easy to skip when busy. |
 | Frontier Scout | Source-backed verdicts and lab next steps | Requires your API key for live scans. |
+
+## Questions people ask
+
+**Why not just ask ChatGPT or Claude if a repo is safe?**
+You can for a one-off opinion. Frontier Scout is for repeatable team decisions:
+same policy, local evidence, stored receipts, history, and CI guardrails.
+
+**Does it know my repos?**
+It reads lightweight stack signals locally, such as manifests, CI files, Docker
+files, and agent/MCP config. It should not upload your source code just to
+personalize recommendations.
+
+**How can one workflow assess Python, Rust, MCP servers, plugins, or concepts?**
+It does not pretend they are the same. One command routes targets differently:
+supported packages can get sandbox probes, MCP servers get capability audits,
+models get metadata/runtime checks, and concepts or unsupported runtimes get
+honest report-only assessment.
+
+**Is this like E2B?**
+E2B is a sandbox provider. Frontier Scout is the adoption decision layer: it can
+decide what deserves a sandbox, run the right probes, and turn the evidence into
+a verdict. Local/Docker/E2B-style sandbox backends belong in the v0.2 toolbench
+roadmap.
+
+**Can it prove a tool is safe?**
+No. It reduces blast radius and records evidence. Unknown code is still unknown
+code; the product helps you choose the smallest safe next step.
+
+**Will it leak secrets?**
+Trials use temporary workspaces, stripped subprocess environments, timeouts,
+output caps, secret-pattern checks, and explicit approval gates for risky
+actions.
 
 ## Architecture
 
@@ -236,7 +286,7 @@ the matching changelog section.
 See [ROADMAP.md](ROADMAP.md). The short version:
 
 - **v0.1** — local radar, Adoption Firewall, Incident Change Scout, static reports, SQLite, CI, Docker demo, and public docs.
-- **v0.2** — deeper Adoption Firewall hardening, richer repo-aware stack detection, and stronger live-provider smoke tests.
+- **v0.2** — Sandbox Toolbench: deeper Adoption Firewall hardening, richer repo-aware stack detection, and optional local/Docker/E2B-style sandbox backends.
 - **v0.3** — MCP/plugin surfaces and optional output integrations on top of the same local evidence store.
 
 ## Contributing
