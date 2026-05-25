@@ -1,70 +1,65 @@
 # Frontier Scout
 
-> Policy-first, graph-aware intelligence for deciding which AI tools and engineering changes are safe to trust.
+> Local-first try-before-trust for AI tools, agents, MCP servers, models, and risky engineering changes.
 
 ![python](https://img.shields.io/badge/python-3.11-3776ab?logo=python&logoColor=white)
 ![status](https://img.shields.io/badge/status-v0.1%20alpha-orange)
 ![license](https://img.shields.io/badge/license-MIT-blue)
 ![local-first](https://img.shields.io/badge/local--first-SQLite%20%2B%20static%20reports-0f766e)
 
-![Frontier Scout report preview](docs/assets/frontier-scout-demo.gif)
+![Frontier Scout report preview](docs/assets/frontier-scout-report-preview.png)
 
 [Demo](#60-second-demo) · [What You Get](#what-you-get) · [Architecture](#architecture) · [Safety](#safety-model) · [Quickstart](#quickstart) · [Roadmap](ROADMAP.md) · [Security](SECURITY.md)
 
-Frontier Scout now has two compatible layers:
+Frontier Scout answers the question technical teams now hit every week:
 
-- **Radar / Adoption Firewall:** local AI-tool scouting, sandbox trials, policy
-  receipts, and static reports.
-- **Engineering Scout platform:** graph-aware retrieval, typed context
-  packets, bounded DCG execution, ReBAC authorization, HITL interrupts,
-  traces, audit logs, and evals.
+> Should this AI tool, agent, MCP server, model, or engineering change get any
+> access to our code, shell, browser, network, or credentials?
 
-The first full platform slice is **Incident Change Scout**: paste an incident
-ticket or engineering question, reconstruct the evidence graph, enforce
-authorization, compile cited context, propose a bounded remediation plan, pause
-before risky actions, and write trace/audit/eval artifacts.
+It has three compatible surfaces:
 
-Each recommendation is an **adoption receipt**: source evidence, verdict tier,
-risk, stack fit, readiness, estimated adoption cost, and the next lab action.
+- **Incident Change Scout**: a graph-aware engineering workflow that turns an
+  incident ticket into cited context, a bounded remediation plan, approval
+  interrupts, trace/audit logs, and an eval result.
+- **AI Tool Radar**: a local adoption radar that turns public AI-tool signals
+  into ADOPT / TRIAL / ASSESS / HOLD verdicts with source evidence.
+- **Adoption Firewall**: evaluate, trial, and guard commands that record
+  permission manifests and try-before-trust receipts before a tool touches a
+  real project.
 
-The product surface is deliberately simple:
-
-- **CLI first**: run scans, render reports, and test tools from your terminal.
-- **Local by default**: SQLite under `~/.frontier-scout`, static HTML/Markdown reports, no hosted backend.
-- **Agent-ready later**: Claude Code, Codex, Cursor, and MCP integrations consume the same local store.
-- **Small-maintainer alpha**: v0.1 is public and usable, but intentionally conservative about scope.
+The posture is deliberately boring in the good way: CLI first, SQLite/local
+files by default, static reports, no hosted telemetry, no hidden auto-installs,
+and explicit approval before risky actions.
 
 ## 60-second demo
 
-No API key. No Slack workspace. No cloud setup.
+No API key. No Slack workspace. No cloud setup. Start with the engineering
+workflow:
 
 ```bash
 git clone https://github.com/ajaysurya1221/frontier-scout
 cd frontier-scout
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-frontier-scout demo
-open demo/briefing.html
-```
-
-## Engineering Scout demo
-
-No API key is required.
-
-```bash
-pip install -e ".[dev]"
 make demo
 open .scratch/incident-demo/answer.md
 ```
 
-The demo writes:
+Incident demo writes:
 
 - `.scratch/incident-demo/answer.md` — cited remediation answer.
 - `.scratch/incident-demo/trace.jsonl` — local OpenTelemetry-shaped spans.
 - `.scratch/incident-demo/audit.jsonl` — Cloudflare-style audit records.
 - `.scratch/incident-demo/eval.json` — golden eval score.
 
-The demo writes:
+Then run the AI tool radar demo:
+
+```bash
+frontier-scout demo
+open demo/briefing.html
+```
+
+Radar demo writes:
 
 - [`demo/briefing.html`](demo/briefing.html) — static executive radar.
 - [`demo/briefing.md`](demo/briefing.md) — Markdown version for issues/docs.
@@ -74,6 +69,7 @@ The demo writes:
 
 ## What you get
 
+- **Incident Change Scout** for provenance-first incident analysis, graph-aware retrieval, bounded remediation planning, approval interrupts, and local evals.
 - **AI ecosystem scouting** across GitHub releases, trending repos, MCP/skills sources, RSS, HN, Hugging Face, and a small arXiv slice.
 - **ADOPT / TRIAL / ASSESS / HOLD verdicts** with risk, stack fit, readiness, adoption cost, provenance, and next action.
 - **Adoption Firewall** commands for try-before-trust evaluation: local evidence ledger, permission manifests, sandbox trial receipts, and CI-friendly guard checks.
@@ -239,9 +235,9 @@ the matching changelog section.
 
 See [ROADMAP.md](ROADMAP.md). The short version:
 
-- **v0.1** — local CLI, static reports, SQLite, demo, GitHub Actions, clean public docs.
-- **v0.2** — Adoption Firewall v0: evaluate, trial receipts, permission manifests, guard, richer repo-aware stack detection.
-- **v0.3** — MCP/plugin surfaces for Claude Code, Codex, Cursor, and optional output plugins.
+- **v0.1** — local radar, Adoption Firewall, Incident Change Scout, static reports, SQLite, CI, Docker demo, and public docs.
+- **v0.2** — deeper Adoption Firewall hardening, richer repo-aware stack detection, and stronger live-provider smoke tests.
+- **v0.3** — MCP/plugin surfaces and optional output integrations on top of the same local evidence store.
 
 ## Contributing
 
