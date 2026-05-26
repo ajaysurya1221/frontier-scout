@@ -32,6 +32,7 @@ ALLOWED_DOMAINS = frozenset({
     # Code hosts the lab can actually pull from
     "github.com", "raw.githubusercontent.com", "githubusercontent.com",
     "gitlab.com", "pypi.org", "npmjs.com", "crates.io",
+    "osv.dev", "github.com/advisories", "nvd.nist.gov",
     # Model + tokenizer host
     "huggingface.co",
     # First-party labs / vendor blogs
@@ -98,6 +99,7 @@ Category = Literal[
     "skill", "mcp_server", "agent_framework", "dev_tool", "model_drop",
 ]
 Severity = Literal["critical", "high", "standard"]
+UpgradeClass = Literal["security", "hardening", "breaking", "feature", "noise"]
 
 
 class Verdict(BaseModel):
@@ -121,6 +123,13 @@ class Verdict(BaseModel):
     readiness: int | None = Field(default=None, ge=0, le=5)
     permission_risk: Risk | None = None
     evidence: list[str] = Field(default_factory=list, max_length=8)
+    package_name: str | None = Field(default=None, max_length=160)
+    ecosystem: Literal["pypi", "npm"] | None = None
+    from_version: str | None = Field(default=None, max_length=80)
+    to_version: str | None = Field(default=None, max_length=80)
+    upgrade_class: UpgradeClass | None = None
+    upgrade_evidence_quotes: list[str] = Field(default_factory=list, max_length=6)
+    advisory_ids: list[str] = Field(default_factory=list, max_length=10)
 
     @field_validator("tool_name")
     @classmethod
@@ -176,7 +185,7 @@ class Verdict(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def adopt_requires_readiness(self) -> "Verdict":
+    def adopt_requires_readiness(self) -> Verdict:
         if self.verdict == "adopt" and self.readiness is not None and self.readiness < 3:
             # Soft demote: keep the verdict but log via a sentinel; caller
             # handles the tier-flip. We don't raise here because losing the

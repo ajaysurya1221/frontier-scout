@@ -28,30 +28,30 @@ import hashlib
 import os
 import time
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Iterable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import urlparse
 
 import anthropic
 import feedparser
+import judge as judge_mod
+import quality_logger
 import requests
-
 from cost_tracker import log_call
-from llm_client import STATS as LLM_STATS, call_with_retry
-from prompts import cached_system_blocks
+from llm_client import STATS as LLM_STATS
+from llm_client import call_with_retry
 from tools import SCORE_ITEMS_TOOL, VERDICT_TOOL
 from validators import validate_verdicts
 
-import judge as judge_mod
-import quality_logger
-
+from prompts import cached_system_blocks
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
 MODEL = "claude-sonnet-4-6"
-CUTOFF = datetime.now(timezone.utc) - timedelta(days=7)
+CUTOFF = datetime.now(UTC) - timedelta(days=7)
 
 # Hard cap to bound worst-case scoring cost (Sonnet ~$0.20 at this cap).
 MAX_ITEMS = 220
@@ -97,34 +97,36 @@ RSS_FEEDS: list[tuple[str, str]] = [
     ("r/mcp",              "https://www.reddit.com/r/mcp/top.rss?t=week"),
 ]
 
-# GitHub watchlist — broken into quota groups so the funnel reflects which
-# part of the ecosystem moved. Group names are read by :func:`_source_group`.
-GITHUB_WATCHLIST: list[tuple[str, str, str]] = [
-    # (owner/repo, display name, quota_group)
-    # — skills_release ————————————————————————————————————
-    ("anthropics/skills",                     "anthropics/skills",       "skills_release"),
-    ("mattpocock/skills",                     "mattpocock/skills",       "skills_release"),
-    ("anthropics/claude-plugins-official",    "Claude Code Plugins",     "skills_release"),
-    # — mcp_release ———————————————————————————————————————
-    ("modelcontextprotocol/servers",          "MCP Servers",             "mcp_release"),
-    ("modelcontextprotocol/python-sdk",       "MCP Python SDK",          "mcp_release"),
-    ("modelcontextprotocol/typescript-sdk",   "MCP TypeScript SDK",      "mcp_release"),
-    ("modelcontextprotocol/inspector",        "MCP Inspector",           "mcp_release"),
-    ("punkpeye/awesome-mcp-servers",          "awesome-mcp-servers",     "mcp_release"),
-    # — claude_release ————————————————————————————————————
-    ("anthropics/anthropic-sdk-python",       "Anthropic Python SDK",    "claude_release"),
-    ("anthropics/anthropic-sdk-typescript",   "Anthropic TS SDK",        "claude_release"),
-    # — agent_release —————————————————————————————————————
-    ("langchain-ai/langchain",                "LangChain",               "agent_release"),
-    ("langchain-ai/langgraph",                "LangGraph",               "agent_release"),
-    ("joaomdmoura/crewAI",                    "CrewAI",                  "agent_release"),
-    ("browser-use/browser-use",               "Browser Use",             "agent_release"),
-    ("openai/openai-agents-python",           "OpenAI Agents SDK",       "agent_release"),
-    ("pydantic/pydantic-ai",                  "PydanticAI",              "agent_release"),
-    ("run-llama/llama_index",                 "LlamaIndex",              "agent_release"),
-    ("ollama/ollama",                         "Ollama",                  "agent_release"),
-    ("vllm-project/vllm",                     "vLLM",                    "agent_release"),
-]
+def _pack_watchlist() -> list[tuple[str, str, str]]:
+    from frontier_scout.packs import default_packs
+
+    group_map = {
+        "ai-devtools": "skills_release",
+        "mcp": "mcp_release",
+        "agent-frameworks": "agent_release",
+        "local-ai": "agent_release",
+        "rag-memory": "agent_release",
+        "workflow-builders": "agent_release",
+        "inference-gateway": "agent_release",
+    }
+    rows: list[tuple[str, str, str]] = [
+        ("anthropics/skills", "anthropics/skills", "skills_release"),
+        ("mattpocock/skills", "mattpocock/skills", "skills_release"),
+        ("anthropics/claude-plugins-official", "Claude Code Plugins", "skills_release"),
+    ]
+    seen = {rows[0][0], rows[1][0], rows[2][0]}
+    for slug, pack in default_packs().items():
+        group = group_map.get(slug, "agent_release")
+        for repo in pack.seed_repos:
+            if repo not in seen:
+                rows.append((repo, repo, group))
+                seen.add(repo)
+    return rows
+
+
+# GitHub watchlist is generated from living pack seed repos. Packs can promote
+# new candidates over time; these rows are only the bootloader.
+GITHUB_WATCHLIST: list[tuple[str, str, str]] = _pack_watchlist()
 
 # GitHub Trending — two languages to cover both ends of the stack.
 TRENDING_LANGS = ["python", "typescript"]
@@ -133,10 +135,16 @@ TRENDING_LANGS = ["python", "typescript"]
 ARXIV_CATS = ["cs.AI"]
 
 # Smart HN keyword filter — tuned to skill / MCP / agent surface.
-HN_KEYWORDS = [
-    "claude code", "mcp", "model context protocol",
-    "agent", "skill", "claude", "cursor",
-]
+def _pack_hn_keywords() -> list[str]:
+    from frontier_scout.packs import default_packs
+
+    keywords = {"claude code", "skill", "claude", "cursor"}
+    for pack in default_packs().values():
+        keywords.update(pack.discovery.hn_keywords)
+    return sorted(keywords)
+
+
+HN_KEYWORDS = _pack_hn_keywords()
 
 
 # ── Item fetchers ───────────────────────────────────────────────────────────
@@ -161,7 +169,7 @@ def fetch_rss(name: str, url: str) -> list[dict]:
             for field_name in ("published_parsed", "updated_parsed"):
                 val = getattr(entry, field_name, None)
                 if val:
-                    pub = datetime.fromtimestamp(time.mktime(val), tz=timezone.utc)
+                    pub = datetime.fromtimestamp(time.mktime(val), tz=UTC)
                     break
             if pub and pub >= CUTOFF:
                 items.append(
@@ -926,8 +934,8 @@ def main() -> int:
     try:
         result = run_scan()
     except BaseException as exc:  # noqa: BLE001
-        import traceback
         import sys
+        import traceback
 
         print(f"\n💥 Scout CRASHED: {type(exc).__name__}: {exc}", file=sys.stderr)
         print(traceback.format_exc(), file=sys.stderr)

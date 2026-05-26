@@ -1,0 +1,23 @@
+[
+  {
+    "id": "mcp-candidate-promotes",
+    "pack_slug": "mcp",
+    "tool_name": "example/new-mcp",
+    "state": "candidate",
+    "evidence": [
+      {"source_family": "hn", "source": "hn", "score": 0.6, "days_ago": 0},
+      {"source_family": "mcp_registry", "source": "registry", "score": 0.6, "days_ago": 0}
+    ],
+    "expected_state": "watched"
+  },
+  {
+    "id": "stale-core-retires",
+    "pack_slug": "mcp",
+    "tool_name": "legacy/old-server",
+    "state": "core",
+    "days_since_release": 200,
+    "issue_response_p90_days": 35,
+    "star_growth_z": -1.5,
+    "expected_state": "retired"
+  }
+]

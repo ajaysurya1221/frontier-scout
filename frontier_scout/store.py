@@ -211,6 +211,82 @@ def init_db(path: Path | None = None) -> Path:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS packs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                slug TEXT UNIQUE NOT NULL,
+                display_name TEXT NOT NULL,
+                description TEXT,
+                definition_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pack_candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pack_id INTEGER NOT NULL REFERENCES packs(id) ON DELETE CASCADE,
+                tool_id INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
+                state TEXT NOT NULL CHECK (state IN ('candidate','watched','core','retired')),
+                freshness_score REAL NOT NULL,
+                consensus_score REAL NOT NULL,
+                state_changed_at TEXT NOT NULL,
+                evidence_json TEXT NOT NULL,
+                UNIQUE(pack_id, tool_id)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dependency_findings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                repo_id TEXT NOT NULL,
+                ecosystem TEXT NOT NULL,
+                package_name TEXT NOT NULL,
+                from_version TEXT NOT NULL,
+                to_version TEXT NOT NULL,
+                classification TEXT NOT NULL CHECK (
+                    classification IN ('security','hardening','breaking','feature','noise')
+                ),
+                classifier_confidence REAL NOT NULL,
+                advisory_ids_json TEXT,
+                evidence_quotes_json TEXT,
+                created_at TEXT NOT NULL,
+                resolved_at TEXT,
+                resolution TEXT,
+                payload_json TEXT NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pack_overrides (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pack_slug TEXT NOT NULL,
+                tool_identifier TEXT NOT NULL,
+                override TEXT NOT NULL CHECK (override IN ('include','exclude','pin','suppress','retire')),
+                reason TEXT,
+                expires_at TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dep_intel_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source TEXT NOT NULL CHECK (source IN ('osv','pypi','npm','github_release')),
+                cache_key TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                fetched_at TEXT NOT NULL,
+                ttl_seconds INTEGER NOT NULL,
+                UNIQUE(source, cache_key)
+            )
+            """
+        )
         for statement in (
             "CREATE INDEX IF NOT EXISTS idx_tools_name ON tools(tool_name)",
             "CREATE INDEX IF NOT EXISTS idx_evaluations_tool ON evaluations(tool_id)",
@@ -221,11 +297,18 @@ def init_db(path: Path | None = None) -> Path:
             "CREATE INDEX IF NOT EXISTS idx_profiles_repo ON repo_profiles(repo_id)",
             "CREATE INDEX IF NOT EXISTS idx_graph_source ON scout_graph_edges(source_type, source_id)",
             "CREATE INDEX IF NOT EXISTS idx_graph_target ON scout_graph_edges(target_type, target_id)",
+            "CREATE INDEX IF NOT EXISTS idx_pack_candidates_pack ON pack_candidates(pack_id)",
+            "CREATE INDEX IF NOT EXISTS idx_dep_findings_repo ON dependency_findings(repo_id)",
+            "CREATE INDEX IF NOT EXISTS idx_dep_cache_key ON dep_intel_cache(source, cache_key)",
         ):
             conn.execute(statement)
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
             (1, _now()),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            (5, _now()),
         )
     return path
 
@@ -329,6 +412,18 @@ def save_repo_profile(profile: Any) -> int:
                         json.dumps({"profile_id": profile_id, "field": key}),
                     )
                 )
+        for dependency in payload.get("dependencies") or []:
+            rows.append(
+                (
+                    _now(),
+                    "repo_profile",
+                    payload.get("repo_id", ""),
+                    "uses_dependency",
+                    str(dependency.get("ecosystem") or "dependency"),
+                    str(dependency.get("name") or ""),
+                    json.dumps({"profile_id": profile_id, "dependency": dependency}),
+                )
+            )
         if rows:
             conn.executemany(
                 """
@@ -640,6 +735,228 @@ def list_trial_summaries(limit: int = 20) -> list[dict[str, Any]]:
             (limit,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def save_packs(packs: list[Any]) -> None:
+    rows = []
+    now = _now()
+    for pack in packs:
+        payload = _dump_model(pack)
+        rows.append(
+            (
+                payload["slug"],
+                payload["display_name"],
+                payload.get("description"),
+                json.dumps(payload),
+                now,
+                now,
+            )
+        )
+    with sqlite3.connect(init_db()) as conn:
+        conn.executemany(
+            """
+            INSERT INTO packs(slug, display_name, description, definition_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(slug) DO UPDATE SET
+                display_name = excluded.display_name,
+                description = excluded.description,
+                definition_json = excluded.definition_json,
+                updated_at = excluded.updated_at
+            """,
+            rows,
+        )
+
+
+def list_packs() -> list[dict[str, Any]]:
+    save_builtin_packs_if_empty()
+    path = init_db()
+    with sqlite3.connect(path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT * FROM packs ORDER BY slug").fetchall()
+    return [dict(row) | {"definition": json.loads(row["definition_json"])} for row in rows]
+
+
+def get_pack(slug: str) -> dict[str, Any] | None:
+    save_builtin_packs_if_empty()
+    with sqlite3.connect(init_db()) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM packs WHERE slug = ?", (slug,)).fetchone()
+    return dict(row) | {"definition": json.loads(row["definition_json"])} if row else None
+
+
+def save_builtin_packs_if_empty() -> None:
+    from .packs import default_packs
+
+    path = init_db()
+    with sqlite3.connect(path) as conn:
+        row = conn.execute("SELECT COUNT(*) FROM packs").fetchone()
+    if row and int(row[0]) > 0:
+        return
+    save_packs(list(default_packs().values()))
+
+
+def save_pack_candidate(candidate: Any) -> int:
+    from .packs import default_packs
+
+    payload = _dump_model(candidate)
+    save_builtin_packs_if_empty()
+    pack = get_pack(payload["pack_slug"])
+    if not pack:
+        pack_def = default_packs()[payload["pack_slug"]]
+        save_packs([pack_def])
+        pack = get_pack(payload["pack_slug"])
+    tool_id = upsert_tool(payload["tool_name"])
+    evidence_json = json.dumps(payload.get("evidence") or [])
+    with sqlite3.connect(init_db()) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO pack_candidates(
+                pack_id, tool_id, state, freshness_score, consensus_score,
+                state_changed_at, evidence_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(pack_id, tool_id) DO UPDATE SET
+                state = excluded.state,
+                freshness_score = excluded.freshness_score,
+                consensus_score = excluded.consensus_score,
+                state_changed_at = excluded.state_changed_at,
+                evidence_json = excluded.evidence_json
+            """,
+            (
+                int(pack["id"]),
+                tool_id,
+                payload.get("state", "candidate"),
+                float(payload.get("freshness_score") or 0),
+                float(payload.get("consensus_score") or 0),
+                _now(),
+                evidence_json,
+            ),
+        )
+        return int(cur.lastrowid or tool_id)
+
+
+def list_pack_candidates(pack_slug: str | None = None) -> list[dict[str, Any]]:
+    save_builtin_packs_if_empty()
+    query = """
+        SELECT pc.*, p.slug AS pack_slug, t.tool_name
+        FROM pack_candidates pc
+        JOIN packs p ON p.id = pc.pack_id
+        JOIN tools t ON t.id = pc.tool_id
+    """
+    params: tuple[Any, ...] = ()
+    if pack_slug:
+        query += " WHERE p.slug = ?"
+        params = (pack_slug,)
+    query += " ORDER BY p.slug, t.tool_name"
+    with sqlite3.connect(init_db()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+    out = []
+    for row in rows:
+        item = dict(row)
+        item["evidence"] = json.loads(item.pop("evidence_json") or "[]")
+        out.append(item)
+    return out
+
+
+def save_dependency_finding(finding: Any) -> int:
+    payload = _dump_model(finding)
+    with sqlite3.connect(init_db()) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO dependency_findings(
+                repo_id, ecosystem, package_name, from_version, to_version,
+                classification, classifier_confidence, advisory_ids_json,
+                evidence_quotes_json, created_at, payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                payload["repo_id"],
+                payload["ecosystem"],
+                payload["package_name"],
+                payload["from_version"],
+                payload["to_version"],
+                payload["classification"],
+                float(payload.get("classifier_confidence") or 0),
+                json.dumps(payload.get("advisory_ids") or []),
+                json.dumps(payload.get("evidence_quotes") or []),
+                _now(),
+                json.dumps(payload),
+            ),
+        )
+        return int(cur.lastrowid)
+
+
+def list_dependency_findings(repo_id: str | None = None) -> list[dict[str, Any]]:
+    query = "SELECT * FROM dependency_findings"
+    params: tuple[Any, ...] = ()
+    if repo_id:
+        query += " WHERE repo_id = ?"
+        params = (repo_id,)
+    query += " ORDER BY id DESC"
+    with sqlite3.connect(init_db()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+    out = []
+    for row in rows:
+        item = dict(row)
+        item["advisory_ids"] = json.loads(item.pop("advisory_ids_json") or "[]")
+        item["evidence_quotes"] = json.loads(item.pop("evidence_quotes_json") or "[]")
+        item["payload"] = json.loads(item.pop("payload_json") or "{}")
+        out.append(item)
+    return out
+
+
+def get_dep_cache(source: str, cache_key: str) -> dict[str, Any] | None:
+    with sqlite3.connect(init_db()) as conn:
+        row = conn.execute(
+            """
+            SELECT payload_json, fetched_at, ttl_seconds
+            FROM dep_intel_cache
+            WHERE source = ? AND cache_key = ?
+            """,
+            (source, cache_key),
+        ).fetchone()
+    if not row:
+        return None
+    fetched_at = datetime.fromisoformat(row[1])
+    age = (datetime.now(UTC) - fetched_at).total_seconds()
+    if age > int(row[2]):
+        return None
+    return json.loads(row[0])
+
+
+def save_dep_cache(source: str, cache_key: str, payload: dict[str, Any], *, ttl_seconds: int) -> None:
+    with sqlite3.connect(init_db()) as conn:
+        conn.execute(
+            """
+            INSERT INTO dep_intel_cache(source, cache_key, payload_json, fetched_at, ttl_seconds)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(source, cache_key) DO UPDATE SET
+                payload_json = excluded.payload_json,
+                fetched_at = excluded.fetched_at,
+                ttl_seconds = excluded.ttl_seconds
+            """,
+            (source, cache_key, json.dumps(payload), _now(), int(ttl_seconds)),
+        )
+
+
+def save_pack_override(
+    pack_slug: str,
+    tool_identifier: str,
+    override: str,
+    *,
+    reason: str | None = None,
+    expires_at: str | None = None,
+) -> int:
+    with sqlite3.connect(init_db()) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO pack_overrides(pack_slug, tool_identifier, override, reason, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (pack_slug, tool_identifier, override, reason, expires_at, _now()),
+        )
+        return int(cur.lastrowid)
 
 
 def _dump_model(value: Any) -> dict[str, Any]:

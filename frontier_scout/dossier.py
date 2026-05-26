@@ -14,6 +14,7 @@ from .store import (
     find_latest_verdict,
     home_dir,
     latest_trial_for_tool,
+    list_dependency_findings,
     save_evaluation,
     save_permission_manifest,
     save_policy_findings,
@@ -35,6 +36,7 @@ def build_dossier(target: str, *, repo: Path | None = None) -> dict[str, Any]:
         save_permission_manifest(tool_id, manifest)
     save_policy_findings(tool_id, decision.findings)
     latest_trial = latest_trial_for_tool(evaluation.tool_name)
+    dependency_findings = _matching_dependency_findings(target, evaluation.tool_name)
 
     payload = {
         "tool_name": evaluation.tool_name,
@@ -56,6 +58,7 @@ def build_dossier(target: str, *, repo: Path | None = None) -> dict[str, Any]:
         "alternatives": _alternatives(evaluation.category),
         "next_safe_step": _next_safe_step(evaluation, latest_trial),
         "latest_trial": latest_trial,
+        "dependency_findings": dependency_findings,
         "receipt_path": str(_dossier_path(evaluation.tool_name)),
     }
     path = _dossier_path(evaluation.tool_name)
@@ -94,6 +97,14 @@ def render_dossier_markdown(payload: dict[str, Any]) -> str:
     for alt in payload.get("alternatives") or []:
         lines.append(f"- {alt}")
     lines.extend(["", "## Next safe step", "", str(payload.get("next_safe_step") or "Review before adoption.")])
+    if payload.get("dependency_findings"):
+        lines.extend(["", "## Dependency intelligence", ""])
+        for finding in payload["dependency_findings"]:
+            lines.append(
+                "- "
+                f"{finding['package_name']} {finding['from_version']} -> {finding['to_version']} "
+                f"({finding['classification']})"
+            )
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -208,3 +219,14 @@ def _dedupe(values: list[str]) -> list[str]:
         if value and value not in out:
             out.append(value)
     return out
+
+
+def _matching_dependency_findings(target: str, tool_name: str) -> list[dict[str, Any]]:
+    needle = target.lower().strip()
+    tool_needle = tool_name.lower().strip()
+    matches = []
+    for finding in list_dependency_findings():
+        package = str(finding.get("package_name", "")).lower()
+        if package and (package in needle or needle in package or package in tool_needle):
+            matches.append(finding.get("payload") or finding)
+    return matches[:5]

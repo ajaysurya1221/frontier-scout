@@ -1,11 +1,11 @@
 """Static report rendering and seeded demo data for Frontier Scout."""
+# ruff: noqa: E501
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 from typing import Any
-
 
 SAMPLE_DATE = "2026-05-21"
 
@@ -151,11 +151,12 @@ def render_html(
     *,
     date: str = SAMPLE_DATE,
     funnel: dict[str, Any] | None = None,
+    include_trials: bool = True,
 ) -> str:
     funnel = {**SAMPLE_FUNNEL, **(funnel or {})}
     grouped = _group_by_tier(verdicts)
     cards = "\n".join(_render_card(v, i + 1) for i, v in enumerate(verdicts))
-    trial_section = _render_trial_section_html()
+    trial_section = _render_trial_section_html() if include_trials else ""
     summary = " · ".join(
         f"{VERDICT_LABEL[tier]} {len(grouped[tier])}"
         for tier in ("adopt", "trial", "assess", "hold")
@@ -268,6 +269,7 @@ def render_markdown(
     *,
     date: str = SAMPLE_DATE,
     funnel: dict[str, Any] | None = None,
+    include_trials: bool = True,
 ) -> str:
     funnel = {**SAMPLE_FUNNEL, **(funnel or {})}
     lines = [
@@ -305,7 +307,7 @@ def render_markdown(
                 "",
             ]
         )
-    trials = _trial_summaries()
+    trials = _trial_summaries() if include_trials else []
     if trials:
         lines.extend(["## Adoption Firewall trials", ""])
         for trial in trials:
@@ -325,6 +327,7 @@ def write_report(
     *,
     date: str = SAMPLE_DATE,
     funnel: dict[str, Any] | None = None,
+    include_trials: bool = True,
 ) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     html_path = output_dir / "briefing.html"
@@ -335,8 +338,8 @@ def write_report(
     judge_path = output_dir / "judge-trace.md"
 
     payload = {"date": date, "funnel": {**SAMPLE_FUNNEL, **(funnel or {})}, "verdicts": verdicts}
-    html_path.write_text(render_html(verdicts, date=date, funnel=funnel))
-    md_path.write_text(render_markdown(verdicts, date=date, funnel=funnel))
+    html_path.write_text(render_html(verdicts, date=date, funnel=funnel, include_trials=include_trials))
+    md_path.write_text(render_markdown(verdicts, date=date, funnel=funnel, include_trials=include_trials))
     json_path.write_text(json.dumps(payload, indent=2) + "\n")
     log_path.write_text(json.dumps({"ts": f"{date}T00:00:00+00:00", "component": "demo", **payload["funnel"]}) + "\n")
     cost_path.write_text(render_cost_breakdown(payload["funnel"]))
@@ -352,7 +355,7 @@ def write_report(
 
 
 def write_demo(output_dir: Path) -> dict[str, Path]:
-    return write_report(output_dir, SAMPLE_VERDICTS, date=SAMPLE_DATE, funnel=SAMPLE_FUNNEL)
+    return write_report(output_dir, SAMPLE_VERDICTS, date=SAMPLE_DATE, funnel=SAMPLE_FUNNEL, include_trials=False)
 
 
 def render_cost_breakdown(funnel: dict[str, Any]) -> str:

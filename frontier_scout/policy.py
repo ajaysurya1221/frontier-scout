@@ -15,7 +15,6 @@ except ModuleNotFoundError:  # pragma: no cover
 from .evaluate import Evaluation
 from .mcp_audit import PermissionManifest
 
-
 Severity = Literal["info", "medium", "high"]
 Verdict = Literal["adopt", "trial", "assess", "hold"]
 
@@ -25,6 +24,7 @@ class Policy(BaseModel):
     fail_unknown_capabilities: bool = True
     allow_adopt_without_lab_for_low_risk: bool = False
     strict: bool = False
+    packs: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
 
 
 class PolicyFinding(BaseModel):
@@ -54,7 +54,10 @@ def load_policy(repo: Path | None = None) -> Policy:
         if not path.exists() or tomllib is None:
             continue
         data = tomllib.loads(path.read_text())
-        return Policy(**(data.get("policy") or data))
+        policy_data = dict(data.get("policy") or data)
+        if "packs" in data:
+            policy_data["packs"] = data["packs"]
+        return Policy(**policy_data)
     return DEFAULT_POLICY
 
 
@@ -64,6 +67,13 @@ require_trial_for_dangerous_capabilities = true
 fail_unknown_capabilities = true
 allow_adopt_without_lab_for_low_risk = false
 strict = false
+
+[packs.mcp]
+include = []
+exclude = []
+pin = ["modelcontextprotocol/servers"]
+suppress = []
+retire = []
 """
 
 
@@ -112,7 +122,9 @@ def evaluate_policy(
             )
 
     lab_passed = bool(lab_result) and (
-        lab_result.get("status") == "passed" or lab_result.get("exit_code") == 0 and lab_result.get("status") in {"passed", "completed"}
+        lab_result.get("status") == "passed"
+        or lab_result.get("exit_code") == 0
+        and lab_result.get("status") in {"passed", "completed"}
     )
     lab_failed = bool(lab_result) and lab_result.get("exit_code") not in {None, 0}
     if lab_failed:
@@ -126,14 +138,26 @@ def evaluate_policy(
         )
 
     if any(f.rule_id in {"capability.unknown", "capability.missing", "lab.failed"} for f in findings):
-        return PolicyDecision(verdict="hold", summary="HOLD - blocking local evidence is missing or failed.", findings=findings)
+        return PolicyDecision(
+            verdict="hold",
+            summary="HOLD - blocking local evidence is missing or failed.",
+            findings=findings,
+        )
 
     high_findings = [f for f in findings if f.severity == "high"]
     if high_findings and not lab_passed:
-        return PolicyDecision(verdict="trial", summary="TRIAL - high-risk capability requires sandbox evidence.", findings=findings)
+        return PolicyDecision(
+            verdict="trial",
+            summary="TRIAL - high-risk capability requires sandbox evidence.",
+            findings=findings,
+        )
 
     if findings and not lab_passed:
-        return PolicyDecision(verdict="trial", summary="TRIAL - permission surface requires a stored sandbox receipt.", findings=findings)
+        return PolicyDecision(
+            verdict="trial",
+            summary="TRIAL - permission surface requires a stored sandbox receipt.",
+            findings=findings,
+        )
 
     if (
         evaluation.fit == "high"
@@ -142,9 +166,21 @@ def evaluate_policy(
         and (lab_passed or policy.allow_adopt_without_lab_for_low_risk)
         and not findings
     ):
-        return PolicyDecision(verdict="adopt", summary="ADOPT - high fit, low risk, trusted source, and clean evidence.", findings=[])
+        return PolicyDecision(
+            verdict="adopt",
+            summary="ADOPT - high fit, low risk, trusted source, and clean evidence.",
+            findings=[],
+        )
 
     if lab_passed:
-        return PolicyDecision(verdict="trial", summary="TRIAL - lab evidence exists; review before adoption.", findings=findings)
+        return PolicyDecision(
+            verdict="trial",
+            summary="TRIAL - lab evidence exists; review before adoption.",
+            findings=findings,
+        )
 
-    return PolicyDecision(verdict="assess", summary="ASSESS - relevant, but needs stronger local evidence.", findings=findings)
+    return PolicyDecision(
+        verdict="assess",
+        summary="ASSESS - relevant, but needs stronger local evidence.",
+        findings=findings,
+    )

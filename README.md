@@ -89,6 +89,8 @@ Radar demo writes:
 
 - **Incident Change Scout** for provenance-first incident analysis, graph-aware retrieval, bounded remediation planning, approval interrupts, and local evals.
 - **AI ecosystem scouting** across GitHub releases, trending repos, MCP/skills sources, RSS, HN, Hugging Face, and a small arXiv slice.
+- **Living Scout Packs** for AI devtools, MCP, agent frameworks, local AI, RAG/memory, workflow builders, and inference gateways. Seeds are only bootstraps; candidates can be promoted, demoted, or retired as evidence changes.
+- **Dependency intelligence** for repo-relevant security, hardening, and breaking releases. It explains why an upgrade matters here and emits a trial recipe instead of editing your lockfiles.
 - **ADOPT / TRIAL / ASSESS / HOLD verdicts** with risk, stack fit, readiness, adoption cost, provenance, and next action.
 - **Adoption Firewall** commands for try-before-trust evaluation: local evidence ledger, permission manifests, sandbox trial receipts, and CI-friendly guard checks.
 - **Optional Opus judge pass** that vetoes patch-release noise, incident-as-tool mistakes, unsupported claims, and weak ADOPT calls.
@@ -211,6 +213,19 @@ frontier-scout guard --repo .
 `guard` checks the local evidence ledger for risky tools that still need a
 stored trial receipt.
 
+Inspect living packs and repo-relevant dependency upgrades:
+
+```bash
+frontier-scout packs list
+frontier-scout packs show mcp
+frontier-scout profile --repo . --dependencies
+frontier-scout deps scan --repo .
+```
+
+`packs` shows the living radar seeds and candidates. `deps scan` looks for
+meaningful security, hardening, and breaking upgrades that deserve a safe trial,
+without modifying manifests or lockfiles.
+
 After the first PyPI publish, the expected package install paths are:
 
 ```bash
@@ -286,7 +301,7 @@ the matching changelog section.
 See [ROADMAP.md](ROADMAP.md). The short version:
 
 - **v0.1** — local radar, Adoption Firewall, Incident Change Scout, static reports, SQLite, CI, Docker demo, and public docs.
-- **v0.2** — Sandbox Toolbench: deeper Adoption Firewall hardening, richer repo-aware stack detection, and optional local/Docker/E2B-style sandbox backends.
+- **v0.2** — Living Scout Packs, dependency intelligence, richer repo-aware stack detection, and deeper Adoption Firewall hardening.
 - **v0.3** — MCP/plugin surfaces and optional output integrations on top of the same local evidence store.
 
 ## Contributing

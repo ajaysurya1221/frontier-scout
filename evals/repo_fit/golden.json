@@ -1,0 +1,16 @@
+[
+  {
+    "id": "python-agent-repo-mcp-fit",
+    "profile": {"languages": ["python"], "agent_configs": ["AGENTS.md", ".mcp.json"], "frameworks": [], "package_managers": ["pip"]},
+    "tool": {"tool_name": "modelcontextprotocol/servers", "category": "mcp_server", "what": "MCP reference servers", "why_it_matters": "Connect tools through Model Context Protocol."},
+    "expected_fit": "high",
+    "required_reason_terms": ["MCP", "agent"]
+  },
+  {
+    "id": "plain-rust-mcp-medium",
+    "profile": {"languages": ["rust"], "agent_configs": [], "frameworks": [], "package_managers": ["cargo"]},
+    "tool": {"tool_name": "modelcontextprotocol/servers", "category": "mcp_server", "what": "MCP reference servers", "why_it_matters": "Connect tools through Model Context Protocol."},
+    "expected_fit": "medium",
+    "required_reason_terms": ["no strong local stack"]
+  }
+]

@@ -1,0 +1,29 @@
+[
+  {
+    "id": "release-hardening-langchain-core",
+    "package_name": "langchain-core",
+    "from_version": "1.3.5",
+    "to_version": "1.4.0",
+    "text": "## Security\nHarden load() against untrusted manifests and update urllib3 constraints.",
+    "expected_classification": "hardening",
+    "required_quote_terms": ["Harden", "untrusted manifests"]
+  },
+  {
+    "id": "release-breaking-sdk",
+    "package_name": "example-sdk",
+    "from_version": "2.1.0",
+    "to_version": "3.0.0",
+    "text": "## Breaking\nRemoved deprecated client constructor and dropped Python 3.10 support.",
+    "expected_classification": "breaking",
+    "required_quote_terms": ["Breaking", "Removed"]
+  },
+  {
+    "id": "release-noise-docs",
+    "package_name": "example-docs",
+    "from_version": "1.0.1",
+    "to_version": "1.0.2",
+    "text": "Fix typo in README and update examples.",
+    "expected_classification": "feature",
+    "required_quote_terms": ["README"]
+  }
+]

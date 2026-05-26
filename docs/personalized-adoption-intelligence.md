@@ -56,10 +56,32 @@ workflow builder, graph dashboard, SaaS directory, or sandbox provider.
 
 ## Next Build Direction
 
-The next meaningful release should deepen the local graph:
+The next meaningful release should make the radar living instead of static:
 
 - connect repo profiles to verdicts, tools, permissions, trials, and decisions,
-- add `frontier-scout compare <tool>` for change-over-time,
-- add domain-specific Scout Packs, starting with AI developer tools,
+- add Living Scout Packs whose seeds can be promoted, demoted, and retired,
+- add dependency intelligence for meaningful security, hardening, and breaking
+  releases that affect this repo,
+- surface capability drift: current choices that are getting stale and stronger
+  alternatives worth trialing,
 - add a bounded Sandbox Toolbench backend for local Docker and optional E2B-like
   providers.
+
+## v0.2 Living Radar
+
+Curated seed repos are bootloaders, not permanent truth. v0.2 treats packs as
+local graph tags over tools. A candidate can enter through GitHub, PyPI, npm,
+Hugging Face, HN/RSS, or an MCP registry signal, then move through:
+
+```text
+candidate -> watched -> core -> retired
+```
+
+Promotion requires repeated evidence from independent source families. A single
+viral spike can surface an `ASSESS` item, but it cannot create an `ADOPT`
+recommendation.
+
+Dependency intelligence keeps the same posture. Frontier Scout is not a package
+manager or Dependabot clone. It detects repo-relevant upgrades such as a
+hardening release for `langchain-core`, explains why the change matters here,
+and emits a safe trial recipe instead of editing manifests.

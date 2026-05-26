@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from .packs import default_packs
 from .profile import build_scout_profile, stack_from_profile
 from .report import SAMPLE_FUNNEL, SAMPLE_VERDICTS
 from .store import save_scan
@@ -26,6 +27,8 @@ def run_scan(
     repo: Path | None = None,
     dry_run: bool = False,
     persist: bool = True,
+    pack: str | None = None,
+    discover: bool = False,
 ) -> dict[str, Any]:
     repo = repo or Path.cwd()
     stack = detect_stack(repo)
@@ -41,12 +44,16 @@ def run_scan(
             "duration_s": 0.0,
             "judge_rating": "demo",
             "judge_summary": "Dry-run scan using seeded demo verdicts.",
-            "verdicts": personalize_verdicts(SAMPLE_VERDICTS, profile.model_dump()),
+            "pack": pack,
+            "discover": discover,
+            "verdicts": personalize_verdicts(_filter_by_pack(SAMPLE_VERDICTS, pack), profile.model_dump()),
         }
     else:
         payload = _run_live_scan(stack)
         payload["stack"] = stack
         payload["profile"] = profile.model_dump()
+        payload["pack"] = pack
+        payload["discover"] = discover
         payload["verdicts"] = personalize_verdicts(list(payload.get("verdicts") or []), profile.model_dump())
     if persist:
         save_scan(payload, repo=str(repo.resolve()))
@@ -133,6 +140,22 @@ def _next_safe_step(verdict: dict[str, Any]) -> str:
     return str(verdict.get("next_action") or "Review the source evidence before trial.")
 
 
+def _filter_by_pack(verdicts: list[dict[str, Any]], pack: str | None) -> list[dict[str, Any]]:
+    if not pack:
+        return verdicts
+    pack_def = default_packs().get(pack)
+    if not pack_def:
+        return verdicts
+    needles = {repo.lower() for repo in pack_def.seed_repos}
+    filtered = [
+        verdict
+        for verdict in verdicts
+        if str(verdict.get("tool_name", "")).lower() in needles
+        or any(str(verdict.get("source_url", "")).lower().endswith(repo.lower()) for repo in needles)
+    ]
+    return filtered or verdicts
+
+
 def _run_live_scan(stack_profile: dict[str, Any]) -> dict[str, Any]:
     scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
     if str(scripts_dir) not in sys.path:
@@ -153,4 +176,3 @@ def _run_live_scan(stack_profile: dict[str, Any]) -> dict[str, Any]:
         "judge_used_fallback": result.judge_used_fallback,
         "verdicts": result.verdicts,
     }
-

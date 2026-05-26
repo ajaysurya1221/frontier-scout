@@ -7,21 +7,30 @@ import json
 from pathlib import Path
 
 from . import __version__
+from .dep_trial import run_dependency_trial
+from .dependencies import run_dependency_scan
 from .dossier import build_dossier
 from .evaluate import evaluate_url
 from .guard import format_findings, run_guard
 from .lab import run_lab
 from .mcp_audit import classify_mcp_capabilities
+from .packs import candidate_rows_for_pack
 from .platform.incident_change_scout.workflow import run_incident_demo
 from .policy import default_policy_toml, evaluate_policy
 from .profile import build_scout_profile, export_profile
 from .report import load_verdict_file, render_html, write_demo
 from .scout import detect_stack, run_scan
 from .store import (
+    get_pack,
     home_dir,
     init_home,
     latest_scan,
+    list_pack_candidates,
+    list_packs,
+    save_builtin_packs_if_empty,
     save_evaluation,
+    save_pack_candidate,
+    save_pack_override,
     save_permission_manifest,
     save_policy_findings,
     save_repo_profile,
@@ -43,6 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
     profile_cmd = sub.add_parser("profile", help="Build a local Scout Profile for repo-aware recommendations.")
     profile_cmd.add_argument("--repo", default=".", help="Repository to inspect for local signals.")
     profile_cmd.add_argument("--json", action="store_true", help="Print the profile as JSON.")
+    profile_cmd.add_argument("--dependencies", action="store_true", help="Include dependency inventory in text output.")
     profile_cmd.add_argument(
         "--write-repo",
         action="store_true",
@@ -57,6 +67,12 @@ def build_parser() -> argparse.ArgumentParser:
     scan_cmd.add_argument("--dry-run", action="store_true", help="Use seeded verdicts and avoid network/LLM calls.")
     scan_cmd.add_argument("--no-store", action="store_true", help="Do not persist the scan to SQLite.")
     scan_cmd.add_argument("--json", action="store_true", help="Print the scan payload as JSON.")
+    scan_cmd.add_argument("--pack", help="Limit/personalize scan around one Scout Pack slug.")
+    scan_cmd.add_argument(
+        "--discover",
+        action="store_true",
+        help="Opt into live/dynamic discovery sources where supported.",
+    )
 
     report_cmd = sub.add_parser("report", help="Render a static HTML report from a verdict JSON file or latest scan.")
     report_cmd.add_argument("--input", help="Path to verdict JSON. Defaults to latest SQLite scan, then demo fixture.")
@@ -76,6 +92,38 @@ def build_parser() -> argparse.ArgumentParser:
     dossier_cmd.add_argument("target", help="Tool name, GitHub repo, package name, or URL.")
     dossier_cmd.add_argument("--repo", default=".", help="Repository used for personalization.")
     dossier_cmd.add_argument("--json", action="store_true", help="Print the dossier payload as JSON.")
+    dossier_cmd.add_argument("--dismiss", action="store_true", help="Suppress this target from future pack reports.")
+    dossier_cmd.add_argument("--mute", action="store_true", help="Hide this target for the default snooze window.")
+    dossier_cmd.add_argument("--pin", action="store_true", help="Protect this target from pack demotion.")
+    dossier_cmd.add_argument("--snooze", help="Custom snooze window such as 30d.")
+
+    packs_cmd = sub.add_parser("packs", help="Inspect and refresh living Scout Packs.")
+    packs_sub = packs_cmd.add_subparsers(dest="packs_command")
+    packs_sub.add_parser("list", help="List built-in and local Scout Packs.")
+    packs_show = packs_sub.add_parser("show", help="Show one Scout Pack definition.")
+    packs_show.add_argument("slug", help="Pack slug.")
+    packs_refresh = packs_sub.add_parser("refresh", help="Refresh pack candidates.")
+    packs_refresh.add_argument(
+        "--discover",
+        action="store_true",
+        help="Opt into live discovery. Without it, seed candidates only.",
+    )
+    packs_refresh.add_argument("--reset-source", help="Reset one stale source id.")
+    packs_candidates = packs_sub.add_parser("candidates", help="List current pack candidates.")
+    packs_candidates.add_argument("--pack", help="Filter by pack slug.")
+
+    deps_cmd = sub.add_parser("deps", help="Scan dependency intelligence and create upgrade trials.")
+    deps_sub = deps_cmd.add_subparsers(dest="deps_command")
+    deps_scan = deps_sub.add_parser("scan", help="Scan repo dependencies for meaningful upgrade findings.")
+    deps_scan.add_argument("--repo", default=".", help="Repository to inspect.")
+    deps_scan.add_argument("--json", action="store_true", help="Print dependency findings as JSON.")
+    deps_trial = deps_sub.add_parser("trial", help="Create a safe dependency-upgrade trial receipt.")
+    deps_trial.add_argument("package", help="Package name.")
+    deps_trial.add_argument("--from", dest="from_version", required=True, help="Current version.")
+    deps_trial.add_argument("--to", dest="to_version", required=True, help="Candidate version.")
+    deps_trial.add_argument("--repo", default=".", help="Repository to trial against.")
+    deps_trial.add_argument("--dry-run", action="store_true", help="Do not execute tests.")
+    deps_trial.add_argument("--json", action="store_true", help="Print trial payload as JSON.")
 
     trial_cmd = sub.add_parser("trial", help="Create a local try-before-trust trial receipt.")
     trial_cmd.add_argument("tool", help="Tool name or URL.")
@@ -170,6 +218,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"frameworks: {', '.join(profile.frameworks) or 'none detected'}")
             print(f"agent configs: {', '.join(profile.agent_configs) or 'none detected'}")
             print(f"risk flags: {', '.join(profile.risk_flags) or 'none'}")
+            if args.dependencies:
+                print("dependencies:")
+                for dep in profile.dependencies:
+                    resolved = f" -> {dep.resolved_version}" if dep.resolved_version else ""
+                    print(f"- {dep.ecosystem}:{dep.name}{dep.specifier}{resolved} ({dep.manifest_path})")
         return 0
     if args.command == "demo":
         paths = write_demo(Path(args.output_dir))
@@ -181,6 +234,8 @@ def main(argv: list[str] | None = None) -> int:
             repo=Path(args.repo),
             dry_run=args.dry_run,
             persist=not args.no_store,
+            pack=args.pack,
+            discover=args.discover,
         )
         if args.json:
             print(json.dumps(payload, indent=2))
@@ -246,6 +301,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"next: frontier-scout trial {evaluation.tool_name} --url {evaluation.source_url} --dry-run")
         return 0
     if args.command == "dossier":
+        for flag_name, override in (
+            ("dismiss", "suppress"),
+            ("mute", "suppress"),
+            ("pin", "pin"),
+        ):
+            if getattr(args, flag_name, False):
+                save_pack_override("*", args.target, override, reason=f"dossier --{flag_name}", expires_at=args.snooze)
         payload = build_dossier(args.target, repo=Path(args.repo))
         if args.json:
             print(json.dumps(payload, indent=2))
@@ -261,6 +323,74 @@ def main(argv: list[str] | None = None) -> int:
             print(f"next: {payload['next_safe_step']}")
             print(f"receipt: {payload['receipt_path']}")
         return 0
+    if args.command == "packs":
+        save_builtin_packs_if_empty()
+        if args.packs_command == "list":
+            for pack in list_packs():
+                definition = pack["definition"]
+                print(f"{pack['slug']}: {pack['display_name']} ({len(definition.get('seed_repos') or [])} seeds)")
+            return 0
+        if args.packs_command == "show":
+            pack = get_pack(args.slug)
+            if not pack:
+                parser.error(f"unknown pack: {args.slug}")
+            definition = pack["definition"]
+            print(f"{definition['slug']}: {definition['display_name']}")
+            print(definition.get("description") or "")
+            print("seeds:")
+            for repo_name in definition.get("seed_repos") or []:
+                print(f"- {repo_name}")
+            return 0
+        if args.packs_command == "refresh":
+            count = 0
+            for pack in list_packs():
+                from .packs import ScoutPack
+
+                pack_model = ScoutPack(**pack["definition"])
+                for candidate in candidate_rows_for_pack(pack_model, discover=args.discover):
+                    save_pack_candidate(candidate)
+                    count += 1
+            suffix = " with live discovery requested" if args.discover else " from seed definitions"
+            print(f"Refreshed {count} pack candidates{suffix}.")
+            return 0
+        if args.packs_command == "candidates":
+            candidates = list_pack_candidates(args.pack)
+            for candidate in candidates:
+                print(f"{candidate['pack_slug']} {candidate['state']} {candidate['tool_name']}")
+            return 0
+        parser.error("packs requires a subcommand")
+        return 2
+    if args.command == "deps":
+        if args.deps_command == "scan":
+            payload = run_dependency_scan(Path(args.repo))
+            if args.json:
+                print(json.dumps(payload, indent=2))
+            else:
+                print(f"Dependency scan: {len(payload['findings'])} findings")
+                for finding in payload["findings"]:
+                    print(
+                        f"{finding['verdict'].upper()} {finding['package_name']} "
+                        f"{finding['from_version']} -> {finding['to_version']} "
+                        f"({finding['classification']})"
+                    )
+            return 0
+        if args.deps_command == "trial":
+            result = run_dependency_trial(
+                args.package,
+                from_version=args.from_version,
+                to_version=args.to_version,
+                repo=Path(args.repo),
+                dry_run=args.dry_run,
+            )
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                print(f"Dependency trial: {result['tool_name']} {result['from_version']} -> {result['to_version']}")
+                print(f"status: {result['lab_result']['status']}")
+                print(f"receipt: {result['receipt_path']}")
+            return 0
+        parser.error("deps requires a subcommand")
+        return 2
     if args.command == "trial":
         stack = detect_stack(Path(args.repo))
         dry_run = args.dry_run or args.sandbox == "report-only"

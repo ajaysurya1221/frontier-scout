@@ -32,6 +32,9 @@ SCORE_ITEMS_TOOL = {
         "  0-5  = noise. Keep out of the verdict pass. INCLUDES:\n"
         "    - Patch releases (x.y.Z bumps, hotfixes) with no API change\n"
         "    - Lockfile bumps, transitive-dependency hygiene, version-pin updates\n"
+        "      Exception: releases classified as security or hardening, or "
+        "breaking changes for dependencies in the active repo profile, are "
+        "not patch noise.\n"
         "    - Survey papers / overview blog posts with no shipping code\n"
         "    - Marketing posts, generic 'AI is transforming X' content\n"
         "    - Incident / breach / credential-leak news (these are security "
@@ -224,6 +227,32 @@ VERDICT_TOOL = {
             },
         },
         "required": ["verdicts"],
+    },
+}
+
+
+CLASSIFY_RELEASE_TOOL = {
+    "name": "classify_release",
+    "description": (
+        "Classify release-note text for repo-relevant dependency intelligence. "
+        "Return security/hardening/breaking only when the evidence quote directly "
+        "supports that label; otherwise use feature or noise."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "category": {
+                "type": "string",
+                "enum": ["security", "hardening", "breaking", "feature", "noise"],
+            },
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "evidence_quotes": {
+                "type": "array",
+                "items": {"type": "string", "maxLength": 220},
+                "maxItems": 4,
+            },
+        },
+        "required": ["category", "confidence", "evidence_quotes"],
     },
 }
 

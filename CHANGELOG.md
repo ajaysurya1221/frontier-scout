@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Added Living Scout Packs with seeded pack definitions, deterministic candidate lifecycle rules, pack CLI commands, and SQLite-backed pack state.
+- Added dependency intelligence for PyPI/npm manifest parsing, cached OSV/PyPI/npm metadata, release-note classification, and safe dependency trial receipts.
+- Added `frontier-scout deps scan`, `frontier-scout deps trial`, `frontier-scout packs list`, `frontier-scout packs show`, `frontier-scout packs refresh`, and `frontier-scout packs candidates`.
+- Extended repo profiles with exact dependency names, ecosystems, specifiers, resolved versions, and dependency graph edges.
 - Added Adoption Firewall v0 commands: `evaluate`, `trial`, `guard`, and `policy init`.
 - Added local evidence-ledger tables for tools, evaluations, permission manifests, trial runs, lab results, policy findings, adoption decisions, and policy exceptions.
 - Added deterministic MCP/tool capability classification and local policy decisions.
