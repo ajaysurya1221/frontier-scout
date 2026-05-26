@@ -1,0 +1,20 @@
+.git
+.github
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.scratch
+.venv
+__pycache__
+*.py[cod]
+.coverage
+.env
+.env.*
+build
+dist
+*.egg-info
+costs.jsonl
+quality-log.jsonl
+demo
+gif for github
+research
