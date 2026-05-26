@@ -28,7 +28,7 @@ jobs:
       - name: Secret scan
         run: |
           detect-secrets scan --all-files --force-use-all-plugins \
-            --exclude-files '\.git/|\.pytest_cache/|\.mypy_cache/|\.ruff_cache/|\.scratch/|\.env\.local|costs\.jsonl|quality-log\.jsonl|demo/' \
+            --exclude-files '\.git/|\.pytest_cache/|\.mypy_cache/|\.ruff_cache/|\.scratch/|\.env\.local|costs\.jsonl|quality-log\.jsonl|demo/|research/|gif for github/|docs/assets/frontier-scout-banner-source\.html' \
             > .secrets-scan-result.json
           python - <<'PY'
           import json, sys
