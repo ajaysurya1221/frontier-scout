@@ -285,7 +285,7 @@ CI runs compile checks, non-live tests, and a tracked-file secret scan.
 
 ## Release
 
-For v0.1 patch releases:
+For tagged releases:
 
 1. Bump `project.version` in `pyproject.toml`.
 2. Update the matching section in `CHANGELOG.md`.
@@ -300,9 +300,8 @@ the matching changelog section.
 
 See [ROADMAP.md](ROADMAP.md). The short version:
 
-- **v0.1** — local radar, Adoption Firewall, Incident Change Scout, static reports, SQLite, CI, Docker demo, and public docs.
-- **v0.2** — Living Scout Packs, dependency intelligence, richer repo-aware stack detection, and deeper Adoption Firewall hardening.
-- **v0.3** — MCP/plugin surfaces and optional output integrations on top of the same local evidence store.
+- **v0.2** — current release: local radar, Adoption Firewall, Incident Change Scout, Living Scout Packs, dependency intelligence, SQLite, CI, Docker demo, and public docs.
+- **v0.3** — MCP/plugin surfaces, stronger sandbox/toolbench backends, and optional output integrations on top of the same local evidence store.
 
 ## Contributing
 
