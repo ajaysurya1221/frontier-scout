@@ -4,6 +4,12 @@
 
 - No unreleased changes yet.
 
+## 0.2.1 - 2026-05-26
+
+- Reissued the v0.2 release line after the original GitHub `v0.2.0` tag name became unavailable during release recovery.
+- Hardened the release workflow so manual trusted publishing can publish PyPI packages, while tag-triggered runs only create GitHub Release assets.
+- No product behavior changes from `0.2.0`.
+
 ## 0.2.0 - 2026-05-26
 
 - Added Living Scout Packs with seeded pack definitions, deterministic candidate lifecycle rules, pack CLI commands, and SQLite-backed pack state.
