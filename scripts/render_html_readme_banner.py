@@ -69,7 +69,8 @@ def _capture_frames() -> list[bytes]:
         browser = _launch_browser(playwright)
         page = browser.new_page(viewport={"width": WIDTH, "height": HEIGHT}, device_scale_factor=1)
         page.goto(html_url, wait_until="networkidle")
-        page.wait_for_timeout(100)
+        page.wait_for_selector("#stage", timeout=5000)
+        page.wait_for_timeout(500)
         for index in range(FRAME_COUNT):
             if index:
                 page.wait_for_timeout(FRAME_MS)
