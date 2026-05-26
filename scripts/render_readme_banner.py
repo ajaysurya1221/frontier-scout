@@ -133,8 +133,8 @@ def _draw_outer_frame(draw: ImageDraw.ImageDraw) -> None:
 
 
 def _draw_header(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.ImageFont], phase: float) -> None:
-    # Eyebrow with status dot
-    glow = 0.55 + 0.45 * math.sin(phase * 2 * math.pi)
+    # Eyebrow with status dot (quiet pulse, never disappears even mid-loop)
+    glow = 0.78 + 0.22 * math.sin(phase * 2 * math.pi)
     draw.ellipse((HEADER_X, HEADER_LABEL_Y + 6, HEADER_X + 12, HEADER_LABEL_Y + 18),
                  fill=_blend(ACCENT_TEAL_SOFT, ACCENT_TEAL, glow))
     draw.text((HEADER_X + 22, HEADER_LABEL_Y + 2), "FRONTIER SCOUT · MISSION CONTROL",
@@ -154,15 +154,45 @@ def _draw_header(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.ImageFont
     _pill(draw, (1308, PILL_Y2 + 50, 1516, PILL_Y2 + 88), "try before trust",
           fill=ACCENT_BLUE_SOFT, text_color=ACCENT_BLUE, font=fonts["pill"])
 
-    # Thin separator under header
-    draw.line((72, 198, W - 72, 198), fill=RULE, width=1)
+    _draw_kpi_band(draw, fonts)
+
+
+def _draw_kpi_band(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.ImageFont]) -> None:
+    """Four-cell KPI strip filling the empty zone between subtitle and panels."""
+    band_x1, band_y1 = 72, 178
+    band_x2, band_y2 = 1280, 214
+    cells = [
+        ("377", "scanned this week", ACCENT_TEAL),
+        ("5", "verdicts surfaced", ACCENT_BLUE),
+        ("1", "awaiting trial", ACCENT_AMBER),
+        ("in 3d", "next sweep", ACCENT_VIOLET),
+    ]
+    # Top and bottom hairlines anchor the band
+    draw.line((band_x1, band_y1, band_x2, band_y1), fill=RULE, width=1)
+    draw.line((band_x1, band_y2, band_x2, band_y2), fill=RULE, width=1)
+
+    cell_w = (band_x2 - band_x1) // len(cells)
+    for i, (value, label, color) in enumerate(cells):
+        cx1 = band_x1 + i * cell_w
+        # Faint vertical rule between cells (skip the leading edge)
+        if i > 0:
+            draw.line((cx1, band_y1 + 6, cx1, band_y2 - 6), fill=RULE, width=1)
+        # Color tick to the left of the value
+        tick_x = cx1 + 14
+        draw.rectangle((tick_x, band_y1 + 10, tick_x + 3, band_y2 - 10), fill=color)
+        # Value (large, bold) then label (small, sans, muted)
+        draw.text((tick_x + 12, band_y1 + 4), value, font=fonts["kpi_value"], fill=INK)
+        value_w = _text_width(fonts["kpi_value"], value)
+        draw.text((tick_x + 12 + value_w + 8, band_y1 + 14), label,
+                  font=fonts["kpi_unit"], fill=INK_MUTED)
 
 
 # -------- left panel: scout sweep -------------------------------------------
 
 
 def _draw_scout_panel(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.ImageFont], phase: float) -> None:
-    _panel(draw, LEFT_PANEL, "Scout sweep", "public signals to local fingerprint", fonts)
+    _panel(draw, LEFT_PANEL, "Scout sweep", "public signals to local fingerprint", fonts,
+           dot_color=ACCENT_TEAL)
     x1, y1, x2, _ = LEFT_PANEL
 
     sources = [
@@ -223,7 +253,8 @@ def _draw_scout_panel(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.Imag
 
 def _draw_pipeline_panel(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.ImageFont], phase: float) -> None:
     _panel(draw, CENTER_PANEL, "Adoption pipeline",
-           "repo  ›  fit  ›  tool  ›  permission  ›  receipt", fonts)
+           "weekly · stored locally · diffed each run", fonts,
+           dot_color=ACCENT_BLUE)
     x1, y1, x2, y2 = CENTER_PANEL
 
     steps = [
@@ -294,40 +325,52 @@ def _draw_pipeline_panel(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.I
     # Travelling signal — moves across rail once per loop, eased.
     travel_t = _smoothstep((phase * 1.0) % 1.0)
     signal_x = int(rail_left + (rail_right - rail_left) * travel_t)
-    # Glow trail behind signal
-    for offset in range(48, 0, -6):
-        alpha_ratio = 1 - offset / 48
-        col = _blend("#d4e0ea", ACCENT_TEAL, alpha_ratio * 0.65)
+    # Longer, smoother glow trail behind signal
+    trail_len = 96
+    for offset in range(trail_len, 0, -4):
+        alpha_ratio = 1 - offset / trail_len
+        col = _blend("#d4e0ea", ACCENT_TEAL, alpha_ratio * 0.75)
         draw.line((max(rail_left, signal_x - offset), rail_y, signal_x, rail_y),
                   fill=col, width=2)
-    # Halo + dot
-    draw.ellipse((signal_x - 10, rail_y - 10, signal_x + 10, rail_y + 10),
-                 fill=ACCENT_TEAL_SOFT, outline=None)
+    # Outer halo, mid ring, filled core
+    draw.ellipse((signal_x - 14, rail_y - 14, signal_x + 14, rail_y + 14),
+                 fill=ACCENT_TEAL_SOFT)
+    draw.ellipse((signal_x - 9, rail_y - 9, signal_x + 9, rail_y + 9),
+                 fill="#ffffff", outline=ACCENT_TEAL, width=2)
     draw.ellipse((signal_x - 5, rail_y - 5, signal_x + 5, rail_y + 5),
                  fill=ACCENT_TEAL)
 
-    # Chevron marker between cards (on the rail, small)
+    # Chevron marker between cards (on the rail)
     for i in range(len(steps) - 1):
         ax = (centers[i][0] + centers[i + 1][0]) // 2
         chev_color = ACCENT_TEAL if i == active_idx else "#b6c5d3"
-        draw.polygon([(ax - 5, rail_y - 6), (ax + 5, rail_y), (ax - 5, rail_y + 6)],
+        draw.polygon([(ax - 6, rail_y - 7), (ax + 6, rail_y), (ax - 6, rail_y + 7)],
                      fill=chev_color)
 
-    # Highlight callout under the pipeline
-    callout_y = y2 - 92
-    draw.rounded_rectangle((inner_x1, callout_y, inner_x2, callout_y + 68),
+    # "Since last sweep" caption sits in the gap between rail and callout.
+    caption = "since last sweep · +2 new candidates · 1 awaiting trial"
+    cap_w = _text_width(fonts["caption"], caption)
+    cap_cx = (inner_x1 + inner_x2) // 2
+    cap_y = rail_y + 26
+    draw.text((cap_cx - cap_w / 2, cap_y), caption,
+              font=fonts["caption"], fill=INK_MUTED)
+
+    # Highlight callout under the pipeline (pulled up so the panel no longer
+    # leaves a large void between the rail and the callout).
+    callout_y = y2 - 76
+    draw.rounded_rectangle((inner_x1, callout_y, inner_x2, callout_y + 60),
                            radius=14, fill="#fff8ec", outline=ACCENT_AMBER_BORDER, width=1)
     # Inline icon (sparkle/star-ish)
-    icon_cx, icon_cy = inner_x1 + 30, callout_y + 34
+    icon_cx, icon_cy = inner_x1 + 28, callout_y + 30
     draw.polygon([
-        (icon_cx, icon_cy - 12), (icon_cx + 4, icon_cy - 4),
-        (icon_cx + 12, icon_cy), (icon_cx + 4, icon_cy + 4),
-        (icon_cx, icon_cy + 12), (icon_cx - 4, icon_cy + 4),
-        (icon_cx - 12, icon_cy), (icon_cx - 4, icon_cy - 4),
+        (icon_cx, icon_cy - 11), (icon_cx + 4, icon_cy - 4),
+        (icon_cx + 11, icon_cy), (icon_cx + 4, icon_cy + 4),
+        (icon_cx, icon_cy + 11), (icon_cx - 4, icon_cy + 4),
+        (icon_cx - 11, icon_cy), (icon_cx - 4, icon_cy - 4),
     ], fill=ACCENT_AMBER)
-    draw.text((inner_x1 + 56, callout_y + 12),
+    draw.text((inner_x1 + 52, callout_y + 8),
               "Highlighted candidate", font=fonts["section"], fill=ACCENT_AMBER)
-    draw.text((inner_x1 + 56, callout_y + 34),
+    draw.text((inner_x1 + 52, callout_y + 28),
               "modelcontextprotocol/servers · matches agent + MCP signals in this repo",
               font=fonts["row_hint"], fill="#5b3a09")
 
@@ -336,7 +379,8 @@ def _draw_pipeline_panel(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.I
 
 
 def _draw_dossier_panel(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.ImageFont], phase: float) -> None:
-    _panel(draw, RIGHT_PANEL, "Adoption dossier", "try-before-trust verdict", fonts)
+    _panel(draw, RIGHT_PANEL, "Adoption dossier", "try-before-trust verdict", fonts,
+           dot_color=ACCENT_AMBER)
     x1, y1, x2, y2 = RIGHT_PANEL
 
     inner_x1 = x1 + 22
@@ -344,24 +388,31 @@ def _draw_dossier_panel(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.Im
 
     # Verdict card
     verdict_top = y1 + PANEL_HEADER_H + 14
-    verdict_bot = verdict_top + 96
+    verdict_bot = verdict_top + 100
     draw.rounded_rectangle((inner_x1, verdict_top, inner_x2, verdict_bot),
                            radius=18, fill="#fff7ed", outline=ACCENT_AMBER_BORDER, width=2)
     draw.text((inner_x1 + 18, verdict_top + 14),
               "VERDICT", font=fonts["section"], fill=ACCENT_AMBER)
     # Stamp pulses gently
-    stamp_glow = 0.7 + 0.3 * (0.5 + 0.5 * math.sin(phase * 2 * math.pi))
+    stamp_glow = 0.75 + 0.25 * (0.5 + 0.5 * math.sin(phase * 2 * math.pi))
     stamp_color = _blend("#d97706", "#9a3412", stamp_glow)
-    draw.text((inner_x1 + 18, verdict_top + 36), "TRIAL",
+    draw.text((inner_x1 + 18, verdict_top + 38), "TRIAL",
               font=fonts["stamp"], fill=stamp_color)
-    # Small "approved with conditions" tag
-    tag_x = inner_x1 + 18
-    tag_y = verdict_top + 78
-    tag_w = 220
-    draw.rounded_rectangle((tag_x, tag_y, tag_x + tag_w, tag_y + 16),
-                           radius=8, fill=ACCENT_AMBER_BORDER)
-    draw.text((tag_x + 8, tag_y + 1), "approved with conditions",
-              font=fonts["tag"], fill="#5b3a09")
+    # Inline chip beside the stamp: "approved with conditions"
+    chip_label = "approved with conditions"
+    chip_text_w = _text_width(fonts["inline_chip"], chip_label)
+    chip_x1 = inner_x1 + 18 + _text_width(fonts["stamp"], "TRIAL") + 12
+    chip_y_mid = verdict_top + 60
+    chip_box = (chip_x1, chip_y_mid - 11, chip_x1 + chip_text_w + 18, chip_y_mid + 11)
+    draw.rounded_rectangle(chip_box, radius=10, fill=ACCENT_AMBER_SOFT,
+                           outline=ACCENT_AMBER_BORDER, width=1)
+    draw.text((chip_x1 + 9, chip_y_mid - 8), chip_label,
+              font=fonts["inline_chip"], fill="#5b3a09")
+    # Tiny artifact mark in the verdict card's bottom-right corner
+    mark = "v0.1 · receipt.json"
+    mark_w = _text_width(fonts["version_mark"], mark)
+    draw.text((inner_x2 - mark_w - 14, verdict_bot - 18), mark,
+              font=fonts["version_mark"], fill="#a47148")
 
     # Metadata rows
     rows = [
@@ -371,8 +422,8 @@ def _draw_dossier_panel(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.Im
         ("network", "likely", ACCENT_BLUE),
         ("policy", "needs receipt", ACCENT_ROSE),
     ]
-    row_top = verdict_bot + 16
-    row_h = 38
+    row_top = verdict_bot + 14
+    row_h = 36
     for i, (key, value, color) in enumerate(rows):
         y = row_top + i * row_h
         # Subtle alternating row tint
@@ -386,16 +437,25 @@ def _draw_dossier_panel(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.Im
         draw.text((inner_x2 - vw - 10, y + 6), value, font=fonts["row_value"], fill=INK)
 
     # CI guard banner — separated from rows so it never overlaps
-    guard_y1 = y2 - 56
+    guard_y1 = y2 - 58
     guard_y2 = y2 - 18
     draw.rounded_rectangle((inner_x1, guard_y1, inner_x2, guard_y2),
                            radius=12, fill="#fde9ee", outline="#f3b5c2", width=1)
-    # Lock icon (small)
-    lx, ly = inner_x1 + 16, (guard_y1 + guard_y2) // 2
-    draw.rectangle((lx, ly - 2, lx + 10, ly + 7), fill=ACCENT_ROSE)
-    draw.arc((lx - 1, ly - 11, lx + 11, ly + 1), start=180, end=360,
-             fill=ACCENT_ROSE, width=2)
-    draw.text((inner_x1 + 34, guard_y1 + 8),
+    # Polygon shield glyph (six points, renders cleanly at any size).
+    sx = inner_x1 + 16
+    sy_mid = (guard_y1 + guard_y2) // 2
+    draw.polygon([
+        (sx, sy_mid - 11),       # top
+        (sx + 10, sy_mid - 8),   # upper-right shoulder
+        (sx + 10, sy_mid + 2),   # right side
+        (sx, sy_mid + 11),       # bottom point
+        (sx - 10, sy_mid + 2),   # left side
+        (sx - 10, sy_mid - 8),   # upper-left shoulder
+    ], fill=ACCENT_ROSE)
+    # Inner check-bar to read as "guard"
+    draw.line((sx - 4, sy_mid + 1, sx - 1, sy_mid + 4), fill="#ffffff", width=2)
+    draw.line((sx - 1, sy_mid + 4, sx + 5, sy_mid - 3), fill="#ffffff", width=2)
+    draw.text((inner_x1 + 34, guard_y1 + 9),
               "CI guard · missing trial evidence", font=fonts["row_value"], fill=ACCENT_ROSE)
 
 
@@ -414,7 +474,7 @@ def _draw_evidence_strip(draw: ImageDraw.ImageDraw, fonts: dict[str, ImageFont.I
     draw.text((x1 + 122, y1 + 8), "this run, all local", font=fonts["row_hint"], fill=INK_MUTED)
 
     items = [
-        ("377 scanned, 5 verdicts surfaced", "scout", ACCENT_TEAL),
+        ("weekly sweep · 377 scanned · 5 verdicts since last sweep", "watch", ACCENT_TEAL),
         ("profile: local only", "privacy", ACCENT_BLUE),
         ("sandbox: report-only receipt", "trial", ACCENT_AMBER),
         ("guard: missing trial evidence", "ci", ACCENT_ROSE),
@@ -449,6 +509,8 @@ def _panel(
     title: str,
     subtitle: str,
     fonts: dict[str, ImageFont.ImageFont],
+    *,
+    dot_color: str = ACCENT_TEAL,
 ) -> None:
     x1, y1, x2, y2 = box
     # Soft shadow
@@ -461,8 +523,8 @@ def _panel(
     draw.rectangle((x1, y1 + PANEL_HEADER_H - 22, x2, y1 + PANEL_HEADER_H), fill=PANEL_HEADER)
     # Header separator
     draw.line((x1 + 16, y1 + PANEL_HEADER_H, x2 - 16, y1 + PANEL_HEADER_H), fill=RULE, width=1)
-    # Title + subtitle
-    draw.ellipse((x1 + 22, y1 + 28, x1 + 34, y1 + 40), fill=ACCENT_TEAL)
+    # Title + subtitle, with role-coloured marker
+    draw.ellipse((x1 + 22, y1 + 28, x1 + 34, y1 + 40), fill=dot_color)
     draw.text((x1 + 42, y1 + 14), title, font=fonts["panel_title"], fill=INK)
     draw.text((x1 + 42, y1 + 40), subtitle, font=fonts["row_hint"], fill=INK_MUTED)
 
@@ -583,6 +645,12 @@ def _fonts() -> dict[str, ImageFont.ImageFont]:
         "tag": load(11, "bold"),
         "stamp": load(40, "bold"),
         "evidence": load(13, "sans"),
+        "kpi_label": load(11, "mono"),
+        "kpi_value": load(20, "bold"),
+        "kpi_unit": load(13, "sans"),
+        "version_mark": load(10, "mono"),
+        "caption": load(13, "sans"),
+        "inline_chip": load(11, "bold"),
     }
 
 
