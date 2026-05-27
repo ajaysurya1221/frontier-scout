@@ -136,6 +136,8 @@ def test_textual_setup_app_enter_runs_selected_safe_action(tmp_path, monkeypatch
         repo = _seed_repo(tmp_path / "repo")
         diagnostics = setup_diagnostics(repo, ollama_timeout_s=0.001)
 
+        from textual.widgets import Button, RichLog
+
         from frontier_scout.tui.setup_app import SetupApp
 
         def fake_run_scan(*, repo, dry_run, persist, pack=None, discover=False):
@@ -144,27 +146,64 @@ def test_textual_setup_app_enter_runs_selected_safe_action(tmp_path, monkeypatch
             return {"verdicts": [{"tool_name": "modelcontextprotocol/servers"}]}
 
         monkeypatch.setattr("frontier_scout.tui.setup_app.run_scan", fake_run_scan)
-        app = SetupApp(diagnostics)
+        app = SetupApp(diagnostics, show_splash=False)
         async with app.run_test() as pilot:
+            # First button on the strip is the lead recommended action (dry_scan when API key is present).
+            app.query("Button").first(Button).focus()
+            await pilot.pause()
             await pilot.press("enter")
-            assert "Dry scan complete: 1 verdicts" in str(app.query_one("#result").content)
+            await pilot.pause()
+            log_text = "\n".join(
+                str(line) for line in app.query_one("#result-log", RichLog).lines
+            )
+            assert "Dry scan complete" in log_text
+            assert "1 verdicts" in log_text
 
     asyncio.run(run_test())
 
 
-def test_textual_setup_app_quit_requires_confirmation(tmp_path, monkeypatch):
+def test_textual_setup_app_quit_modal_preserves_log(tmp_path, monkeypatch):
     async def run_test() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
         diagnostics = setup_diagnostics(_seed_repo(tmp_path / "repo"), ollama_timeout_s=0.001)
 
+        from textual.widgets import RichLog
+
+        from frontier_scout.tui.modals import QuitConfirmScreen
         from frontier_scout.tui.setup_app import SetupApp
 
-        app = SetupApp(diagnostics)
+        app = SetupApp(diagnostics, show_splash=False)
         async with app.run_test() as pilot:
+            log = app.query_one("#result-log", RichLog)
+            initial_lines = list(log.lines)
             await pilot.press("q")
-            assert "Press q again" in str(app.query_one("#result").content)
+            await pilot.pause()
+            assert isinstance(app.screen, QuitConfirmScreen)
+            await pilot.press("n")
+            await pilot.pause()
+            assert not isinstance(app.screen, QuitConfirmScreen)
+            # Result log is unchanged by the quit prompt.
+            assert list(log.lines)[: len(initial_lines)] == initial_lines
+
+    asyncio.run(run_test())
+
+
+def test_textual_setup_app_repo_path_modal_opens_on_slash(tmp_path, monkeypatch):
+    async def run_test() -> None:
+        monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
+        diagnostics = setup_diagnostics(_seed_repo(tmp_path / "repo"), ollama_timeout_s=0.001)
+
+        from frontier_scout.tui.modals import RepoPathPromptScreen
+        from frontier_scout.tui.setup_app import SetupApp
+
+        app = SetupApp(diagnostics, show_splash=False)
+        async with app.run_test() as pilot:
+            await pilot.press("slash")
+            await pilot.pause()
+            assert isinstance(app.screen, RepoPathPromptScreen)
             await pilot.press("escape")
-            assert app._quit_requested is False
+            await pilot.pause()
+            assert not isinstance(app.screen, RepoPathPromptScreen)
 
     asyncio.run(run_test())
 
@@ -200,7 +239,7 @@ def test_scout_packs_selection_persists(tmp_path, monkeypatch):
         from frontier_scout.store import setup_state_path
         from frontier_scout.tui.setup_app import SetupApp
 
-        app = SetupApp(diagnostics)
+        app = SetupApp(diagnostics, show_splash=False)
         async with app.run_test() as pilot:
             packs = app.query_one("#packs")
             packs.focus()
@@ -214,7 +253,7 @@ def test_scout_packs_selection_persists(tmp_path, monkeypatch):
     asyncio.run(run_test())
 
 
-def test_repo_path_input_updates_fingerprint(tmp_path, monkeypatch):
+def test_repo_path_modal_updates_fingerprint(tmp_path, monkeypatch):
     async def run_test() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
         repo_one = _seed_repo(tmp_path / "repo1")
@@ -225,26 +264,29 @@ def test_repo_path_input_updates_fingerprint(tmp_path, monkeypatch):
 
         diagnostics = setup_diagnostics(repo_one, ollama_timeout_s=0.001)
 
+        from textual.widgets import Input, Static
+
+        from frontier_scout.tui.modals import RepoPathPromptScreen
         from frontier_scout.tui.setup_app import SetupApp
 
-        app = SetupApp(diagnostics)
+        app = SetupApp(diagnostics, show_splash=False)
         async with app.run_test() as pilot:
-            initial = str(app.query_one("#fingerprint").content)
+            initial = str(app.query_one("#fingerprint", Static).render())
             assert "python" in initial
 
-            repo_input = app.query_one("#repo-input")
-            repo_input.value = str(repo_two)
-            repo_input.focus()
+            await pilot.press("slash")
+            await pilot.pause()
+            assert isinstance(app.screen, RepoPathPromptScreen)
+            modal_input = app.screen.query_one("#repo-input", Input)
+            modal_input.value = str(repo_two)
             await pilot.press("enter")
-            for _ in range(20):
+            for _ in range(40):
                 await pilot.pause()
-                content = str(app.query_one("#fingerprint").content)
-                if str(repo_two.resolve()) in content:
+                content = str(app.query_one("#fingerprint", Static).render())
+                if "javascript" in content or "package.json" in content.lower():
                     break
             else:
                 raise AssertionError("fingerprint did not refresh for new repo path")
-            updated = str(app.query_one("#fingerprint").content)
-            assert "javascript" in updated or "node" in updated.lower() or "package.json" in updated.lower() or str(repo_two.resolve()) in updated
 
     asyncio.run(run_test())
 
@@ -254,11 +296,60 @@ def test_setup_too_small_terminal_message(tmp_path, monkeypatch):
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
         diagnostics = setup_diagnostics(_seed_repo(tmp_path / "repo"), ollama_timeout_s=0.001)
 
+        from textual.widgets import Static
+
         from frontier_scout.tui.setup_app import SetupApp
 
-        app = SetupApp(diagnostics)
+        app = SetupApp(diagnostics, show_splash=False)
         async with app.run_test(size=(60, 18)):
             await asyncio.sleep(0)
-            assert "Terminal is small" in str(app.query_one("#result").content)
+            banner_text = str(app.query_one("#status-banner", Static).render())
+            assert "Terminal is small" in banner_text
+
+    asyncio.run(run_test())
+
+
+def test_splash_screen_dismisses_on_keypress(tmp_path, monkeypatch):
+    async def run_test() -> None:
+        monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
+        diagnostics = setup_diagnostics(_seed_repo(tmp_path / "repo"), ollama_timeout_s=0.001)
+
+        from frontier_scout.tui.setup_app import SetupApp
+        from frontier_scout.tui.splash import SplashScreen
+
+        app = SetupApp(diagnostics, show_splash=True)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, SplashScreen)
+            await pilot.press("enter")
+            await pilot.pause()
+            assert not isinstance(app.screen, SplashScreen)
+
+    asyncio.run(run_test())
+
+
+def test_fingerprint_renders_evidence_bars(tmp_path, monkeypatch):
+    async def run_test() -> None:
+        monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
+        diagnostics = setup_diagnostics(_seed_repo(tmp_path / "repo"), ollama_timeout_s=0.001)
+        # Inject deterministic import evidence into the profile.
+        diagnostics.profile.import_evidence.top_python = [
+            ("fastapi", 12),
+            ("pydantic", 8),
+        ]
+        diagnostics.profile.import_evidence.files_scanned = 20
+        diagnostics.profile.import_evidence.available = True
+
+        from textual.widgets import Static
+
+        from frontier_scout.tui.setup_app import SetupApp
+
+        app = SetupApp(diagnostics, show_splash=False)
+        async with app.run_test():
+            rendered = str(app.query_one("#fingerprint", Static).render())
+            assert "fastapi" in rendered
+            # The bar glyph from _BAR_GLYPHS appears in the rendered output.
+            assert "█" in rendered
+            assert "×12" in rendered
 
     asyncio.run(run_test())

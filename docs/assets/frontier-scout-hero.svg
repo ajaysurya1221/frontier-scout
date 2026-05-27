@@ -1,106 +1,64 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
-  <title id="title">Frontier Scout try-before-trust workflow</title>
-  <desc id="desc">A practical product screenshot-style hero showing Frontier Scout commands, verdicts, permission maps, and local evidence artifacts.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 500" role="img" aria-labelledby="title desc">
+  <title id="title">Frontier Scout — try-before-trust radar</title>
+  <desc id="desc">Dark terminal window with a radar centerpiece and the FRONTIER · SCOUT wordmark.</desc>
   <defs>
-    <linearGradient id="hero-bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#f8fafc"/>
-      <stop offset="0.52" stop-color="#eef6ff"/>
-      <stop offset="1" stop-color="#f7fee7"/>
-    </linearGradient>
-    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
-      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#0f172a" flood-opacity="0.14"/>
-    </filter>
     <style>
-      .sans { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
-      .mono { font-family: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace; }
-      .ink { fill: #0f172a; }
-      .muted { fill: #475569; }
-      .soft { fill: #64748b; }
-      .blue { fill: #2563eb; }
-      .teal { fill: #0f766e; }
-      .green { fill: #15803d; }
-      .amber { fill: #b45309; }
-      .red { fill: #b91c1c; }
-      .white { fill: #ffffff; }
-      .terminal { fill: #08111f; }
-      .term-muted { fill: #94a3b8; }
-      .term-green { fill: #86efac; }
-      .term-blue { fill: #93c5fd; }
-      .term-amber { fill: #fcd34d; }
-      .stroke { stroke: #cbd5e1; }
+      .mono { font-family: "JetBrains Mono", "SFMono-Regular", Menlo, Consolas, monospace; }
+      .ink  { fill: #d9f7ff; }
+      .muted { fill: #6e8aa1; }
+      .mint { fill: #24d6a8; }
+      .border { stroke: #25405c; fill: none; }
+      .ring { stroke: #25405c; stroke-width: 1.25; fill: none; }
+      .sweep-mint { stroke: #24d6a8; stroke-width: 1.5; fill: #24d6a8; fill-opacity: 0.2; }
     </style>
   </defs>
 
-  <rect width="1600" height="900" fill="url(#hero-bg)"/>
+  <!-- page bg -->
+  <rect width="1200" height="500" fill="#0b1117"/>
 
-  <g transform="translate(72 64)">
-    <text x="0" y="0" class="sans blue" font-size="20" font-weight="800">FRONTIER SCOUT</text>
-    <text x="0" y="62" class="sans ink" font-size="58" font-weight="900">Try AI tools before you trust them</text>
-    <text x="2" y="105" class="sans muted" font-size="26" font-weight="500">Local evidence, sandbox probes, permission maps, adoption receipts, and CI guardrails.</text>
+  <!-- terminal frame -->
+  <g transform="translate(120 70)">
+    <!-- window body -->
+    <rect x="0" y="0" width="960" height="360" rx="20" fill="#0d1622" stroke="#25405c" stroke-width="1.5"/>
+    <!-- titlebar -->
+    <rect x="0" y="0" width="960" height="40" rx="20" fill="#1b2530"/>
+    <rect x="0" y="20" width="960" height="20" fill="#1b2530"/>
+    <circle cx="28" cy="20" r="7" fill="#ff5f57"/>
+    <circle cx="52" cy="20" r="7" fill="#febc2e"/>
+    <circle cx="76" cy="20" r="7" fill="#28c840"/>
+    <text x="110" y="26" class="mono muted" font-size="12">frontier-scout setup</text>
+
+    <!-- wordmark band -->
+    <text x="480" y="100" text-anchor="middle" class="mono ink" font-size="34" font-weight="700" letter-spacing="3">FRONTIER · SCOUT</text>
+    <text x="480" y="128" text-anchor="middle" class="mono muted" font-size="14" letter-spacing="2">try-before-trust radar</text>
+
+    <!-- radar centerpiece -->
+    <g transform="translate(480 245)">
+      <!-- three rings -->
+      <circle r="105" class="ring"/>
+      <circle r="68" class="ring"/>
+      <circle r="32" class="ring"/>
+      <!-- cross-hairs -->
+      <line x1="-105" y1="0" x2="105" y2="0" class="ring"/>
+      <line x1="0" y1="-105" x2="0" y2="105" class="ring"/>
+      <!-- mint sweep wedge from up to right -->
+      <path d="M 0 0 L 0 -105 A 105 105 0 0 1 91 -53 Z" class="sweep-mint"/>
+      <!-- center -->
+      <circle r="7" fill="#24d6a8"/>
+      <!-- pings: mint / gold / blue -->
+      <circle cx="48" cy="-30" r="5" fill="#24d6a8"/>
+      <circle cx="-26" cy="46" r="5" fill="#e3c26f"/>
+      <circle cx="66" cy="36" r="5" fill="#7aa6ff"/>
+    </g>
+
+    <!-- footer hint -->
+    <text x="480" y="340" text-anchor="middle" class="mono muted" font-size="12">local-first  ·  no repo content sent to an LLM  ·  no tools installed</text>
   </g>
 
-  <g transform="translate(72 218)" filter="url(#shadow)">
-    <rect x="0" y="0" width="850" height="432" rx="28" class="terminal"/>
-    <rect x="0" y="0" width="850" height="58" rx="28" fill="#111827"/>
-    <circle cx="34" cy="29" r="8" fill="#ef4444"/>
-    <circle cx="62" cy="29" r="8" fill="#f59e0b"/>
-    <circle cx="90" cy="29" r="8" fill="#22c55e"/>
-    <text x="126" y="38" class="mono term-muted" font-size="18">local terminal</text>
-
-    <text x="34" y="100" class="mono term-green" font-size="22">$ frontier-scout evaluate \</text>
-    <text x="62" y="134" class="mono term-green" font-size="22">https://github.com/modelcontextprotocol/servers</text>
-    <text x="34" y="184" class="mono term-blue" font-size="23">tool: modelcontextprotocol/servers</text>
-    <text x="34" y="226" class="mono white" font-size="23">category: mcp_server</text>
-    <text x="34" y="268" class="mono white" font-size="23">fit: high       risk: medium       score: 9/10</text>
-    <text x="34" y="310" class="mono term-amber" font-size="23">capability.network: likely</text>
-    <text x="34" y="352" class="mono term-amber" font-size="23">policy: TRIAL - sandbox evidence required</text>
-    <text x="34" y="394" class="mono term-muted" font-size="23">next: trial read-only sandbox before adoption</text>
-  </g>
-
-  <g transform="translate(964 218)" filter="url(#shadow)">
-    <rect x="0" y="0" width="564" height="432" rx="28" fill="#ffffff" class="stroke"/>
-    <rect x="32" y="32" width="164" height="42" rx="21" fill="#fef3c7"/>
-    <text x="56" y="60" class="sans amber" font-size="22" font-weight="900">TRIAL</text>
-    <text x="32" y="122" class="sans ink" font-size="31" font-weight="900">Adoption receipt</text>
-    <text x="32" y="164" class="mono soft" font-size="20">modelcontextprotocol/servers</text>
-
-    <line x1="32" y1="194" x2="532" y2="194" stroke="#e2e8f0"/>
-
-    <text x="32" y="238" class="sans muted" font-size="21">category</text>
-    <text x="252" y="238" class="sans ink" font-size="22" font-weight="800">MCP server</text>
-    <text x="32" y="284" class="sans muted" font-size="21">repo fit</text>
-    <text x="252" y="284" class="sans green" font-size="22" font-weight="900">high</text>
-    <text x="32" y="330" class="sans muted" font-size="21">dangerous flag</text>
-    <text x="252" y="330" class="sans amber" font-size="22" font-weight="900">network</text>
-    <text x="32" y="376" class="sans muted" font-size="21">guard result</text>
-    <text x="252" y="376" class="sans red" font-size="22" font-weight="900">blocked until receipt</text>
-  </g>
-
-  <g transform="translate(72 696)">
-    <rect x="0" y="0" width="1456" height="132" rx="28" fill="#ffffff" stroke="#cbd5e1" filter="url(#shadow)"/>
-
-    <g transform="translate(34 31)">
-      <rect x="0" y="0" width="300" height="70" rx="18" fill="#eff6ff"/>
-      <text x="22" y="29" class="sans blue" font-size="18" font-weight="900">RADAR</text>
-      <text x="22" y="55" class="sans ink" font-size="22" font-weight="800">377 scanned -> 5 verdicts</text>
-    </g>
-
-    <g transform="translate(378 31)">
-      <rect x="0" y="0" width="310" height="70" rx="18" fill="#ecfdf5"/>
-      <text x="22" y="29" class="sans teal" font-size="18" font-weight="900">INCIDENT DEMO</text>
-      <text x="22" y="55" class="sans ink" font-size="22" font-weight="800">approval interrupted</text>
-    </g>
-
-    <g transform="translate(732 31)">
-      <rect x="0" y="0" width="300" height="70" rx="18" fill="#fefce8"/>
-      <text x="22" y="29" class="sans amber" font-size="18" font-weight="900">EVAL</text>
-      <text x="22" y="55" class="sans ink" font-size="22" font-weight="800">cache-storm score 1.0</text>
-    </g>
-
-    <g transform="translate(1076 31)">
-      <rect x="0" y="0" width="346" height="70" rx="18" fill="#f1f5f9"/>
-      <text x="22" y="29" class="sans muted" font-size="18" font-weight="900">LOCAL ARTIFACTS</text>
-      <text x="22" y="55" class="mono ink" font-size="16">answer.md trace.jsonl audit.jsonl</text>
-    </g>
+  <!-- bottom badge row -->
+  <g transform="translate(120 460)" class="mono">
+    <text x="0" y="0" class="mint" font-size="13" font-weight="700">v0.4.0</text>
+    <text x="80" y="0" class="muted" font-size="13">Python · Textual · tree-sitter · SQLite</text>
+    <text x="960" y="0" text-anchor="end" class="muted" font-size="13">MIT licensed</text>
   </g>
 </svg>

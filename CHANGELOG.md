@@ -4,6 +4,43 @@
 
 - No unreleased changes yet.
 
+## 0.4.1 - 2026-05-27
+
+- **Mission Control v2** — Textual setup app redesigned end-to-end to match
+  the designer's brand concept (mint `#24d6a8`, gold `#e3c26f`, blue `#7aa6ff`,
+  navy `#0b1117`, steel `#25405c`). Branded one-line header bar replaces the
+  default Textual header.
+- New brand **splash screen** with a static Unicode radar (concentric rings,
+  mint sweep wedge, mint/gold/blue pings) and the `FRONTIER · SCOUT` wordmark.
+  Auto-dismisses after ~1.4s or on any keypress. Bypass with
+  `frontier-scout setup --no-splash` or `FRONTIER_SCOUT_SKIP_SPLASH=1`.
+- **Real modal dialogs** for quit confirmation (`q`), help (`?`), and
+  repo-path editing (`/`) replace the old text-hijack patterns. Quit no
+  longer wipes your last action's output; help is a proper keymap; the
+  repo input is no longer always-on at the top of the screen.
+- **Sticky status banner** carries transient warnings/info (resize hint,
+  scanning progress, path errors) separately from the result log so
+  messages don't overwrite each other.
+- **`RichLog` result panel** keeps a timestamped, color-coded history of
+  every action instead of a single overwrite-everything Static.
+- **Focus-aware panels** — each panel border brightens to mint when its
+  contents take focus (`:focus-within` CSS). Fingerprint and Providers
+  panels are scrollable instead of silently truncated.
+- **Evidence bars** — the v0.4.0 import-evidence top imports render with
+  small Unicode bar visualisations (`fastapi  ████████  ×33`) so usage
+  weight is obvious at a glance.
+- **Button strip** replaces the OptionList for the safe-first-run actions;
+  click or Tab+Enter to run.
+- **README v2** — full rewrite on the `othneildrew/Best-README-Template`
+  skeleton: centered hero (new dark `frontier-scout-hero.svg` distilled
+  from the designer's concept), refreshed shields row (drops the stale
+  `v0.1 alpha` badge), collapsible table of contents, About / Built With
+  / Quickstart / Demo / Usage / Safety / Cost / Roadmap (now tracks v0.1
+  through v0.4.1 as shipped) / Contributing / Acknowledgments.
+- Bug fix: `_apply_diagnostics` no longer races on rebuilding the action
+  strip — provider ordering is stable across same-session repo refreshes
+  so the buttons stay mounted.
+
 ## 0.4.0 - 2026-05-27
 
 - Profile detection now walks the repo up to three levels deep with a curated skip list (`node_modules`, `.venv`, `__pycache__`, `dist`, `build`, `.git`, etc.). Monorepos that put services under `backend/`, `lambda/`, `services/foo/` finally surface real `languages`, `package_managers`, and per-service `Dockerfile` paths.

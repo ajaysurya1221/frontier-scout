@@ -70,7 +70,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Skip the tree-sitter import-evidence pass for a faster setup.",
     )
-    setup_cmd.set_defaults(scan_imports=True)
+    setup_cmd.add_argument(
+        "--no-splash",
+        dest="show_splash",
+        action="store_false",
+        help="Skip the brand splash on TUI launch.",
+    )
+    setup_cmd.set_defaults(scan_imports=True, show_splash=True)
 
     profile_cmd = sub.add_parser("profile", help="Build a local Scout Profile for repo-aware recommendations.")
     profile_cmd.add_argument("--repo", default=".", help="Repository to inspect for local signals.")
@@ -228,6 +234,7 @@ def main(argv: list[str] | None = None) -> int:
             ollama_url=args.ollama_url,
             packs=packs,
             scan_imports=args.scan_imports,
+            show_splash=args.show_splash,
         )
     if args.command == "init":
         home = init_home()
