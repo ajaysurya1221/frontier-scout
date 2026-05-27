@@ -91,6 +91,7 @@ Radar demo writes:
 - **AI ecosystem scouting** across GitHub releases, trending repos, MCP/skills sources, RSS, HN, Hugging Face, and a small arXiv slice.
 - **Living Scout Packs** for AI devtools, MCP, agent frameworks, local AI, RAG/memory, workflow builders, and inference gateways. Seeds are only bootstraps; candidates can be promoted, demoted, or retired as evidence changes.
 - **Dependency intelligence** for repo-relevant security, hardening, and breaking releases. It explains why an upgrade matters here and emits a trial recipe instead of editing your lockfiles.
+- **Mission Control setup** with an arrow-key terminal UI for repo fingerprinting, provider checks, Scout Pack selection, and the first safe run.
 - **ADOPT / TRIAL / ASSESS / HOLD verdicts** with risk, stack fit, readiness, adoption cost, provenance, and next action.
 - **Adoption Firewall** commands for try-before-trust evaluation: local evidence ledger, permission manifests, sandbox trial receipts, and CI-friendly guard checks.
 - **Optional Opus judge pass** that vetoes patch-release noise, incident-as-tool mistakes, unsupported claims, and weak ADOPT calls.
@@ -178,6 +179,17 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 frontier-scout --help
 ```
+
+For a guided first run, open the terminal mission control:
+
+```bash
+frontier-scout setup --repo .
+```
+
+It checks your repo fingerprint and provider availability without reading
+secrets, logging into services, installing tools, or sending repo content to an
+LLM. Limited terminals can use `frontier-scout setup --plain`; automation can
+use `frontier-scout setup --json`.
 
 Initialize local state and detect stack signals:
 
