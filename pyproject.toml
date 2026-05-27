@@ -37,6 +37,7 @@ dependencies = [
   "transformers>=4.40.0",
   "packaging>=24.0",
   "tomli-w>=1.0.0",
+  "textual>=8.2,<9",
 ]
 
 [project.optional-dependencies]

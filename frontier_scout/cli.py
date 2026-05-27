@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from . import __version__
@@ -48,6 +49,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     init_cmd = sub.add_parser("init", help="Create the local Frontier Scout home and print detected stack signals.")
     init_cmd.add_argument("--repo", default=".", help="Repository to inspect for stack signals.")
+
+    setup_cmd = sub.add_parser("setup", help="Open the first-run terminal setup mission control.")
+    setup_cmd.add_argument("--repo", default=".", help="Repository to inspect for local setup signals.")
+    setup_cmd.add_argument("--plain", action="store_true", help="Use stable plain-text setup output.")
+    setup_cmd.add_argument("--json", action="store_true", help="Print setup diagnostics as JSON.")
+    setup_cmd.add_argument(
+        "--ollama-url",
+        default="http://localhost:11434",
+        help="Ollama base URL used only for a short read-only /api/tags probe.",
+    )
 
     profile_cmd = sub.add_parser("profile", help="Build a local Scout Profile for repo-aware recommendations.")
     profile_cmd.add_argument("--repo", default=".", help="Repository to inspect for local signals.")
@@ -184,8 +195,21 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command is None:
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            from .tui.runner import run_setup
+
+            return run_setup(repo=Path("."), plain=False, json_output=False, ollama_url="http://localhost:11434")
         parser.print_help()
         return 0
+    if args.command == "setup":
+        from .tui.runner import run_setup
+
+        return run_setup(
+            repo=Path(args.repo),
+            plain=args.plain,
+            json_output=args.json,
+            ollama_url=args.ollama_url,
+        )
     if args.command == "init":
         home = init_home()
         stack = detect_stack(Path(args.repo))
