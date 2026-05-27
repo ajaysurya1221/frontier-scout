@@ -106,7 +106,35 @@ auto-installs, and explicit approval before risky actions.
 
 ## ⚡ Quickstart
 
-Prerequisites: **Python 3.11+** and `git`.
+Prerequisites: **Python 3.11+**.
+
+Install from [PyPI](https://pypi.org/project/frontier-scout/) with pipx
+(recommended) or pip:
+
+```bash
+pipx install frontier-scout
+# or, no install:
+uvx frontier-scout demo
+# or, plain pip:
+pip install frontier-scout
+```
+
+Open Mission Control:
+
+```bash
+frontier-scout setup --repo .
+```
+
+Mission Control lands on the **Scout** tab — the radar that ranks the
+latest AI releases that fit your repo. Tab keys `1`–`9` cycle through
+Scout, Trials, Receipts, Guard, Reports, Packs, Deps, Incident, and
+Settings — every CLI capability is one keystroke away. The import-evidence
+scanner reads ASTs locally, provider availability shows up as cards, and
+nothing reads secrets, logs into services, installs tools, or sends repo
+content to an LLM. Limited terminals can use `frontier-scout setup --plain`;
+automation can use `frontier-scout setup --json`.
+
+### Develop locally
 
 ```bash
 git clone https://github.com/ajaysurya1221/frontier-scout
@@ -114,25 +142,6 @@ cd frontier-scout
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 frontier-scout --help
-```
-
-For a guided first run, open Mission Control:
-
-```bash
-frontier-scout setup --repo .
-```
-
-Mission Control checks your repo fingerprint, the import-evidence scanner
-finds the third-party libraries you actually use, and provider availability
-shows up as cards — all without reading secrets, logging into services,
-installing tools, or sending repo content to an LLM. Limited terminals can
-use `frontier-scout setup --plain`; automation can use `frontier-scout setup --json`.
-
-After PyPI publish the install collapses to:
-
-```bash
-pipx install frontier-scout
-uvx frontier-scout demo
 ```
 
 ---
