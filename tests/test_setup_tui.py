@@ -129,35 +129,21 @@ def test_no_args_interactive_dispatches_setup(monkeypatch):
     assert called["json_output"] is False
 
 
-def test_textual_setup_app_enter_runs_selected_safe_action(tmp_path, monkeypatch):
+def test_textual_setup_app_lands_on_scout_tab(tmp_path, monkeypatch):
     async def run_test() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         repo = _seed_repo(tmp_path / "repo")
         diagnostics = setup_diagnostics(repo, ollama_timeout_s=0.001)
 
-        from textual.widgets import Button, RichLog
+        from textual.widgets import TabbedContent
 
         from frontier_scout.tui.setup_app import SetupApp
 
-        def fake_run_scan(*, repo, dry_run, persist, pack=None, discover=False):
-            assert dry_run is True
-            assert persist is True
-            return {"verdicts": [{"tool_name": "modelcontextprotocol/servers"}]}
-
-        monkeypatch.setattr("frontier_scout.tui.setup_app.run_scan", fake_run_scan)
         app = SetupApp(diagnostics, show_splash=False)
         async with app.run_test() as pilot:
-            # First button on the strip is the lead recommended action (dry_scan when API key is present).
-            app.query("Button").first(Button).focus()
             await pilot.pause()
-            await pilot.press("enter")
-            await pilot.pause()
-            log_text = "\n".join(
-                str(line) for line in app.query_one("#result-log", RichLog).lines
-            )
-            assert "Dry scan complete" in log_text
-            assert "1 verdicts" in log_text
+            tc = app.query_one(TabbedContent)
+            assert tc.active == "scout"
 
     asyncio.run(run_test())
 
@@ -231,29 +217,44 @@ def test_recommended_actions_reorder_when_no_providers(tmp_path):
     assert "API key detected" in next(a.description for a in actions_with_key if a.id == "evaluate_url")
 
 
-def test_scout_packs_selection_persists(tmp_path, monkeypatch):
+def test_scout_dismiss_persists_to_state(tmp_path, monkeypatch):
+    """v1 replaces the v0.4.1 SelectionList pack persistence with a Scout dismiss
+    that writes to ``setup_state.json``."""
+
     async def run_test() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
         diagnostics = setup_diagnostics(_seed_repo(tmp_path / "repo"), ollama_timeout_s=0.001)
+
+        from textual.widgets import Button, DataTable
 
         from frontier_scout.store import setup_state_path
         from frontier_scout.tui.setup_app import SetupApp
 
         app = SetupApp(diagnostics, show_splash=False)
         async with app.run_test() as pilot:
-            packs = app.query_one("#packs")
-            packs.focus()
+            # Wait for auto-scout
+            for _ in range(50):
+                await pilot.pause()
+                table = app.query_one("#scout-table", DataTable)
+                if table.row_count > 0:
+                    break
+            else:
+                raise AssertionError("Scout tab did not populate")
+            # Highlight first row and press Dismiss
+            table.cursor_coordinate = (0, 0)
             await pilot.pause()
-            packs.select(packs.get_option_at_index(0))
+            app.query_one("#scout-dismiss", Button).press()
             await pilot.pause()
             state = json.loads(setup_state_path().read_text())
-            assert state["selected_packs"]
-            assert state["selected_packs"][0] in diagnostics.scout_packs
+            assert state.get("dismissed_tools")
 
     asyncio.run(run_test())
 
 
-def test_repo_path_modal_updates_fingerprint(tmp_path, monkeypatch):
+def test_repo_path_modal_updates_analyse_bar(tmp_path, monkeypatch):
+    """v1 surfaces the fingerprint as a compressed analyse bar (was #fingerprint
+    panel in v0.4.1)."""
+
     async def run_test() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
         repo_one = _seed_repo(tmp_path / "repo1")
@@ -271,7 +272,7 @@ def test_repo_path_modal_updates_fingerprint(tmp_path, monkeypatch):
 
         app = SetupApp(diagnostics, show_splash=False)
         async with app.run_test() as pilot:
-            initial = str(app.query_one("#fingerprint", Static).render())
+            initial = str(app.query_one("#analyse-bar", Static).render())
             assert "python" in initial
 
             await pilot.press("slash")
@@ -282,11 +283,11 @@ def test_repo_path_modal_updates_fingerprint(tmp_path, monkeypatch):
             await pilot.press("enter")
             for _ in range(40):
                 await pilot.pause()
-                content = str(app.query_one("#fingerprint", Static).render())
-                if "javascript" in content or "package.json" in content.lower():
+                content = str(app.query_one("#analyse-bar", Static).render())
+                if "javascript" in content or "npm" in content.lower():
                     break
             else:
-                raise AssertionError("fingerprint did not refresh for new repo path")
+                raise AssertionError("analyse bar did not refresh for new repo path")
 
     asyncio.run(run_test())
 
@@ -328,11 +329,13 @@ def test_splash_screen_dismisses_on_keypress(tmp_path, monkeypatch):
     asyncio.run(run_test())
 
 
-def test_fingerprint_renders_evidence_bars(tmp_path, monkeypatch):
+def test_analyse_bar_surfaces_top_imports(tmp_path, monkeypatch):
+    """v1 collapses the v0.4.1 evidence-bars panel into a compact analyse bar
+    line that still names the top imports with counts."""
+
     async def run_test() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
         diagnostics = setup_diagnostics(_seed_repo(tmp_path / "repo"), ollama_timeout_s=0.001)
-        # Inject deterministic import evidence into the profile.
         diagnostics.profile.import_evidence.top_python = [
             ("fastapi", 12),
             ("pydantic", 8),
@@ -346,10 +349,8 @@ def test_fingerprint_renders_evidence_bars(tmp_path, monkeypatch):
 
         app = SetupApp(diagnostics, show_splash=False)
         async with app.run_test():
-            rendered = str(app.query_one("#fingerprint", Static).render())
+            rendered = str(app.query_one("#analyse-bar", Static).render())
             assert "fastapi" in rendered
-            # The bar glyph from _BAR_GLYPHS appears in the rendered output.
-            assert "█" in rendered
             assert "×12" in rendered
 
     asyncio.run(run_test())

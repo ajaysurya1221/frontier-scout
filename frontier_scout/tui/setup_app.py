@@ -1,4 +1,4 @@
-"""Mission Control v2 — the redesigned Textual setup app."""
+"""Mission Control v1 — tabbed, scout-first, all-features-in-one-screen."""
 
 from __future__ import annotations
 
@@ -6,37 +6,29 @@ from datetime import datetime
 from pathlib import Path
 from typing import ClassVar
 
-from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical, VerticalScroll
-from textual.widgets import Button, Input, Label, RichLog, SelectionList, Static
-from textual.widgets.selection_list import Selection
+from textual.containers import Container, Vertical
+from textual.widgets import RichLog, Static, TabbedContent, TabPane
 
 from frontier_scout import __version__
-from frontier_scout.dependencies import run_dependency_scan
-from frontier_scout.evaluate import evaluate_url
-from frontier_scout.profile import build_scout_profile, export_profile, stack_from_profile
-from frontier_scout.scout import run_scan
-from frontier_scout.store import home_dir, read_setup_state, save_repo_profile, write_setup_state
 from frontier_scout.tui.modals import HelpScreen, QuitConfirmScreen, RepoPathPromptScreen
 from frontier_scout.tui.setup_diagnostics import SetupDiagnostics, setup_diagnostics
-
-
-_BAR_GLYPHS = "▁▂▃▄▅▆▇█"
-
-
-def _evidence_bar(count: int, peak: int) -> str:
-    if peak <= 0:
-        return ""
-    ratio = min(count / peak, 1.0)
-    filled = max(1, round(ratio * 10))
-    return _BAR_GLYPHS[-1] * filled
+from frontier_scout.tui.tabs import DEFAULT_TAB, TAB_REGISTRY, TAB_SLUGS
+from frontier_scout.tui.tabs.deps_tab import DepsTab
+from frontier_scout.tui.tabs.guard_tab import GuardTab
+from frontier_scout.tui.tabs.incident_tab import IncidentTab
+from frontier_scout.tui.tabs.packs_tab import PacksTab
+from frontier_scout.tui.tabs.receipts_tab import ReceiptsTab
+from frontier_scout.tui.tabs.reports_tab import ReportsTab
+from frontier_scout.tui.tabs.scout_tab import ScoutTab
+from frontier_scout.tui.tabs.settings_tab import SettingsTab
+from frontier_scout.tui.tabs.trials_tab import TrialsTab
 
 
 class SetupApp(App[None]):
-    """First-run mission control with a designer-aligned brand."""
+    """The v1 tabbed Mission Control."""
 
     CSS = """
     Screen {
@@ -51,23 +43,6 @@ class SetupApp(App[None]):
         color: #d9f7ff;
     }
 
-    #brand-bar .brand-mark {
-        color: #24d6a8;
-        text-style: bold;
-    }
-
-    #brand-bar .brand-version {
-        color: #6e8aa1;
-    }
-
-    #brand-bar .brand-tag {
-        color: #6e8aa1;
-    }
-
-    #brand-bar .brand-repo {
-        color: #7aa6ff;
-    }
-
     #status-banner {
         height: 1;
         padding: 0 2;
@@ -75,120 +50,40 @@ class SetupApp(App[None]):
         color: #24d6a8;
     }
 
-    #status-banner.warn {
-        color: #e3c26f;
-    }
+    #status-banner.warn { color: #e3c26f; }
+    #status-banner.info { color: #7aa6ff; }
+    #status-banner.error { color: #ff6b6b; }
 
-    #status-banner.info {
-        color: #7aa6ff;
-    }
-
-    #status-banner.error {
-        color: #ff6b6b;
-    }
-
-    #body {
-        padding: 1 1;
-    }
-
-    .panel-row {
-        height: 18;
-        margin-bottom: 1;
-    }
-
-    .panel {
-        border: round #25405c;
-        padding: 0 1;
+    #analyse-bar {
+        height: 2;
+        padding: 0 2;
         background: #0d1622;
-        width: 1fr;
-    }
-
-    .panel:focus-within {
-        border: round #24d6a8;
-    }
-
-    .panel-title {
-        text-style: bold;
         color: #d9f7ff;
-        padding: 0 1;
-        margin-top: 0;
     }
 
-    VerticalScroll {
+    TabbedContent {
         height: 1fr;
     }
 
-    #fingerprint, #providers {
-        color: #d9f7ff;
-        padding: 0 1;
+    TabbedContent TabPane {
+        padding: 1 1 0 1;
     }
 
-    #fingerprint .label {
-        color: #6e8aa1;
-    }
-
-    #fingerprint .ev-name {
-        color: #24d6a8;
-    }
-
-    #fingerprint .ev-bar {
-        color: #24d6a8;
-    }
-
-    #providers .ok {
-        color: #24d6a8;
-        text-style: bold;
-    }
-
-    #providers .warn {
-        color: #e3c26f;
-    }
-
-    #providers .miss {
-        color: #6e8aa1;
-    }
-
-    #packs {
+    Tabs {
         background: #0d1622;
     }
 
-    .actions-row {
-        height: 3;
-        margin-bottom: 1;
+    Tab {
+        color: #6e8aa1;
     }
 
-    .actions-row Button {
-        margin-right: 1;
-        background: #0d1622;
-        color: #d9f7ff;
-        border: round #25405c;
-    }
-
-    .actions-row Button:focus {
-        border: round #24d6a8;
+    Tab.-active {
         color: #24d6a8;
         text-style: bold;
-    }
-
-    #url-row {
-        height: auto;
-        margin-bottom: 1;
-    }
-
-    #url-row.hidden {
-        display: none;
-    }
-
-    #tool-url {
-        border: round #25405c;
-    }
-
-    #tool-url:focus {
-        border: round #7aa6ff;
     }
 
     #result-log {
-        height: 1fr;
+        height: 8;
         border: round #25405c;
         background: #0d1622;
         color: #d9f7ff;
@@ -206,12 +101,28 @@ class SetupApp(App[None]):
         Binding("slash", "edit_repo", "Repo path"),
         Binding("/", "edit_repo", "Repo path"),
         Binding("ctrl+l", "clear_log", "Clear log"),
+        Binding("1", "jump_tab(0)", "Scout", show=False),
+        Binding("2", "jump_tab(1)", "Trials", show=False),
+        Binding("3", "jump_tab(2)", "Receipts", show=False),
+        Binding("4", "jump_tab(3)", "Guard", show=False),
+        Binding("5", "jump_tab(4)", "Reports", show=False),
+        Binding("6", "jump_tab(5)", "Packs", show=False),
+        Binding("7", "jump_tab(6)", "Deps", show=False),
+        Binding("8", "jump_tab(7)", "Incident", show=False),
+        Binding("9", "jump_tab(8)", "Settings", show=False),
     ]
 
-    def __init__(self, diagnostics: SetupDiagnostics, *, show_splash: bool = True) -> None:
+    def __init__(
+        self,
+        diagnostics: SetupDiagnostics,
+        *,
+        show_splash: bool = True,
+        initial_tab: str = DEFAULT_TAB,
+    ) -> None:
         super().__init__()
         self.diagnostics = diagnostics
         self._show_splash = show_splash
+        self._initial_tab = initial_tab if initial_tab in TAB_SLUGS else DEFAULT_TAB
 
     # ------------------------------------------------------------------
     # Compose / mount
@@ -223,25 +134,27 @@ class SetupApp(App[None]):
             "Local-first. No repo content sent to an LLM. No tools installed.",
             id="status-banner",
         )
-        with Vertical(id="body"):
-            with Horizontal(classes="panel-row"):
-                with Vertical(classes="panel", id="panel-fingerprint"):
-                    yield Label("Repo Fingerprint", classes="panel-title")
-                    with VerticalScroll():
-                        yield Static(self._fingerprint_text(), id="fingerprint", markup=True)
-                with Vertical(classes="panel", id="panel-providers"):
-                    yield Label("Providers", classes="panel-title")
-                    with VerticalScroll():
-                        yield Static(self._provider_text(), id="providers", markup=True)
-                with Vertical(classes="panel", id="panel-packs"):
-                    yield Label("Scout Packs · space toggles", classes="panel-title")
-                    yield SelectionList[str](*self._pack_selections(), id="packs")
-            with Horizontal(classes="actions-row"):
-                for action in self.diagnostics.recommended_actions:
-                    yield Button(action.label, id=f"action-{action.id}")
-            with Container(id="url-row", classes="hidden"):
-                yield Input(placeholder="Paste a tool URL, press Enter to evaluate", id="tool-url")
-            yield RichLog(id="result-log", markup=True, auto_scroll=True, wrap=True)
+        yield Static(self._analyse_bar_text(), id="analyse-bar", markup=True)
+        with TabbedContent(initial=self._initial_tab):
+            for spec in TAB_REGISTRY:
+                with TabPane(spec.title, id=spec.slug):
+                    yield self._build_tab(spec.slug)
+        yield RichLog(id="result-log", markup=True, auto_scroll=True, wrap=True)
+
+    def _build_tab(self, slug: str) -> Container:
+        mapping = {
+            "scout": ScoutTab,
+            "trials": TrialsTab,
+            "receipts": ReceiptsTab,
+            "guard": GuardTab,
+            "reports": ReportsTab,
+            "packs": PacksTab,
+            "deps": DepsTab,
+            "incident": IncidentTab,
+            "settings": SettingsTab,
+        }
+        cls = mapping[slug]
+        return cls(self)
 
     def on_mount(self) -> None:
         if self._show_splash:
@@ -249,113 +162,63 @@ class SetupApp(App[None]):
 
             self.push_screen(SplashScreen())
         self._set_status_banner(
-            "Local-first. No repo content sent to an LLM. No tools installed.", tone="ok"
+            "Local-first. No repo content sent to an LLM. No tools installed.",
+            tone="ok",
         )
-        if self.size.width < 110 or self.size.height < 28:
+        if self.size.width < 110 or self.size.height < 30:
             self._set_status_banner(
                 "Terminal is small — resize for the full layout, or run: frontier-scout setup --plain",
                 tone="warn",
             )
-        self._log_event(
-            f"Ready · repo {self.diagnostics.repo}",
-            tone="muted",
-        )
-        # Land focus on the first action button so Enter immediately runs the lead action.
-        first_button = self.query("Button").first(Button)
-        if first_button is not None:
-            first_button.focus()
+        self.log_event(f"Ready · repo {self.diagnostics.repo}", tone="muted")
 
     # ------------------------------------------------------------------
-    # Rendering helpers
+    # Bars
     # ------------------------------------------------------------------
 
     def _brand_bar_text(self) -> str:
-        repo = self.diagnostics.repo
         return (
             f"[#24d6a8 bold]◉ FRONTIER · SCOUT[/]  "
             f"[#6e8aa1]v{__version__}[/]   "
-            f"[#6e8aa1]try-before-trust radar[/]"
-            f"   [#7aa6ff]📁 {repo}[/]"
+            f"[#6e8aa1]the radar for latest AI releases that fit your repo[/]   "
+            f"[#7aa6ff]📁 {self.diagnostics.repo}[/]"
         )
 
-    def _fingerprint_text(self) -> str:
-        profile = self.diagnostics.profile
-        deps_head = ", ".join(
-            f"{dep.name}{dep.specifier}" for dep in profile.dependencies[:3]
-        ) or "none detected"
-        lines = [
-            f"[#6e8aa1]languages   [/] {_join_or(profile.languages, 'unknown')}",
-            f"[#6e8aa1]packages    [/] {_join_or(profile.package_managers, 'none')}",
-            f"[#6e8aa1]containers  [/] {_join_or(profile.containers, 'none')}",
-            f"[#6e8aa1]ci          [/] {_join_or(profile.ci, 'none')}",
-            f"[#6e8aa1]agent cfg   [/] {_join_or(profile.agent_configs, 'none')}",
-            f"[#6e8aa1]deps        [/] {len(profile.dependencies)} ({deps_head})",
+    def _analyse_bar_text(self) -> str:
+        p = self.diagnostics.profile
+        evidence = p.import_evidence
+        imports_summary = ""
+        if evidence.available and evidence.top_python:
+            top = " ".join(f"{name}×{count}" for name, count in evidence.top_python[:3])
+            imports_summary = f"  ·  [#24d6a8]active:[/] {top}"
+        provider_names = [
+            f"[#24d6a8]{prov.name}[/]"
+            for prov in self.diagnostics.providers
+            if prov.status in ("found", "present") and prov.name != "Local deterministic"
         ]
-        evidence = profile.import_evidence
-        if evidence.available and (evidence.top_python or evidence.top_javascript):
-            lines.append("")
-            lines.append("[#d9f7ff bold]Active imports[/]")
-            peak = max(
-                (count for _, count in evidence.top_python[:5]),
-                default=0,
-            ) or max(
-                (count for _, count in evidence.top_javascript[:5]),
-                default=0,
-            )
-            for name, count in evidence.top_python[:5]:
-                bar = _evidence_bar(count, peak)
-                lines.append(f"  [#24d6a8]{name:<22}[/] [#24d6a8]{bar}[/] [#6e8aa1]×{count}[/]")
-            for name, count in evidence.top_javascript[:3]:
-                bar = _evidence_bar(count, peak)
-                lines.append(f"  [#7aa6ff]{name:<22}[/] [#7aa6ff]{bar}[/] [#6e8aa1]×{count}[/]")
-            partial = " [#e3c26f](partial)[/]" if evidence.partial else ""
-            lines.append(f"  [#6e8aa1]files scanned: {evidence.files_scanned}[/]{partial}")
-        elif not evidence.available:
-            lines.append("")
-            lines.append("[#e3c26f]Import scanner unavailable (tree-sitter not installed)[/]")
-        return "\n".join(lines)
-
-    def _provider_text(self) -> str:
-        lines = []
-        for provider in self.diagnostics.providers:
-            status = provider.status
-            if status in ("found", "present"):
-                dot = "[#24d6a8 bold]●[/]"
-            elif status in ("unavailable", "error"):
-                dot = "[#e3c26f]●[/]"
-            else:
-                dot = "[#6e8aa1]●[/]"
-            lines.append(f"{dot} [#d9f7ff]{provider.name:<20}[/] [#6e8aa1]{status}[/]")
-            if provider.models:
-                shown = ", ".join(provider.models[:2])
-                lines.append(f"  [#6e8aa1]models: {shown}[/]")
-        return "\n".join(lines)
-
-    def _pack_selections(self) -> list[Selection[str]]:
-        selected = set(self.diagnostics.scout_packs_selected)
-        return [
-            Selection(pack, pack, initial_state=pack in selected)
-            for pack in self.diagnostics.scout_packs
-        ]
+        providers = " · ".join(provider_names) or "[#6e8aa1]no live providers[/]"
+        line1 = (
+            f"[#d9f7ff]{_join_or(p.languages, 'unknown')}[/] · "
+            f"[#d9f7ff]{_join_or(p.package_managers, 'no pm')}[/] · "
+            f"[#6e8aa1]{len(p.dependencies)} deps[/]"
+            f"{imports_summary}"
+        )
+        line2 = f"[#6e8aa1]providers:[/] {providers}"
+        return f"{line1}\n{line2}"
 
     # ------------------------------------------------------------------
-    # Status banner + log helpers
+    # Status / log helpers (called by tabs)
     # ------------------------------------------------------------------
 
     def _set_status_banner(self, text: str, *, tone: str = "ok") -> None:
         banner = self.query_one("#status-banner", Static)
-        banner.remove_class("warn")
-        banner.remove_class("info")
-        banner.remove_class("error")
-        if tone == "warn":
-            banner.add_class("warn")
-        elif tone == "info":
-            banner.add_class("info")
-        elif tone == "error":
-            banner.add_class("error")
+        for cls in ("warn", "info", "error"):
+            banner.remove_class(cls)
+        if tone in ("warn", "info", "error"):
+            banner.add_class(tone)
         banner.update(text)
 
-    def _log_event(self, message: str, *, tone: str = "ok") -> None:
+    def log_event(self, message: str, tone: str = "ok") -> None:
         log = self.query_one("#result-log", RichLog)
         ts = datetime.now().strftime("%H:%M:%S")
         color = {
@@ -366,101 +229,6 @@ class SetupApp(App[None]):
             "muted": "#6e8aa1",
         }.get(tone, "#d9f7ff")
         log.write(f"[#25405c]{ts}[/] [{color}]{message}[/]")
-
-    # ------------------------------------------------------------------
-    # Selection persistence
-    # ------------------------------------------------------------------
-
-    @on(SelectionList.SelectedChanged, "#packs")
-    def packs_changed(self) -> None:
-        selected = list(self.query_one("#packs", SelectionList).selected)
-        self.diagnostics.scout_packs_selected = selected
-        state = read_setup_state()
-        state["selected_packs"] = selected
-        write_setup_state(state)
-        self._log_event(
-            f"Packs updated: {', '.join(selected) if selected else 'none'}",
-            tone="muted",
-        )
-
-    # ------------------------------------------------------------------
-    # Action buttons
-    # ------------------------------------------------------------------
-
-    @on(Button.Pressed)
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id is None or not event.button.id.startswith("action-"):
-            return
-        action_id = event.button.id.removeprefix("action-")
-        self._run_action(action_id)
-
-    def _run_action(self, action_id: str) -> None:
-        repo = Path(self.diagnostics.repo)
-        if action_id == "profile":
-            profile = build_scout_profile(repo)
-            save_repo_profile(profile)
-            path = export_profile(profile, home_dir() / "profiles" / f"{profile.repo_id}.json")
-            self._log_event(f"Profile written: {path}", tone="ok")
-            return
-        if action_id == "dry_scan":
-            payload = run_scan(repo=repo, dry_run=True, persist=True)
-            count = len(payload.get("verdicts", []))
-            self._log_event(
-                f"Dry scan complete · {count} verdicts. Next: frontier-scout report",
-                tone="ok",
-            )
-            return
-        if action_id == "deps_scan":
-            payload = run_dependency_scan(repo)
-            count = len(payload.get("findings", []))
-            self._log_event(
-                f"Dependency scan complete · {count} finding(s).",
-                tone="ok",
-            )
-            return
-        if action_id == "evaluate_url":
-            self._expand_url_row()
-            url_input = self.query_one("#tool-url", Input)
-            url = url_input.value.strip()
-            if not url:
-                self._set_status_banner(
-                    "Paste a tool URL into the field below, then press Enter.",
-                    tone="info",
-                )
-                url_input.focus()
-                return
-            profile = build_scout_profile(repo)
-            evaluation = evaluate_url(url, stack_from_profile(profile))
-            self._log_event(
-                f"Evaluate · {evaluation.tool_name} fit={evaluation.fit} risk={evaluation.risk}",
-                tone="ok",
-            )
-            return
-        if action_id == "demo_report":
-            self._log_event(
-                "Run the stable offline demo with: frontier-scout demo",
-                tone="info",
-            )
-            return
-        self._log_event(f"Unknown action: {action_id}", tone="error")
-
-    def _expand_url_row(self) -> None:
-        row = self.query_one("#url-row", Container)
-        row.remove_class("hidden")
-
-    @on(Input.Submitted, "#tool-url")
-    def on_url_submitted(self, event: Input.Submitted) -> None:
-        url = event.value.strip()
-        if not url:
-            self._set_status_banner("URL is empty.", tone="warn")
-            return
-        repo = Path(self.diagnostics.repo)
-        profile = build_scout_profile(repo)
-        evaluation = evaluate_url(url, stack_from_profile(profile))
-        self._log_event(
-            f"Evaluate · {evaluation.tool_name} fit={evaluation.fit} risk={evaluation.risk}",
-            tone="ok",
-        )
 
     # ------------------------------------------------------------------
     # Repo-path modal
@@ -486,8 +254,7 @@ class SetupApp(App[None]):
             return
         if not resolved.exists() or not resolved.is_dir():
             self._set_status_banner(
-                f"Not a directory: {resolved}. Keeping previous diagnostics.",
-                tone="error",
+                f"Not a directory: {resolved}.", tone="error"
             )
             return
         self._set_status_banner(f"Scanning {resolved}…", tone="info")
@@ -502,19 +269,14 @@ class SetupApp(App[None]):
     def _apply_diagnostics(self, new_diag: SetupDiagnostics) -> None:
         self.diagnostics = new_diag
         self.query_one("#brand-bar", Static).update(self._brand_bar_text())
-        self.query_one("#fingerprint", Static).update(self._fingerprint_text())
-        self.query_one("#providers", Static).update(self._provider_text())
-        # Recommended-action ordering is derived from providers (env-vars +
-        # locally detected runtimes), which do not change across repo path
-        # refreshes inside one session — so the action strip stays stable
-        # rather than racing on remove/remount.
+        self.query_one("#analyse-bar", Static).update(self._analyse_bar_text())
         self._set_status_banner(
             f"Diagnostics refreshed for {new_diag.repo}", tone="ok"
         )
-        self._log_event(f"Diagnostics refreshed for {new_diag.repo}", tone="muted")
+        self.log_event(f"Diagnostics refreshed for {new_diag.repo}", tone="muted")
 
     # ------------------------------------------------------------------
-    # Quit / help / log clear
+    # Quit / help / log / tab jumps
     # ------------------------------------------------------------------
 
     def action_request_quit(self) -> None:
@@ -531,7 +293,15 @@ class SetupApp(App[None]):
 
     def action_clear_log(self) -> None:
         self.query_one("#result-log", RichLog).clear()
-        self._log_event("Log cleared.", tone="muted")
+        self.log_event("Log cleared.", tone="muted")
+
+    def action_jump_tab(self, index: int) -> None:
+        try:
+            slug = TAB_SLUGS[index]
+        except IndexError:
+            return
+        tc = self.query_one(TabbedContent)
+        tc.active = slug
 
 
 def _join_or(items: list[str], fallback: str) -> str:
