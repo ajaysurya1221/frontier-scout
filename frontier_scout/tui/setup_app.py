@@ -190,7 +190,7 @@ class SetupApp(App[None]):
     @work(thread=True, exclusive=True)
     def _refresh_diagnostics(self, repo: Path) -> None:
         selected = list(self.diagnostics.scout_packs_selected)
-        new_diag = setup_diagnostics(repo, selected_packs=selected)
+        new_diag = setup_diagnostics(repo, selected_packs=selected, scan_imports=True)
         self.call_from_thread(self._apply_diagnostics, new_diag)
 
     def _apply_diagnostics(self, new_diag: SetupDiagnostics) -> None:
@@ -261,17 +261,22 @@ class SetupApp(App[None]):
     def _fingerprint_text(self) -> str:
         profile = self.diagnostics.profile
         deps = ", ".join(f"{dep.name}{dep.specifier}" for dep in profile.dependencies[:3])
-        return "\n".join(
-            [
-                f"repo: {profile.repo}",
-                f"languages: {_join_or(profile.languages, 'unknown')}",
-                f"packages: {_join_or(profile.package_managers, 'none')}",
-                f"containers: {_join_or(profile.containers, 'none')}",
-                f"ci: {_join_or(profile.ci, 'none')}",
-                f"agent configs: {_join_or(profile.agent_configs, 'none')}",
-                f"dependencies: {deps or 'none detected'}",
-            ]
-        )
+        lines = [
+            f"repo: {profile.repo}",
+            f"languages: {_join_or(profile.languages, 'unknown')}",
+            f"packages: {_join_or(profile.package_managers, 'none')}",
+            f"containers: {_join_or(profile.containers, 'none')}",
+            f"ci: {_join_or(profile.ci, 'none')}",
+            f"agent configs: {_join_or(profile.agent_configs, 'none')}",
+            f"dependencies: {deps or 'none detected'}",
+        ]
+        evidence = profile.import_evidence
+        if evidence.available and (evidence.top_python or evidence.top_javascript):
+            top_py = ", ".join(f"{name}×{count}" for name, count in evidence.top_python[:3])
+            top_js = ", ".join(f"{name}×{count}" for name, count in evidence.top_javascript[:2])
+            parts = [p for p in (top_py, top_js) if p]
+            lines.append(f"imports: {' · '.join(parts)}" if parts else "imports: none detected")
+        return "\n".join(lines)
 
     def _provider_text(self) -> str:
         lines = []

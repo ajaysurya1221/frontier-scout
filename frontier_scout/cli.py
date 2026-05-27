@@ -64,6 +64,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Comma-separated Scout Pack slugs to pre-select (e.g. ai-devtools,mcp).",
     )
+    setup_cmd.add_argument(
+        "--no-imports",
+        dest="scan_imports",
+        action="store_false",
+        help="Skip the tree-sitter import-evidence pass for a faster setup.",
+    )
+    setup_cmd.set_defaults(scan_imports=True)
 
     profile_cmd = sub.add_parser("profile", help="Build a local Scout Profile for repo-aware recommendations.")
     profile_cmd.add_argument("--repo", default=".", help="Repository to inspect for local signals.")
@@ -220,6 +227,7 @@ def main(argv: list[str] | None = None) -> int:
             json_output=args.json,
             ollama_url=args.ollama_url,
             packs=packs,
+            scan_imports=args.scan_imports,
         )
     if args.command == "init":
         home = init_home()

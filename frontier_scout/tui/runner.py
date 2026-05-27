@@ -17,6 +17,7 @@ def run_setup(
     json_output: bool = False,
     ollama_url: str = "http://localhost:11434",
     packs: list[str] | None = None,
+    scan_imports: bool = True,
 ) -> int:
     """Run setup in JSON, plain, or Textual mode."""
 
@@ -25,6 +26,7 @@ def run_setup(
         repo,
         ollama_url=ollama_url,
         selected_packs=selected_packs,
+        scan_imports=scan_imports,
     )
     if json_output:
         print(json.dumps(diagnostics.model_dump(), indent=2))

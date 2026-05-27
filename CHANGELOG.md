@@ -4,6 +4,17 @@
 
 - No unreleased changes yet.
 
+## 0.4.0 - 2026-05-27
+
+- Profile detection now walks the repo up to three levels deep with a curated skip list (`node_modules`, `.venv`, `__pycache__`, `dist`, `build`, `.git`, etc.). Monorepos that put services under `backend/`, `lambda/`, `services/foo/` finally surface real `languages`, `package_managers`, and per-service `Dockerfile` paths.
+- Added a deterministic, local-only import-evidence scanner backed by `tree-sitter-language-pack`. Reads Python and JavaScript/TypeScript source files via AST (never via LLM, never over the network), counts how many files import each top-level package, and promotes `frameworks` and `ai_tooling` from observed imports rather than substring matches on manifests.
+- `DependencySpec.evidence_imports` records how many source files actually import each declared dependency. A small alias table maps PyPI distribution names to import names (`Pillow` → `PIL`, `python-dotenv` → `dotenv`, `scikit-learn` → `sklearn`, etc.).
+- `ScoutProfile.import_evidence` summarises the top Python and JavaScript imports for quick triage. Surfaced in `frontier-scout setup --plain` / `--json` and in the Textual mission-control fingerprint panel.
+- New `frontier-scout setup --no-imports` flag for the legacy fast path. The default `setup` scan completes in well under one second on real monorepos.
+- `DependencySpec.manifest_path` now records the repo-relative path, so dependencies from `backend/requirements.txt` and `lambda/requirements.txt` are no longer collapsed.
+- Stdlib modules (resolved via `sys.stdlib_module_names`) are filtered from the Python import surface so adoption signals show third-party tools only.
+- `.understand-anything/` is now detected as an agent-config signal alongside `.cursor`, `.claude`, `AGENTS.md`, and `CLAUDE.md`.
+
 ## 0.3.0 - 2026-05-27
 
 - Added `frontier-scout setup` terminal mission control: an interactive Textual UI with arrow-key navigation, Enter-to-run safe actions, repo-path input, URL paste, help overlay, and quit confirmation.
