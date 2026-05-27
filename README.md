@@ -14,7 +14,7 @@ README structure follows the spirit of othneildrew/Best-README-Template
 <h1>Frontier Scout</h1>
 
 <p>
-  <strong>Local-first try-before-trust for AI tools, agents, MCP servers, models, and risky engineering changes.</strong>
+  <strong>The radar for latest AI releases that fit your repo. Local-first try-before-trust for AI tools, agents, MCP servers, models, and risky engineering changes.</strong>
 </p>
 
 <p>
@@ -255,10 +255,15 @@ possible run.
 - [x] **v0.4.1** — Mission Control v2 redesign: branded splash,
   designer palette, focus borders, modal quit/help/repo-path, RichLog
   result, sticky status banner, README v2.
-- [ ] **v0.5** — Repo-signal cache, tree-sitter Go/Rust/Ruby support,
-  first-party module filtering.
-- [ ] **v0.6** — MCP/plugin surface, stronger sandbox backends, optional
-  output integrations on top of the same local evidence store.
+- [x] **v1.0.0** — Mission Control complete: nine tabs (Scout / Trials
+  / Receipts / Guard / Reports / Packs / Deps / Incident / Settings),
+  scout-first landing with a verdict `DataTable` and per-verdict
+  actions, every CLI capability has a TUI surface, `--tab` / `--no-scout`
+  flags, dismiss persistence.
+- [ ] **v1.1** — Live discovery wiring (Scout `l`, Packs
+  `+ discover`, Deps live feed), streaming subprocess output in Trials.
+- [ ] **v1.2** — Multi-repo workspace, tree-sitter Go/Rust/Ruby, PyPI
+  publish on tag.
 
 See [ROADMAP.md](ROADMAP.md) for the longer view.
 

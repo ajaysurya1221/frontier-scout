@@ -4,6 +4,62 @@
 
 - No unreleased changes yet.
 
+## 1.0.0 - 2026-05-27
+
+The "everything in the TUI" release. Mission Control v3 is a tabbed,
+scout-first workspace; every CLI capability now has a TUI surface.
+
+- **Tabbed Mission Control.** Nine tabs (`Scout`, `Trials`, `Receipts`,
+  `Guard`, `Reports`, `Packs`, `Deps`, `Incident`, `Settings`) on a
+  Textual `TabbedContent`. `1`–`9` jump by number, `Tab`/`Shift-Tab`
+  cycles widgets, the active tab gets a mint accent.
+- **Scout tab (the strongest pitch — default landing).** Auto-runs a
+  dry-run scout on mount in a background worker (~0.2s, local, free)
+  and renders the resulting ADOPT / TRIAL / ASSESS / HOLD verdicts in a
+  color-coded `DataTable`. `[Trial dry-run]`, `[Evaluate]`, `[Dossier]`,
+  `[Open URL]`, `[Dismiss]` act on the highlighted row. `s` rescouts,
+  `l` runs a live scout (gated on `ANTHROPIC_API_KEY` / `OPENAI_API_KEY`
+  presence, double-press to confirm spend), `/` filters by substring.
+  Dismissed tools persist to `setup_state.json["dismissed_tools"]`.
+- **Trials tab** — stored trial history + `[+ New Trial]` form that
+  calls `run_trial(..., dry_run=True)`.
+- **Receipts tab** — master/detail read-only view over the local
+  evidence ledger (trial runs + decisions + receipt paths).
+- **Guard tab** — `[Run guard]` with `[Strict]` toggle, color-tinted
+  severity column, CI-style summary line.
+- **Reports tab** — `[Generate offline demo]` / `[Render latest scan]` /
+  `[Open most recent]` buttons; recent reports persisted to
+  `setup_state.json["recent_reports"]`.
+- **Packs tab** — pack list, per-pack detail + candidates,
+  `[Refresh seeds]` and `[Refresh + discover]` (network gated by
+  double-press confirmation).
+- **Deps tab** — `[Run scan]` → findings table → per-finding
+  `[Create trial]` writes a `run_dependency_trial` receipt.
+- **Incident tab** — `[Run incident demo]` with `[Approved]` toggle,
+  four artifact paths and `[Open answer]` / `[Open trace]` /
+  `[Open eval]` buttons.
+- **Settings tab** — three panels: Policy (init to home or repo;
+  current file preview), Environment (env-var presence only, values
+  never read), System (version, home, `setup_state.json` JSON,
+  `[Reset setup state]`).
+- **Brand language**: tagline updated to *"the radar for latest AI
+  releases that fit your repo."* Brand bar, splash, and README hero
+  all carry the same line.
+- **CLI**: new flags `--tab NAME` (land directly on a specific tab) and
+  `--no-scout` (skip the auto-scout for a faster TUI launch). `--plain`
+  output gains a Scout section so the question *"how do I scout?"*
+  answers itself in plain text too. `--json` gains `verdicts` and
+  `tabs` fields.
+- **Persistent surfaces**: branded header bar, sticky status banner,
+  compressed analyse bar (languages · packages · top imports ·
+  providers), and an always-visible `RichLog` result tail.
+- **Modal dialogs preserved** from v0.4.1: splash, quit confirm, help
+  (keymap rewritten for the new tabbed bindings), repo-path editor.
+- **Tests**: 148 passing (up from 130). New `tests/test_tabs.py` (12
+  tab-mount-and-one-action tests) and `tests/test_tab_navigation.py`
+  (4 navigation tests). All v0.4.x splash, modal, evidence, and
+  monorepo tests carry over.
+
 ## 0.4.1 - 2026-05-27
 
 - **Mission Control v2** — Textual setup app redesigned end-to-end to match

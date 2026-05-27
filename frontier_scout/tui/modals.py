@@ -13,18 +13,22 @@ from textual.widgets import Static
 
 _HELP_BODY = """\
 Navigation
-  Tab / Shift-Tab     cycle panels
-  ↑ ↓                 move within a panel
-  Enter               run focused action / submit field
+  1 — 9             jump to tab by number
+  Tab / Shift-Tab   cycle widgets within active tab
+  ↑ ↓               move within tables
+  Enter             run focused action / submit field
 
-Selection
-  Space               toggle a Scout Pack
-  /                   change repo path
+Scout tab
+  s                 rescout (dry-run)
+  l                 live scout (requires API key + double-press)
+  /                 filter substring
 
 System
-  ?                   toggle this help
-  q                   quit (confirmation required)
-  Esc                 close help / cancel modal
+  /                 change repo path (when not on Scout filter)
+  ?                 toggle this help
+  Ctrl-L            clear result log
+  q                 quit (confirmation required)
+  Esc               close modal / cancel
 """
 
 

@@ -76,7 +76,18 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Skip the brand splash on TUI launch.",
     )
-    setup_cmd.set_defaults(scan_imports=True, show_splash=True)
+    setup_cmd.add_argument(
+        "--tab",
+        default="scout",
+        help="Landing tab slug (scout, trials, receipts, guard, reports, packs, deps, incident, settings).",
+    )
+    setup_cmd.add_argument(
+        "--no-scout",
+        dest="auto_scout",
+        action="store_false",
+        help="Do not auto-run the dry-run scout on the Scout tab.",
+    )
+    setup_cmd.set_defaults(scan_imports=True, show_splash=True, auto_scout=True)
 
     profile_cmd = sub.add_parser("profile", help="Build a local Scout Profile for repo-aware recommendations.")
     profile_cmd.add_argument("--repo", default=".", help="Repository to inspect for local signals.")
@@ -235,6 +246,8 @@ def main(argv: list[str] | None = None) -> int:
             packs=packs,
             scan_imports=args.scan_imports,
             show_splash=args.show_splash,
+            initial_tab=args.tab,
+            auto_scout=args.auto_scout,
         )
     if args.command == "init":
         home = init_home()
