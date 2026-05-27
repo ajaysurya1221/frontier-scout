@@ -18,6 +18,7 @@ def run_setup(
     ollama_url: str = "http://localhost:11434",
     packs: list[str] | None = None,
     scan_imports: bool = True,
+    show_splash: bool = True,
 ) -> int:
     """Run setup in JSON, plain, or Textual mode."""
 
@@ -42,6 +43,10 @@ def run_setup(
         print()
         print(diagnostics_to_plain(diagnostics), end="")
         return 0
-    app = SetupApp(diagnostics)
+    import os
+
+    splash_env = os.environ.get("FRONTIER_SCOUT_SKIP_SPLASH", "")
+    effective_splash = show_splash and splash_env.lower() not in ("1", "true", "yes")
+    app = SetupApp(diagnostics, show_splash=effective_splash)
     app.run()
     return 0
