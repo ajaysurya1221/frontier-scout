@@ -59,6 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="http://localhost:11434",
         help="Ollama base URL used only for a short read-only /api/tags probe.",
     )
+    setup_cmd.add_argument(
+        "--packs",
+        default=None,
+        help="Comma-separated Scout Pack slugs to pre-select (e.g. ai-devtools,mcp).",
+    )
 
     profile_cmd = sub.add_parser("profile", help="Build a local Scout Profile for repo-aware recommendations.")
     profile_cmd.add_argument("--repo", default=".", help="Repository to inspect for local signals.")
@@ -204,11 +209,17 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "setup":
         from .tui.runner import run_setup
 
+        packs = (
+            [slug.strip() for slug in args.packs.split(",") if slug.strip()]
+            if args.packs
+            else None
+        )
         return run_setup(
             repo=Path(args.repo),
             plain=args.plain,
             json_output=args.json,
             ollama_url=args.ollama_url,
+            packs=packs,
         )
     if args.command == "init":
         home = init_home()

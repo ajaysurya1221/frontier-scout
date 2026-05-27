@@ -959,6 +959,27 @@ def save_pack_override(
         return int(cur.lastrowid)
 
 
+def setup_state_path() -> Path:
+    return home_dir() / "setup_state.json"
+
+
+def read_setup_state() -> dict[str, Any]:
+    path = setup_state_path()
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def write_setup_state(state: dict[str, Any]) -> Path:
+    path = setup_state_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
+    return path
+
+
 def _dump_model(value: Any) -> dict[str, Any]:
     if hasattr(value, "model_dump"):
         return value.model_dump()

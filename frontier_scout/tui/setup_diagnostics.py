@@ -47,6 +47,7 @@ class SetupDiagnostics(BaseModel):
     profile: ScoutProfile
     providers: list[ProviderStatus]
     scout_packs: list[str]
+    scout_packs_selected: list[str] = Field(default_factory=list)
     recommended_actions: list[RecommendedAction]
     safety_notes: list[str]
 
@@ -56,6 +57,7 @@ def setup_diagnostics(
     *,
     ollama_url: str = "http://localhost:11434",
     ollama_timeout_s: float = 0.4,
+    selected_packs: list[str] | None = None,
 ) -> SetupDiagnostics:
     """Collect local-only setup diagnostics without sending repo content anywhere."""
 
@@ -64,13 +66,16 @@ def setup_diagnostics(
     save_builtin_packs_if_empty()
     profile = build_scout_profile(resolved_repo)
     packs = sorted(default_packs().keys())
+    providers = detect_providers(ollama_url=ollama_url, ollama_timeout_s=ollama_timeout_s)
+    valid_selected = [slug for slug in (selected_packs or []) if slug in packs]
     return SetupDiagnostics(
         repo=str(resolved_repo),
         home=str(home_dir()),
         profile=profile,
-        providers=detect_providers(ollama_url=ollama_url, ollama_timeout_s=ollama_timeout_s),
+        providers=providers,
         scout_packs=packs,
-        recommended_actions=_recommended_actions(resolved_repo),
+        scout_packs_selected=valid_selected,
+        recommended_actions=_recommended_actions(resolved_repo, providers),
         safety_notes=[
             "repo profile stays local",
             "setup never writes secrets",
@@ -128,8 +133,11 @@ def diagnostics_to_plain(diagnostics: SetupDiagnostics) -> str:
     for provider in diagnostics.providers:
         suffix = f" ({', '.join(provider.models[:4])})" if provider.models else ""
         lines.append(f"- {provider.name}: {provider.status} - {provider.detail}{suffix}")
+    selected = set(diagnostics.scout_packs_selected)
     lines.extend(["", "Scout packs"])
-    lines.extend(f"- {pack}" for pack in diagnostics.scout_packs)
+    for pack in diagnostics.scout_packs:
+        marker = "[x]" if pack in selected else "[ ]"
+        lines.append(f"- {marker} {pack}")
     lines.extend(["", "Recommended next runs"])
     lines.extend(f"- {action.command} # {action.description}" for action in diagnostics.recommended_actions)
     lines.extend(["", "Safety"])
@@ -193,40 +201,60 @@ def _detect_env_key(name: str, env_var: str) -> ProviderStatus:
     return ProviderStatus(name=name, kind="api-key", status="missing", detail=f"{env_var} is not set")
 
 
-def _recommended_actions(repo: Path) -> list[RecommendedAction]:
-    return [
-        RecommendedAction(
-            id="dry_scan",
-            label="Dry-run personalized scan",
-            command=f"frontier-scout scan --dry-run --repo {repo}",
-            description="Scout seeded AI tools against this repo without live APIs.",
-        ),
-        RecommendedAction(
-            id="profile",
-            label="Profile repo",
-            command=f"frontier-scout profile --repo {repo}",
-            description="Build the local repo fingerprint used for fit scoring.",
-        ),
-        RecommendedAction(
-            id="deps_scan",
-            label="Dependency intelligence scan",
-            command=f"frontier-scout deps scan --repo {repo}",
-            description="Find meaningful hardening/security/compatibility upgrades.",
-        ),
-        RecommendedAction(
-            id="evaluate_url",
-            label="Evaluate pasted tool URL",
-            command="frontier-scout evaluate <tool-url>",
-            description="Create a first adoption dossier for one tool link.",
-            requires_input=True,
-        ),
-        RecommendedAction(
-            id="demo_report",
-            label="Generate demo report",
-            command="frontier-scout demo",
-            description="Render the offline radar demo without API keys.",
-        ),
-    ]
+def _recommended_actions(repo: Path, providers: list[ProviderStatus]) -> list[RecommendedAction]:
+    by_name = {provider.name: provider for provider in providers}
+    ollama = by_name.get("Ollama")
+    has_ollama = ollama is not None and ollama.status == "found"
+    has_api_key = any(
+        by_name.get(name) is not None and by_name[name].status == "present"
+        for name in ("Anthropic API", "OpenAI API")
+    )
+    ollama_models = ollama.models if ollama else []
+
+    dry_scan_desc = "Scout seeded AI tools against this repo without live APIs."
+    if has_ollama and ollama_models:
+        dry_scan_desc += f" Local model available: {ollama_models[0]}."
+    evaluate_desc = "Create a first adoption dossier for one tool link."
+    if has_api_key:
+        evaluate_desc += " API key detected; a live judge pass is available."
+
+    dry_scan = RecommendedAction(
+        id="dry_scan",
+        label="Dry-run personalized scan",
+        command=f"frontier-scout scan --dry-run --repo {repo}",
+        description=dry_scan_desc,
+    )
+    profile = RecommendedAction(
+        id="profile",
+        label="Profile repo",
+        command=f"frontier-scout profile --repo {repo}",
+        description="Build the local repo fingerprint used for fit scoring.",
+    )
+    deps_scan = RecommendedAction(
+        id="deps_scan",
+        label="Dependency intelligence scan",
+        command=f"frontier-scout deps scan --repo {repo}",
+        description="Find meaningful hardening/security/compatibility upgrades.",
+    )
+    evaluate_url = RecommendedAction(
+        id="evaluate_url",
+        label="Evaluate pasted tool URL",
+        command="frontier-scout evaluate <tool-url>",
+        description=evaluate_desc,
+        requires_input=True,
+    )
+    demo_report = RecommendedAction(
+        id="demo_report",
+        label="Generate demo report",
+        command="frontier-scout demo",
+        description="Render the offline radar demo without API keys.",
+    )
+
+    if not has_ollama and not has_api_key:
+        return [demo_report, dry_scan, profile, deps_scan, evaluate_url]
+    if has_api_key:
+        return [dry_scan, evaluate_url, profile, deps_scan, demo_report]
+    return [dry_scan, profile, deps_scan, evaluate_url, demo_report]
 
 
 def _join_or(items: list[str], fallback: str) -> str:

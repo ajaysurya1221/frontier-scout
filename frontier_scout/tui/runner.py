@@ -6,6 +6,7 @@ import json
 import sys
 from pathlib import Path
 
+from frontier_scout.store import read_setup_state
 from frontier_scout.tui.setup_diagnostics import diagnostics_to_plain, setup_diagnostics
 
 
@@ -15,10 +16,16 @@ def run_setup(
     plain: bool = False,
     json_output: bool = False,
     ollama_url: str = "http://localhost:11434",
+    packs: list[str] | None = None,
 ) -> int:
     """Run setup in JSON, plain, or Textual mode."""
 
-    diagnostics = setup_diagnostics(repo, ollama_url=ollama_url)
+    selected_packs = packs if packs is not None else read_setup_state().get("selected_packs", [])
+    diagnostics = setup_diagnostics(
+        repo,
+        ollama_url=ollama_url,
+        selected_packs=selected_packs,
+    )
     if json_output:
         print(json.dumps(diagnostics.model_dump(), indent=2))
         return 0
@@ -36,4 +43,3 @@ def run_setup(
     app = SetupApp(diagnostics)
     app.run()
     return 0
-
