@@ -58,13 +58,14 @@ def setup_diagnostics(
     ollama_url: str = "http://localhost:11434",
     ollama_timeout_s: float = 0.4,
     selected_packs: list[str] | None = None,
+    scan_imports: bool = True,
 ) -> SetupDiagnostics:
     """Collect local-only setup diagnostics without sending repo content anywhere."""
 
     resolved_repo = repo.expanduser().resolve()
     init_home()
     save_builtin_packs_if_empty()
-    profile = build_scout_profile(resolved_repo)
+    profile = build_scout_profile(resolved_repo, scan_imports=scan_imports)
     packs = sorted(default_packs().keys())
     providers = detect_providers(ollama_url=ollama_url, ollama_timeout_s=ollama_timeout_s)
     valid_selected = [slug for slug in (selected_packs or []) if slug in packs]
@@ -133,6 +134,19 @@ def diagnostics_to_plain(diagnostics: SetupDiagnostics) -> str:
     for provider in diagnostics.providers:
         suffix = f" ({', '.join(provider.models[:4])})" if provider.models else ""
         lines.append(f"- {provider.name}: {provider.status} - {provider.detail}{suffix}")
+    evidence = profile.import_evidence
+    if evidence.available and (evidence.top_python or evidence.top_javascript):
+        lines.extend(["", "Active imports (deterministic, local)"])
+        if evidence.top_python:
+            top = ", ".join(f"{name}×{count}" for name, count in evidence.top_python[:5])
+            lines.append(f"- python: {top}")
+        if evidence.top_javascript:
+            top = ", ".join(f"{name}×{count}" for name, count in evidence.top_javascript[:5])
+            lines.append(f"- javascript: {top}")
+        suffix = " (partial)" if evidence.partial else ""
+        lines.append(f"- files scanned: {evidence.files_scanned}{suffix}")
+    elif not evidence.available:
+        lines.extend(["", "Active imports", "- scanner unavailable (tree-sitter not installed)"])
     selected = set(diagnostics.scout_packs_selected)
     lines.extend(["", "Scout packs"])
     for pack in diagnostics.scout_packs:
