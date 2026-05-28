@@ -299,10 +299,13 @@ class AdhocStepScreen(Screen[None]):
                 "  [#24d6a8 bold]frontier-scout[/]\n\n"
                 "That opens Mission Control. Inside the TUI:\n"
                 "  · [#d9f7ff]1 — 2[/] switch between Scout and Settings\n"
+                "  · [#d9f7ff]Enter / L / e / D[/] trial · lab · evaluate · dossier\n"
                 "  · [#d9f7ff]?[/] shows the full keymap\n"
                 "  · [#d9f7ff]q[/] quits with a confirmation\n\n"
-                "[#6e8aa1]Tip:[/] run [#d9f7ff]`frontier-scout setup`[/] anytime to switch to "
-                "automation mode, change your LLM backend, or wipe scout history.\n\n"
+                "[#6e8aa1]Tip:[/] your setup is remembered. Re-run with "
+                "[#d9f7ff]`frontier-scout setup --force`[/] (or the "
+                "in-TUI Settings → Reconfigure button) to change LLM backend, "
+                "switch modes, or wipe scout history.\n\n"
                 "[#6e8aa1]Press Esc to exit, or open Mission Control now.[/]",
                 markup=True,
             )

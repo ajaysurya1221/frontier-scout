@@ -68,19 +68,48 @@ def run_setup(
         return 0
 
     safe_tab = initial_tab if initial_tab in TAB_SLUGS else DEFAULT_TAB
-    from frontier_scout.tui.repo_picker import RepoPickerScreen, looks_like_repo
+    from frontier_scout.tui.repo_picker import (
+        UNIVERSAL_SCOUT_SENTINEL,
+        RepoPickerScreen,
+        looks_like_repo,
+    )
 
     picker_needed = not looks_like_repo(Path(diagnostics.repo))
     app = SetupApp(diagnostics, initial_tab=safe_tab)
     if picker_needed:
         original_on_mount = app.on_mount
 
+        def _picker_callback(value: str | None) -> None:
+            # Stream J — three outcomes from the picker:
+            #   * None      → user clicked Quit. Close the app cleanly.
+            #   * sentinel  → user opted for universal scout. Mark the
+            #                 app's universal_mode flag and update the
+            #                 brand bar to reflect "not tailored".
+            #   * any other → a resolved repo path. Hand it to the
+            #                 standard refresh-diagnostics path.
+            if value is None:
+                app.exit()
+                return
+            if value == UNIVERSAL_SCOUT_SENTINEL:
+                app.universal_mode = True
+                app._set_status_banner(
+                    "Universal scout — verdicts are NOT tailored to a specific repo.",
+                    tone="warn",
+                )
+                # Trigger a fresh scout in universal mode.
+                try:
+                    from frontier_scout.tui.tabs.scout_tab import ScoutTab
+
+                    scout_tab = app.query_one(ScoutTab)
+                    scout_tab._scout_worker()
+                except Exception:  # noqa: BLE001 — defensive
+                    pass
+                return
+            app._handle_picker_choice(value)
+
         def patched_on_mount() -> None:
             original_on_mount()
-            app.push_screen(
-                RepoPickerScreen(),
-                lambda v: app._handle_picker_choice(v) if v else None,
-            )
+            app.push_screen(RepoPickerScreen(), _picker_callback)
 
         app.on_mount = patched_on_mount  # type: ignore[method-assign]
 

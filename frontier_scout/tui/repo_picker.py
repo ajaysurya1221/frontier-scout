@@ -24,6 +24,11 @@ REPO_MARKERS = (
     ".git",
 )
 
+#: Sentinel returned from the picker when the user asks for a
+#: universal scout (no repo). v1.2.1 — Stream J. ``runner.py`` reads
+#: this and flips ``SetupApp.universal_mode = True``.
+UNIVERSAL_SCOUT_SENTINEL = "<UNIVERSAL>"
+
 
 def looks_like_repo(path: Path) -> bool:
     try:
@@ -112,8 +117,13 @@ class RepoPickerScreen(ModalScreen[str | None]):
                 yield Static("Recent repos:", classes="recent-list")
                 for i, repo in enumerate(recent[:5]):
                     yield Button(repo, id=f"pick-recent-{i}")
+            # Stream J — explicit escape hatches.
+            yield Static("Or:", classes="recent-list")
             with Horizontal():
-                yield Button("Cancel", id="picker-cancel")
+                yield Button(
+                    "🌐 Universal scout (no repo)", id="pick-universal"
+                )
+                yield Button("Quit", id="picker-quit")
 
         self._recent = recent
 
@@ -125,8 +135,10 @@ class RepoPickerScreen(ModalScreen[str | None]):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id or ""
-        if bid == "picker-cancel":
+        if bid in ("picker-cancel", "picker-quit"):
             self.dismiss(None)
+        elif bid == "pick-universal":
+            self.dismiss(UNIVERSAL_SCOUT_SENTINEL)
         elif bid == "pick-pwd":
             self._try_path(os.getcwd())
         elif bid == "pick-home":

@@ -6,6 +6,64 @@
 
 ## 1.2.1 - 2026-05-28
 
+### Late-cycle hardening (Streams H–N)
+
+After the live smoke against a real API key surfaced gaps that the
+unit tests couldn't catch (stubbed subprocesses don't drive a real
+TUI), the v1.2.1 PR landed seven additional streams before publish:
+
+- **H. Policy.require_trial_for_dangerous_capabilities now fires.**
+  The Codex review surfaced this; live smoke confirmed it. Setting the
+  flag to `false` (internal toolchain where every tool *is* network-
+  capable by design) now actually suppresses the `capability.*`
+  findings instead of silently being ignored. Unknown-capability and
+  lab-failure paths stay unconditional — those are correctness, not
+  preference.
+- **I. Setup persistence is honored.** `~/.frontier-scout/config.toml`
+  was being written by the wizard but nobody consulted it. Now bare
+  `frontier-scout` from an onboarded user skips the wizard and goes
+  straight to Mission Control; `frontier-scout setup` from an
+  onboarded user prompts to confirm; `--force` re-runs unconditionally;
+  `frontier-scout --setup` is a top-level alias. The TUI exits with
+  code 42 to signal "re-launch wizard", which `cli.main` honors via a
+  bounded loop.
+- **J. Repo picker offers universal scout + Quit.** When
+  `frontier-scout` opens outside a repo, the picker now adds two
+  explicit escape hatches: 🌐 "Universal scout (no repo)" surfaces the
+  full seeded verdict set with the brand bar flagged "not tailored"
+  (and skips the SQLite persist), and "Quit" closes cleanly instead
+  of opening a half-mounted TUI.
+- **K. Verdict concern taxonomy.** Every verdict now carries a
+  `concerns: list[dict]` field populated by deterministic rules:
+  `weak_fit`, `token_burn`, `abandoned`, `security_surface`,
+  `vendor_lock_in`, `marketing_only`, `unproven`. The Scout-tab
+  detail panel renders them as severity-coloured chips so the user
+  always sees *why* we'd push back on adoption. The verdict schema
+  in `scripts/tools.py:VERDICT_TOOL` gained four optional fields
+  (`cost_per_call_usd`, `last_release_age_days`, `release_url`,
+  `lock_in_risk`); the live scout prompt emits them when known and
+  the rules treat missing fields as "unknown". The judge tool gained
+  a `concern_audits` array so it can flag a missing concern as a
+  quality issue.
+- **L. Scout tab flawless at 80×24.** The CSS gained a `.compact`
+  class that `SetupApp.on_resize` applies whenever the viewport
+  drops below 100×28; the DataTable shrinks from 14 rows to 8 and
+  the detail panel caps at 14 lines. The brand bar drops the
+  tagline and shortens the repo chip to its basename when narrow.
+  The 80×24 warning banner only fires below the POSIX minimum (was
+  100×28).
+- **M. Lab / Evaluate / Dossier from Scout.** Every CLI capability the
+  user previously had to drop to a shell for is now a one-key action
+  on the highlighted row: `L` runs a dry-run lab (classify only); a
+  second `L` within 3s upgrades to a live hermetic install (mirrors
+  the live-scout double-press pattern); `e` runs the Adoption
+  Firewall evaluation and writes the verdict to the log; `D` builds
+  a dossier and saves it under `~/.frontier-scout/dossiers/`. The
+  HelpScreen body was updated to document these.
+- **N. Settings → Open setup wizard button.** Wired to
+  `app.exit(return_code=42)` so the in-TUI reconfigure path the user
+  expects after I lands works end-to-end.
+
 The Codex-review release. v1.2.0 was tagged on GitHub but never
 published to PyPI; a colleague's read-only audit (file:line citations
 in `CODEX_REVIEW_FOR_CLAUDE.md`) caught eight issues, one of which

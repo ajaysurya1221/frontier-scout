@@ -169,3 +169,97 @@ def test_run_guard_strict_upgrades_medium_to_high(tmp_path, monkeypatch):
     strict = guard.run_guard(strict=True)
     assert lax[0].severity == "medium"
     assert strict[0].severity == "high"
+
+
+# ---------------------------------------------------------------------------
+# Stream H — Policy.require_trial_for_dangerous_capabilities actually fires
+# ---------------------------------------------------------------------------
+
+
+def _network_evaluation() -> Evaluation:
+    """Clean high-fit/low-risk tool that exposes a network capability."""
+
+    return Evaluation(
+        tool_name="example/network-tool",
+        source_url="https://github.com/example/network-tool",
+        category="dev_tool",
+        fit="high",
+        risk="low",
+        source_trust="high",
+        score=9,
+        permission_manifest=PermissionManifest(
+            tool_name="example/network-tool",
+            source_url="https://github.com/example/network-tool",
+            evidence_source="url",
+            confidence="high",
+            capabilities={"network": "likely"},
+            dangerous_flags=["network"],
+        ),
+    )
+
+
+def test_require_trial_flag_off_skips_capability_findings():
+    """Stream H: when an operator sets
+    ``require_trial_for_dangerous_capabilities = false`` (e.g. internal
+    toolchain where every tool *is* network-capable by design), the
+    capability.* findings disappear and a clean high-fit / low-risk
+    evaluation can ADOPT without a stored lab receipt."""
+
+    evaluation = _network_evaluation()
+    permissive = Policy(
+        require_trial_for_dangerous_capabilities=False,
+        allow_adopt_without_lab_for_low_risk=True,
+    )
+    decision = evaluate_policy(
+        evaluation, evaluation.permission_manifest, policy=permissive
+    )
+    rule_ids = {f.rule_id for f in decision.findings}
+    assert "capability.network" not in rule_ids
+    assert decision.verdict == "adopt"
+
+
+def test_require_trial_flag_on_still_emits_capability_findings():
+    """Default policy: the flag is True; network capability *does*
+    surface a finding and the verdict is TRIAL, not ADOPT."""
+
+    evaluation = _network_evaluation()
+    decision = evaluate_policy(
+        evaluation, evaluation.permission_manifest, policy=DEFAULT_POLICY
+    )
+    rule_ids = {f.rule_id for f in decision.findings}
+    assert "capability.network" in rule_ids
+    assert decision.verdict == "trial"
+
+
+def test_require_trial_flag_off_does_not_silence_unknown():
+    """Critical: setting the gate flag to False must NOT suppress the
+    capability.unknown branch — unknowns are correctness, not
+    preference. The flag only relaxes the *known* dangerous flags."""
+
+    evaluation = Evaluation(
+        tool_name="example/mystery",
+        source_url="https://github.com/example/mystery",
+        category="dev_tool",
+        fit="medium",
+        risk="medium",
+        source_trust="medium",
+        score=6,
+        permission_manifest=PermissionManifest(
+            tool_name="example/mystery",
+            source_url="https://github.com/example/mystery",
+            evidence_source="url",
+            confidence="low",
+            capabilities={"unknown": "likely"},
+            dangerous_flags=["unknown"],
+        ),
+    )
+    permissive = Policy(
+        require_trial_for_dangerous_capabilities=False,
+        fail_unknown_capabilities=True,  # default
+    )
+    decision = evaluate_policy(
+        evaluation, evaluation.permission_manifest, policy=permissive
+    )
+    rule_ids = {f.rule_id for f in decision.findings}
+    assert "capability.unknown" in rule_ids
+    assert decision.verdict == "hold"

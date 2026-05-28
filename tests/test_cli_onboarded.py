@@ -1,0 +1,205 @@
+"""Stream I — setup persistence is honored.
+
+Before v1.2.1, ``frontier-scout setup`` blindly re-ran the wizard
+every time, and the bare ``frontier-scout`` ignored
+``~/.frontier-scout/config.toml``. These tests pin the new contract:
+
+- Bare ``frontier-scout`` from an onboarded user → straight to the TUI
+  (no wizard intro).
+- ``frontier-scout setup`` from an onboarded interactive user → prompted
+  to confirm.
+- ``frontier-scout setup`` from an onboarded non-interactive user → no-op
+  unless ``--force``.
+- ``frontier-scout --setup`` (top-level alias) is equivalent to the
+  subcommand form.
+"""
+
+from __future__ import annotations
+
+import io
+
+import pytest
+
+from frontier_scout import cli
+from frontier_scout.wizard.config import mark_wizard_complete
+
+
+@pytest.fixture
+def fresh_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
+    yield tmp_path
+
+
+def _stub_runner(record):
+    def runner(**kwargs):
+        record["called"] = True
+        record["kwargs"] = kwargs
+        return 0
+
+    return runner
+
+
+# ---------------------------------------------------------------------------
+# Bare ``frontier-scout``
+# ---------------------------------------------------------------------------
+
+
+def test_bare_run_skips_wizard_for_onboarded_user(fresh_home, monkeypatch):
+    mark_wizard_complete()  # writes config.toml in the fresh home
+
+    record: dict = {"wizard_called": False, "tui_called": False}
+
+    class _FakeWizard:
+        def run(self):  # pragma: no cover — must NOT run
+            record["wizard_called"] = True
+            return "open-tui"
+
+    def _fake_run_setup(**kwargs):
+        record["tui_called"] = True
+        record["tui_kwargs"] = kwargs
+        return 0
+
+    monkeypatch.setattr("frontier_scout.wizard.app.WizardApp", _FakeWizard)
+    monkeypatch.setattr("frontier_scout.tui.runner.run_setup", _fake_run_setup)
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
+
+    rc = cli.main([])
+    assert rc == 0
+    assert record["wizard_called"] is False
+    assert record["tui_called"] is True
+
+
+def test_bare_run_invokes_wizard_for_first_time_user(fresh_home, monkeypatch):
+    record: dict = {"wizard_called": False, "tui_called": False}
+
+    class _FakeWizard:
+        def run(self):
+            record["wizard_called"] = True
+            return "open-tui"
+
+    def _fake_run_setup(**kwargs):
+        record["tui_called"] = True
+        return 0
+
+    monkeypatch.setattr("frontier_scout.wizard.app.WizardApp", _FakeWizard)
+    monkeypatch.setattr("frontier_scout.tui.runner.run_setup", _fake_run_setup)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
+
+    cli.main([])
+    assert record["wizard_called"] is True
+    assert record["tui_called"] is True
+
+
+# ---------------------------------------------------------------------------
+# ``frontier-scout setup`` for an onboarded user
+# ---------------------------------------------------------------------------
+
+
+def test_setup_onboarded_non_interactive_is_noop(fresh_home, monkeypatch, capsys):
+    mark_wizard_complete()
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False, raising=False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False, raising=False)
+    rc = cli.main(["setup"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "already onboarded" in out.lower()
+
+
+def test_setup_onboarded_interactive_declines(fresh_home, monkeypatch, capsys):
+    """User says "N" at the prompt → wizard does NOT run."""
+
+    mark_wizard_complete()
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("builtins.input", lambda *_a, **_k: "n")
+
+    record: dict = {"wizard_called": False}
+
+    class _FakeWizard:
+        def run(self):  # pragma: no cover
+            record["wizard_called"] = True
+            return "open-tui"
+
+    monkeypatch.setattr("frontier_scout.wizard.app.WizardApp", _FakeWizard)
+
+    rc = cli.main(["setup"])
+    assert rc == 0
+    assert record["wizard_called"] is False
+    assert "unchanged" in capsys.readouterr().out.lower()
+
+
+def test_setup_force_overrides_onboarded(fresh_home, monkeypatch):
+    """``--force`` re-runs the wizard even when onboarded."""
+
+    mark_wizard_complete()
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
+
+    record: dict = {"wizard_called": False}
+
+    class _FakeWizard:
+        def run(self):
+            record["wizard_called"] = True
+            return "open-tui"
+
+    def _fake_run_setup(**kwargs):
+        return 0
+
+    monkeypatch.setattr("frontier_scout.wizard.app.WizardApp", _FakeWizard)
+    monkeypatch.setattr("frontier_scout.tui.runner.run_setup", _fake_run_setup)
+
+    rc = cli.main(["setup", "--force"])
+    assert rc == 0
+    assert record["wizard_called"] is True
+
+
+# ---------------------------------------------------------------------------
+# ``--setup`` alias
+# ---------------------------------------------------------------------------
+
+
+def test_top_level_setup_alias_routes_to_setup_subcommand(fresh_home, monkeypatch, capsys):
+    """``frontier-scout --setup`` should behave like ``frontier-scout setup``."""
+
+    mark_wizard_complete()  # so the prompt path is exercised
+    monkeypatch.setattr("sys.stdin.isatty", lambda: False, raising=False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: False, raising=False)
+
+    rc = cli.main(["--setup"])
+    assert rc == 0
+    assert "already onboarded" in capsys.readouterr().out.lower()
+
+
+# ---------------------------------------------------------------------------
+# Reconfigure exit code 42 — Stream N hook tested via CLI
+# ---------------------------------------------------------------------------
+
+
+def test_reconfigure_exit_code_relaunches_wizard(fresh_home, monkeypatch):
+    """If the TUI exits with 42, ``main`` runs the wizard then re-enters
+    the TUI. After the second TUI returns 0, ``main`` returns 0."""
+
+    mark_wizard_complete()  # so first launch goes straight to TUI
+
+    calls: list = []
+
+    def _fake_run_setup(**kwargs):
+        calls.append("tui")
+        return cli.RECONFIGURE_EXIT_CODE if len(calls) == 1 else 0
+
+    class _FakeWizard:
+        def run(self):
+            calls.append("wizard")
+            return "open-tui"
+
+    monkeypatch.setattr("frontier_scout.tui.runner.run_setup", _fake_run_setup)
+    monkeypatch.setattr("frontier_scout.wizard.app.WizardApp", _FakeWizard)
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
+    monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
+
+    rc = cli.main([])
+    assert rc == 0
+    assert calls == ["tui", "wizard", "tui"]

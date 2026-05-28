@@ -121,12 +121,60 @@ def test_no_args_interactive_dispatches_setup(monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("sys.stdout.isatty", lambda: True)
     monkeypatch.setattr("frontier_scout.tui.runner.run_setup", fake_run_setup)
+    # v1.2.1 Stream I — bare ``frontier-scout`` now runs the wizard for
+    # first-time users. Pretend we're already onboarded so this test
+    # exercises the "straight to TUI" path it always meant to cover.
+    monkeypatch.setattr("frontier_scout.wizard.config.is_onboarded", lambda: True)
 
     assert main([]) == 0
 
     assert called["repo"] == Path(".")
     assert called["plain"] is False
     assert called["json_output"] is False
+
+
+def test_textual_setup_app_mounts_at_80x24(tmp_path, monkeypatch):
+    """Stream L — true POSIX-minimum terminal must mount without
+    exception, and the Scout tab must gain the ``.compact`` class so
+    its layout reflows to fit."""
+
+    async def run_test() -> None:
+        monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
+        repo = _seed_repo(tmp_path / "repo")
+        diagnostics = setup_diagnostics(repo, ollama_timeout_s=0.001)
+        from frontier_scout.tui.setup_app import SetupApp
+        from frontier_scout.tui.tabs.scout_tab import ScoutTab
+
+        app = SetupApp(diagnostics, show_splash=False)
+        async with app.run_test(size=(80, 24)) as pilot:
+            await pilot.pause()
+            scout = app.query_one(ScoutTab)
+            assert scout.has_class("compact"), (
+                "Scout tab must adopt the .compact CSS class at 80x24 so the "
+                "DataTable doesn't eat the entire visible area."
+            )
+
+    asyncio.run(run_test())
+
+
+def test_textual_setup_app_drops_compact_when_resized_wide(tmp_path, monkeypatch):
+    async def run_test() -> None:
+        monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
+        repo = _seed_repo(tmp_path / "repo")
+        diagnostics = setup_diagnostics(repo, ollama_timeout_s=0.001)
+        from frontier_scout.tui.setup_app import SetupApp
+        from frontier_scout.tui.tabs.scout_tab import ScoutTab
+
+        app = SetupApp(diagnostics, show_splash=False)
+        async with app.run_test(size=(120, 36)) as pilot:
+            await pilot.pause()
+            scout = app.query_one(ScoutTab)
+            assert not scout.has_class("compact"), (
+                "Scout tab must NOT carry .compact at 120x36 — adaptive "
+                "layout should leave plenty of room."
+            )
+
+    asyncio.run(run_test())
 
 
 def test_textual_setup_app_lands_on_scout_tab(tmp_path, monkeypatch):
@@ -305,7 +353,9 @@ def test_setup_too_small_terminal_message(tmp_path, monkeypatch):
         async with app.run_test(size=(60, 18)):
             await asyncio.sleep(0)
             banner_text = str(app.query_one("#status-banner", Static).render())
-            assert "Terminal is small" in banner_text
+            # v1.2.1 Stream L — the banner message moved to "below 80×24"
+            # phrasing now that we adapt above that threshold.
+            assert "below 80" in banner_text or "Terminal is small" in banner_text
 
     asyncio.run(run_test())
 

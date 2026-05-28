@@ -211,6 +211,49 @@ VERDICT_TOOL = {
                             "items": {"type": "string"},
                             "maxItems": 5,
                         },
+                        # v1.2.1 — Stream K: concern fields. The TUI's
+                        # Scout-tab detail panel renders these as a
+                        # "Concerns" section so the user always knows
+                        # *why* we'd push back on adoption. All four are
+                        # optional; missing fields are treated as
+                        # "unknown" and the corresponding concern rule
+                        # gracefully skips.
+                        "cost_per_call_usd": {
+                            "type": "number",
+                            "description": (
+                                "Optional. Best-effort per-call cost on the user's "
+                                "API key. Use 0 for tools that run fully locally. "
+                                "Omit entirely if cost is not metered or unknown — "
+                                "never guess a number."
+                            ),
+                            "minimum": 0,
+                        },
+                        "last_release_age_days": {
+                            "type": "integer",
+                            "description": (
+                                "Optional. Days since the most recent release of "
+                                "this tool/model/package. Used to flag abandoned "
+                                "projects. Omit if unknown."
+                            ),
+                            "minimum": 0,
+                        },
+                        "release_url": {
+                            "type": "string",
+                            "maxLength": 500,
+                            "description": (
+                                "Optional. Deep link to the most recent release "
+                                "(GitHub release, HuggingFace model card, etc.)."
+                            ),
+                        },
+                        "lock_in_risk": {
+                            "type": "string",
+                            "enum": ["none", "low", "medium", "high"],
+                            "description": (
+                                "Optional. How hard it would be to switch away "
+                                "later. 'none' = open spec + multiple impls; "
+                                "'high' = vendor-proprietary API surface."
+                            ),
+                        },
                     },
                     "required": [
                         "tool_name",
@@ -396,6 +439,49 @@ JUDGE_TOOL = {
             "judge_summary": {
                 "type": "string",
                 "description": "1-2 sentences: what you saw and how the run reads now.",
+            },
+            # v1.2.1 — Stream K: grade concern accuracy. The Scout tab
+            # renders deterministic concern rules client-side, but the
+            # judge is the one who notices when a verdict is silently
+            # missing a "security_surface" or "token_burn" that should
+            # have been flagged. Empty list when the upstream pass
+            # got concerns right.
+            "concern_audits": {
+                "type": "array",
+                "description": (
+                    "Optional list of concern-accuracy complaints against "
+                    "the upstream verdict pass. Mention only material "
+                    "misses (a missing security_surface on a write-capable "
+                    "tool; a missing token_burn on a model_drop). The "
+                    "Scout UI surfaces these to the user so they trust the "
+                    "concern chips."
+                ),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "verdict_index": {
+                            "type": "integer",
+                            "description": "Zero-based index into the draft verdicts.",
+                        },
+                        "missing_concern_slug": {
+                            "type": "string",
+                            "enum": [
+                                "weak_fit",
+                                "token_burn",
+                                "abandoned",
+                                "security_surface",
+                                "vendor_lock_in",
+                                "marketing_only",
+                                "unproven",
+                            ],
+                        },
+                        "evidence": {
+                            "type": "string",
+                            "description": "One sentence: why this concern should fire.",
+                        },
+                    },
+                    "required": ["verdict_index", "missing_concern_slug", "evidence"],
+                },
             },
         },
         "required": ["decisions", "quality_self_rating", "judge_summary"],

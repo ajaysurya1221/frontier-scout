@@ -61,7 +61,15 @@ def run_scan(
 
 
 def personalize_verdicts(verdicts: list[dict[str, Any]], profile: dict[str, Any]) -> list[dict[str, Any]]:
-    """Annotate verdicts with local fit reasons and honest unknowns."""
+    """Annotate verdicts with local fit reasons, honest unknowns, and a
+    v1.2.1 concern taxonomy ("burns tokens", "abandoned", "rip-off"...).
+
+    Every concern carries a slug, a human label, a severity
+    (``high|medium|low``), and one line of plain-language evidence so
+    the Scout-tab detail panel never has to ask "why?". See the
+    Stream-K plan + tests/test_verdict_concerns.py for the rule
+    contract; LLM-generated concerns are explicitly v1.2.2.
+    """
 
     out = []
     for verdict in verdicts:
@@ -72,8 +80,184 @@ def personalize_verdicts(verdicts: list[dict[str, Any]], profile: dict[str, Any]
         item["fit_reasons"] = reasons
         item["unknowns"] = _unknowns(item)
         item["next_safe_step"] = _next_safe_step(item)
+        item["concerns"] = _concerns(item)
         out.append(item)
     return out
+
+
+#: Source-URL prefixes that strongly imply lock-in to one vendor.
+_VENDOR_LOCK_IN_DOMAINS = (
+    "anthropic.com",
+    "openai.com",
+    "platform.openai.com",
+    "google.com",
+    "cloud.google.com",
+    "aws.amazon.com",
+    "microsoft.com",
+    "azure.com",
+)
+
+
+def _concerns(verdict: dict[str, Any]) -> list[dict[str, Any]]:
+    """Deterministic concern rules.
+
+    Each concern is ``{"slug", "label", "severity", "evidence"}``. The
+    rules are intentionally conservative — false-positive "rip-off"
+    accusations would burn user trust faster than a missed concern.
+    """
+
+    concerns: list[dict[str, Any]] = []
+    category = str(verdict.get("category") or "").lower()
+    fit = str(verdict.get("fit") or "").lower()
+    fit_reasons = verdict.get("fit_reasons") or []
+    source_url = str(verdict.get("source_url") or "").lower()
+    what = str(verdict.get("what") or "")
+    manifest = verdict.get("permission_manifest") or {}
+    dangerous = list(manifest.get("dangerous_flags") or [])
+    cost = verdict.get("cost_per_call_usd")
+    age = verdict.get("last_release_age_days")
+    lock_in = str(verdict.get("lock_in_risk") or "none").lower()
+
+    # weak_fit — the personalization stage couldn't connect the tool to
+    # anything in the local stack.
+    if fit == "low" or fit_reasons == ["no strong local stack match detected"]:
+        concerns.append(
+            {
+                "slug": "weak_fit",
+                "label": "weak fit for your repo",
+                "severity": "low",
+                "evidence": (
+                    "no strong local stack match detected — adopt only if "
+                    "you have a specific reason this tool maps to your work"
+                ),
+            }
+        )
+
+    # token_burn — large models or any tool with a per-call cost hint
+    # over $0.05.
+    if category == "model_drop":
+        concerns.append(
+            {
+                "slug": "token_burn",
+                "label": "burns tokens",
+                "severity": "medium",
+                "evidence": (
+                    "model drops bill per-token at inference time and pile "
+                    "up fast under unattended use"
+                ),
+            }
+        )
+    elif isinstance(cost, (int, float)) and cost > 0.05:
+        concerns.append(
+            {
+                "slug": "token_burn",
+                "label": "burns tokens",
+                "severity": "medium",
+                "evidence": (
+                    f"estimated cost ${cost:.3f}/call — multiply by your "
+                    "actual call rate before adoption"
+                ),
+            }
+        )
+
+    # abandoned — > 9 months since last release.
+    if isinstance(age, (int, float)) and age > 270:
+        concerns.append(
+            {
+                "slug": "abandoned",
+                "label": "looks abandoned",
+                "severity": "high",
+                "evidence": (
+                    f"last release was {int(age)} days ago; no public "
+                    "evidence of active maintenance"
+                ),
+            }
+        )
+
+    # security_surface — any dangerous capability flag on the manifest.
+    risky = set(dangerous) & {"write", "shell", "credential", "unknown"}
+    if risky:
+        concerns.append(
+            {
+                "slug": "security_surface",
+                "label": "security surface",
+                "severity": "high",
+                "evidence": (
+                    f"permission manifest carries: {', '.join(sorted(risky))} "
+                    "— sandbox before adoption"
+                ),
+            }
+        )
+
+    # vendor_lock_in — explicit risk OR source on a major vendor's domain.
+    if lock_in in {"medium", "high"}:
+        concerns.append(
+            {
+                "slug": "vendor_lock_in",
+                "label": "vendor lock-in",
+                "severity": "medium" if lock_in == "medium" else "high",
+                "evidence": (
+                    "switching away later will mean rewriting against a "
+                    "different API surface"
+                ),
+            }
+        )
+    elif any(domain in source_url for domain in _VENDOR_LOCK_IN_DOMAINS):
+        # We don't add this for category=skill/mcp_server because the
+        # spec there is open — only for closed vendor SDKs.
+        if category in {"vendor_tool", "model_drop", "dev_tool"}:
+            concerns.append(
+                {
+                    "slug": "vendor_lock_in",
+                    "label": "vendor lock-in",
+                    "severity": "low",
+                    "evidence": (
+                        f"hosted on a major vendor's surface ({source_url})"
+                    ),
+                }
+            )
+
+    # marketing_only — short, vague description with no GitHub source.
+    if (
+        len(what.strip()) < 40
+        and "github.com" not in source_url
+        and "huggingface.co" not in source_url
+    ):
+        concerns.append(
+            {
+                "slug": "marketing_only",
+                "label": "marketing-only",
+                "severity": "medium",
+                "evidence": (
+                    "description is short and no public code repo is "
+                    "linked — could be a landing page, not a tool"
+                ),
+            }
+        )
+
+    # unproven — agent frameworks / MCP servers that we have no lab
+    # receipt for yet. We don't crash on a missing helper here.
+    if category in {"agent_framework", "mcp_server"}:
+        try:
+            from frontier_scout.store import latest_trial_for_tool
+
+            receipt = latest_trial_for_tool(str(verdict.get("tool_name", "")))
+        except Exception:  # noqa: BLE001 — defensive
+            receipt = None
+        if not receipt:
+            concerns.append(
+                {
+                    "slug": "unproven",
+                    "label": "unproven",
+                    "severity": "low",
+                    "evidence": (
+                        "no local lab/trial receipt on file yet — your "
+                        "first run is the test"
+                    ),
+                }
+            )
+
+    return concerns
 
 
 def _personal_fit(verdict: dict[str, Any], profile: dict[str, Any]) -> tuple[str | None, list[str]]:

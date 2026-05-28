@@ -108,18 +108,25 @@ def evaluate_policy(
                     tool_name=tool_name,
                 )
             )
-        for flag in manifest.dangerous_flags:
-            if flag == "unknown":
-                continue
-            severity: Severity = "high" if flag in {"write", "shell", "credential"} else "medium"
-            findings.append(
-                PolicyFinding(
-                    severity=severity,
-                    rule_id=f"capability.{flag}",
-                    message=f"Tool exposes {flag} capability; sandbox evidence is required before adoption.",
-                    tool_name=tool_name,
+        # v1.2.1 — Stream H: the dangerous-flags loop was previously
+        # unconditional; ``Policy.require_trial_for_dangerous_capabilities``
+        # was a config field with no consumer. Now operators who set the
+        # flag to ``false`` (e.g. for an internal toolchain where every
+        # tool *is* network/write-capable by design) actually see the
+        # capability.* findings disappear and verdicts shift accordingly.
+        if policy.require_trial_for_dangerous_capabilities:
+            for flag in manifest.dangerous_flags:
+                if flag == "unknown":
+                    continue
+                severity: Severity = "high" if flag in {"write", "shell", "credential"} else "medium"
+                findings.append(
+                    PolicyFinding(
+                        severity=severity,
+                        rule_id=f"capability.{flag}",
+                        message=f"Tool exposes {flag} capability; sandbox evidence is required before adoption.",
+                        tool_name=tool_name,
+                    )
                 )
-            )
 
     lab_passed = bool(lab_result) and (
         lab_result.get("status") == "passed"
