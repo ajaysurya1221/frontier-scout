@@ -114,12 +114,12 @@ def test_schedule_default_is_dry_run(tmp_path, monkeypatch):
 def test_install_cron_runner_preserves_api_keys(tmp_path, monkeypatch):
     """Codex #3: keys must survive `/usr/bin/env -i`."""
     monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-preserved-canary")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-preserved-canary")  # pragma: allowlist secret
     monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     runner = install_cron_runner()
     body = runner.read_text()
-    assert "export ANTHROPIC_API_KEY='sk-ant-preserved-canary'" in body
+    assert "export ANTHROPIC_API_KEY='sk-ant-preserved-canary'" in body  # pragma: allowlist secret
     # The exec line must re-pass the key through `env -i`.
     assert 'ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}"' in body
     # Keys we didn't set must NOT show up as empty exports.

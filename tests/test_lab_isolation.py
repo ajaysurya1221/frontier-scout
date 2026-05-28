@@ -51,16 +51,20 @@ def test_neutralised_env_has_no_secrets(tmp_path, monkeypatch, lab_runner):
     """Adoption Firewall claim #1: install-time subprocess cannot read
     parent-process credentials."""
 
+    # detect-secrets allowlisting — these are obviously-fake canaries
+    # we set and then assert the lab DOES NOT see them. Tagging them so
+    # CI's Secret-scan step doesn't trip on what is, by design, the
+    # leak-detection plumbing.
     secrets = {
-        "ANTHROPIC_API_KEY": "secret-anthropic",
-        "OPENAI_API_KEY": "secret-openai",
-        "GH_TOKEN": "secret-github",
-        "GITHUB_TOKEN": "secret-github-2",
-        "AWS_ACCESS_KEY_ID": "secret-aws",
-        "AWS_SECRET_ACCESS_KEY": "secret-aws-2",
-        "SLACK_BOT_TOKEN": "secret-slack",
-        "HF_TOKEN": "secret-hf",
-        "HUGGINGFACE_HUB_TOKEN": "secret-hf-2",
+        "ANTHROPIC_API_KEY": "canary-anthropic",        # pragma: allowlist secret
+        "OPENAI_API_KEY": "canary-openai",              # pragma: allowlist secret
+        "GH_TOKEN": "canary-github",                    # pragma: allowlist secret
+        "GITHUB_TOKEN": "canary-github-2",              # pragma: allowlist secret
+        "AWS_ACCESS_KEY_ID": "canary-aws",              # pragma: allowlist secret
+        "AWS_SECRET_ACCESS_KEY": "canary-aws-2",        # pragma: allowlist secret
+        "SLACK_BOT_TOKEN": "canary-slack",              # pragma: allowlist secret
+        "HF_TOKEN": "canary-hf",                        # pragma: allowlist secret
+        "HUGGINGFACE_HUB_TOKEN": "canary-hf-2",         # pragma: allowlist secret
     }
     for key, value in secrets.items():
         monkeypatch.setenv(key, value)
