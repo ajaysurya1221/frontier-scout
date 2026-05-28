@@ -492,6 +492,7 @@ class ScoutTab(VerticalScroll):
                 url=v.get("source_url"),
                 dry_run=True,
                 stack=stack,
+                repo=self.app_ref.diagnostics.repo,
             )
         except Exception as exc:  # noqa: BLE001
             self.app_ref.call_from_thread(

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .evaluate import Evaluation, evaluate_url
-from .policy import evaluate_policy
+from .policy import evaluate_policy, load_policy
 from .profile import ScoutProfile, build_scout_profile, stack_from_profile
 from .scout import personalize_verdicts
 from .store import (
@@ -24,13 +24,15 @@ from .store import (
 def build_dossier(target: str, *, repo: Path | None = None) -> dict[str, Any]:
     """Build and persist a local adoption dossier for a tool or URL."""
 
-    profile = build_scout_profile(repo or Path.cwd())
+    repo_path = repo or Path.cwd()
+    profile = build_scout_profile(repo_path)
     verdict = find_latest_verdict(target)
     evaluation = _evaluation_from_target(target, profile)
     if verdict:
         verdict = personalize_verdicts([verdict], profile.model_dump())[0]
     manifest = evaluation.permission_manifest
-    decision = evaluate_policy(evaluation, manifest)
+    policy = load_policy(repo_path)
+    decision = evaluate_policy(evaluation, manifest, policy=policy)
     tool_id = save_evaluation(evaluation)
     if manifest:
         save_permission_manifest(tool_id, manifest)

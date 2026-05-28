@@ -328,10 +328,13 @@ class SetupApp(App[None]):
         report_dir = home_dir() / "reports"
         report_dir.mkdir(parents=True, exist_ok=True)
         repo_id_path = report_dir / f"{repo.name}.html"
-        payload = latest_scan()
+        # Codex #5: scope to *this* repo. Before v1.2.1 the TUI would render
+        # whatever scan happened most recently across all repos.
+        payload = latest_scan(repo=repo)
         if payload is None:
             self.log_event(
-                "No scout yet — wait for the Scout tab to finish, then press r.",
+                f"No scout for {repo} yet — wait for the Scout tab to "
+                "finish, then press r.",
                 tone="warn",
             )
             return

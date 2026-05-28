@@ -25,10 +25,24 @@ def init_home() -> Path:
     return home
 
 
+def _connect(path: Path) -> sqlite3.Connection:
+    """Open a SQLite connection with foreign-key constraints enforced.
+
+    Without ``PRAGMA foreign_keys = ON`` SQLite silently ignores every
+    ``ON DELETE CASCADE`` declaration in the schema, so deleting a scan
+    leaves orphan verdicts (and so on for every child table). Closes
+    Codex review finding #4.
+    """
+
+    conn = sqlite3.connect(path)
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
+
 def init_db(path: Path | None = None) -> Path:
     path = path or db_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS scans (
@@ -310,13 +324,21 @@ def init_db(path: Path | None = None) -> Path:
             "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
             (5, _now()),
         )
+        # v1.2.1 (Codex review #4): every future _connect() turns foreign keys
+        # on, so cascades work and clear-history is honest. No schema change —
+        # we record the milestone so a future migration can detect upgrade
+        # state.
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            (6, _now()),
+        )
     return path
 
 
 def save_scan(payload: dict[str, Any], *, repo: str | None = None) -> int:
     path = init_db()
     verdicts = list(payload.get("verdicts") or [])
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
         cur = conn.execute(
             """
             INSERT INTO scans (
@@ -360,14 +382,30 @@ def save_scan(payload: dict[str, Any], *, repo: str | None = None) -> int:
     return scan_id
 
 
-def latest_scan() -> dict[str, Any] | None:
+def latest_scan(repo: Path | str | None = None) -> dict[str, Any] | None:
+    """Return the most recent scan payload.
+
+    With no ``repo`` argument, returns the globally newest scan (legacy
+    behaviour). With ``repo`` set, scopes to that resolved path — fixes
+    Codex finding #5 where TUI / CLI ``report`` happily rendered another
+    repo's data because there was no filter.
+    """
+
     path = db_path()
     if not path.exists():
         return None
-    with sqlite3.connect(path) as conn:
-        row = conn.execute(
-            "SELECT payload_json FROM scans ORDER BY id DESC LIMIT 1"
-        ).fetchone()
+    with _connect(path) as conn:
+        if repo is None:
+            row = conn.execute(
+                "SELECT payload_json FROM scans ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        else:
+            resolved = str(Path(str(repo)).expanduser().resolve())
+            row = conn.execute(
+                "SELECT payload_json FROM scans WHERE repo = ? "
+                "ORDER BY id DESC LIMIT 1",
+                (resolved,),
+            ).fetchone()
     if not row:
         return None
     return json.loads(row[0])
@@ -375,7 +413,7 @@ def latest_scan() -> dict[str, Any] | None:
 
 def save_repo_profile(profile: Any) -> int:
     payload = _dump_model(profile)
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         cur = conn.execute(
             """
             INSERT INTO repo_profiles(repo_id, repo_path, created_at, payload_json)
@@ -447,7 +485,7 @@ def latest_repo_profile(repo: str | None = None) -> dict[str, Any] | None:
         query += " WHERE repo_path = ?"
         params = (repo,)
     query += " ORDER BY id DESC LIMIT 1"
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
         row = conn.execute(query, params).fetchone()
     return json.loads(row[0]) if row else None
 
@@ -457,7 +495,7 @@ def find_latest_verdict(tool: str) -> dict[str, Any] | None:
     if not path.exists():
         return None
     needle = tool.lower()
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
@@ -485,7 +523,7 @@ def upsert_tool(
 ) -> int:
     init_db()
     now = _now()
-    with sqlite3.connect(db_path()) as conn:
+    with _connect(db_path()) as conn:
         row = conn.execute("SELECT id FROM tools WHERE tool_name = ?", (tool_name,)).fetchone()
         if row:
             conn.execute(
@@ -518,7 +556,7 @@ def save_evaluation(evaluation: Any) -> int:
         primary_url=payload.get("source_url"),
         package_name=payload.get("package"),
     )
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         conn.execute(
             """
             INSERT INTO evaluations(
@@ -543,7 +581,7 @@ def save_evaluation(evaluation: Any) -> int:
 
 def save_permission_manifest(tool_id: int, manifest: Any) -> int:
     payload = _dump_model(manifest)
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         cur = conn.execute(
             """
             INSERT INTO permission_manifests(
@@ -564,7 +602,7 @@ def save_permission_manifest(tool_id: int, manifest: Any) -> int:
 
 
 def create_trial_run(tool_id: int, *, requested_action: str) -> int:
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         cur = conn.execute(
             """
             INSERT INTO trial_runs(tool_id, created_at, requested_action, status, payload_json)
@@ -576,7 +614,7 @@ def create_trial_run(tool_id: int, *, requested_action: str) -> int:
 
 
 def finish_trial_run(trial_id: int, *, status: str, decision: str | None = None) -> None:
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         conn.execute(
             """
             UPDATE trial_runs
@@ -588,7 +626,7 @@ def finish_trial_run(trial_id: int, *, status: str, decision: str | None = None)
 
 
 def save_lab_result(trial_id: int, result: dict[str, Any]) -> int:
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         cur = conn.execute(
             """
             INSERT INTO lab_results(
@@ -633,7 +671,7 @@ def save_policy_findings(
                 json.dumps(payload),
             )
         )
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         conn.executemany(
             """
             INSERT INTO policy_findings(
@@ -648,7 +686,7 @@ def latest_trial_for_tool(tool_name: str) -> dict[str, Any] | None:
     path = db_path()
     if not path.exists():
         return None
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
             """
@@ -681,7 +719,7 @@ def list_guard_records() -> list[dict[str, Any]]:
     path = db_path()
     if not path.exists():
         return []
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
@@ -722,7 +760,7 @@ def list_trial_summaries(limit: int = 20) -> list[dict[str, Any]]:
     path = db_path()
     if not path.exists():
         return []
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             """
@@ -752,7 +790,7 @@ def save_packs(packs: list[Any]) -> None:
                 now,
             )
         )
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         conn.executemany(
             """
             INSERT INTO packs(slug, display_name, description, definition_json, created_at, updated_at)
@@ -770,7 +808,7 @@ def save_packs(packs: list[Any]) -> None:
 def list_packs() -> list[dict[str, Any]]:
     save_builtin_packs_if_empty()
     path = init_db()
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute("SELECT * FROM packs ORDER BY slug").fetchall()
     return [dict(row) | {"definition": json.loads(row["definition_json"])} for row in rows]
@@ -778,7 +816,7 @@ def list_packs() -> list[dict[str, Any]]:
 
 def get_pack(slug: str) -> dict[str, Any] | None:
     save_builtin_packs_if_empty()
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute("SELECT * FROM packs WHERE slug = ?", (slug,)).fetchone()
     return dict(row) | {"definition": json.loads(row["definition_json"])} if row else None
@@ -788,7 +826,7 @@ def save_builtin_packs_if_empty() -> None:
     from .packs import default_packs
 
     path = init_db()
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
         row = conn.execute("SELECT COUNT(*) FROM packs").fetchone()
     if row and int(row[0]) > 0:
         return
@@ -807,7 +845,7 @@ def save_pack_candidate(candidate: Any) -> int:
         pack = get_pack(payload["pack_slug"])
     tool_id = upsert_tool(payload["tool_name"])
     evidence_json = json.dumps(payload.get("evidence") or [])
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         cur = conn.execute(
             """
             INSERT INTO pack_candidates(
@@ -847,7 +885,7 @@ def list_pack_candidates(pack_slug: str | None = None) -> list[dict[str, Any]]:
         query += " WHERE p.slug = ?"
         params = (pack_slug,)
     query += " ORDER BY p.slug, t.tool_name"
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(query, params).fetchall()
     out = []
@@ -860,7 +898,7 @@ def list_pack_candidates(pack_slug: str | None = None) -> list[dict[str, Any]]:
 
 def save_dependency_finding(finding: Any) -> int:
     payload = _dump_model(finding)
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         cur = conn.execute(
             """
             INSERT INTO dependency_findings(
@@ -893,7 +931,7 @@ def list_dependency_findings(repo_id: str | None = None) -> list[dict[str, Any]]
         query += " WHERE repo_id = ?"
         params = (repo_id,)
     query += " ORDER BY id DESC"
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(query, params).fetchall()
     out = []
@@ -907,7 +945,7 @@ def list_dependency_findings(repo_id: str | None = None) -> list[dict[str, Any]]
 
 
 def get_dep_cache(source: str, cache_key: str) -> dict[str, Any] | None:
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         row = conn.execute(
             """
             SELECT payload_json, fetched_at, ttl_seconds
@@ -926,7 +964,7 @@ def get_dep_cache(source: str, cache_key: str) -> dict[str, Any] | None:
 
 
 def save_dep_cache(source: str, cache_key: str, payload: dict[str, Any], *, ttl_seconds: int) -> None:
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         conn.execute(
             """
             INSERT INTO dep_intel_cache(source, cache_key, payload_json, fetched_at, ttl_seconds)
@@ -948,7 +986,7 @@ def save_pack_override(
     reason: str | None = None,
     expires_at: str | None = None,
 ) -> int:
-    with sqlite3.connect(init_db()) as conn:
+    with _connect(init_db()) as conn:
         cur = conn.execute(
             """
             INSERT INTO pack_overrides(pack_slug, tool_identifier, override, reason, expires_at, created_at)
@@ -961,24 +999,40 @@ def save_pack_override(
 
 def clear_scans_for_repo(repo: Path | str) -> int:
     """Delete every stored scan + verdict for ``repo``. Returns the number of
-    scan rows removed. Idempotent."""
+    scan rows removed. Idempotent.
+
+    Belt-and-braces: explicitly deletes dependent ``verdicts`` rows before
+    deleting the parent ``scans`` rows, so the result is correct whether
+    or not foreign-key enforcement is enabled at runtime (which it is, as
+    of v1.2.1 / Codex review finding #4).
+    """
 
     path = db_path()
     if not path.exists():
         return 0
     target = str(Path(str(repo)).expanduser().resolve())
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
+        conn.execute(
+            "DELETE FROM verdicts WHERE scan_id IN ("
+            "  SELECT id FROM scans WHERE repo = ?"
+            ")",
+            (target,),
+        )
         cur = conn.execute("DELETE FROM scans WHERE repo = ?", (target,))
         return cur.rowcount or 0
 
 
 def clear_all_scans() -> int:
-    """Delete every stored scan + verdict. Returns the number of rows removed."""
+    """Delete every stored scan + verdict. Returns the number of rows removed.
+
+    See ``clear_scans_for_repo`` for the belt-and-braces note.
+    """
 
     path = db_path()
     if not path.exists():
         return 0
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
+        conn.execute("DELETE FROM verdicts")
         cur = conn.execute("DELETE FROM scans")
         return cur.rowcount or 0
 
@@ -991,7 +1045,7 @@ def previous_scan_verdicts(*, repo: str) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     resolved = str(Path(repo).expanduser().resolve())
-    with sqlite3.connect(path) as conn:
+    with _connect(path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
             "SELECT payload_json FROM scans WHERE repo = ? ORDER BY id DESC LIMIT 2",

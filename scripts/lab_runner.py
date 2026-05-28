@@ -818,24 +818,70 @@ def _generate_test(client: anthropic.Anthropic, spec: dict, classification: dict
 # ── Step 5: dispatch + per-runtime subprocess runners ────────────────────────
 
 
-def _hermetic_base_env() -> dict:
+def _hermetic_base_env(*, temp_home: Path | None = None) -> dict:
     """Return the minimal pass-through env every runtime starts from.
 
-    Pulls ONLY the keys in `_HERMETIC_ENV_PASSTHROUGH` from os.environ. By
-    construction this never contains ANTHROPIC_API_KEY, GH_TOKEN,
-    SLACK_BOT_TOKEN, OPENAI_API_KEY, AWS_ACCESS_KEY_ID, or any other
-    credential the parent pipeline step has in env. The runtime-specific
-    runners layer their own non-secret keys (PYTHONPATH, NODE_PATH, …) on
-    top of this base. Tested by TestLabRuntimeDispatch::
-    test_subprocess_env_has_no_secrets — the test that backs the
-    README/SECURITY.md isolation claim.
+    Pulls ONLY ``PATH`` from os.environ. By construction this never
+    contains ANTHROPIC_API_KEY, GH_TOKEN, SLACK_BOT_TOKEN, OPENAI_API_KEY,
+    AWS_ACCESS_KEY_ID, or any other credential the parent has in env.
+
+    ``HOME`` is set to ``temp_home`` when provided; callers in lab paths
+    pass a fresh temp dir so untrusted code cannot read SSH keys,
+    `~/.aws/credentials`, `~/.npmrc`, `~/.pip/pip.conf`, `~/.huggingface/`,
+    or any other parent-home secret. The legacy "real HOME" path is kept
+    only as a fallback for callers that haven't migrated yet — the v1.2.1
+    Codex review (finding #1) flagged real HOME as a hermeticity hole.
     """
+
+    home_value = str(temp_home) if temp_home is not None else os.environ.get("HOME", "/tmp")
     return {
         "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
-        "HOME": os.environ.get("HOME", "/tmp"),
+        "HOME": home_value,
         "LANG": "C.UTF-8",
         "LC_ALL": "C.UTF-8",
     }
+
+
+def _neutralised_env(temp_dir: Path) -> dict:
+    """Hermetic env for install-time subprocesses.
+
+    Builds on ``_hermetic_base_env(temp_home=temp_dir)`` and adds explicit
+    neutralisers for pip/npm/HuggingFace configuration sources that would
+    otherwise read from the user's real home or workstation. Used by every
+    install subprocess (pip, HF, npm). Closes Codex finding #1.
+    """
+
+    env = _hermetic_base_env(temp_home=temp_dir)
+    # pip: no user/global config, no implicit input prompts, no extra indexes.
+    pip_index = os.environ.get("LAB_PIP_INDEX_URL", "")
+    env.update(
+        {
+            "PIP_CONFIG_FILE": os.devnull,
+            "PIP_INDEX_URL": pip_index,
+            "PIP_EXTRA_INDEX_URL": "",
+            "PIP_NO_INPUT": "1",
+            "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+        }
+    )
+    # Hugging Face: cache + telemetry under temp; never use parent token.
+    env.update(
+        {
+            "HF_HOME": str(temp_dir / "hf"),
+            "HF_HUB_DISABLE_TELEMETRY": "1",
+            "HF_HUB_DISABLE_IMPLICIT_TOKEN": "1",
+            "TRANSFORMERS_CACHE": str(temp_dir / "hf" / "transformers"),
+        }
+    )
+    # npm: no user config, no global cache reuse, no update notifier.
+    env.update(
+        {
+            "npm_config_userconfig": os.devnull,
+            "npm_config_globalconfig": os.devnull,
+            "npm_config_cache": str(temp_dir / "npm"),
+            "NO_UPDATE_NOTIFIER": "1",
+        }
+    )
+    return env
 
 
 def _dispatch_subprocess(spec: dict, classification: dict, script: str) -> dict:
@@ -892,6 +938,8 @@ def _run_subprocess_python(spec: dict, classification: dict, script: str) -> dic
                 capture_output=True,
                 text=True,
                 timeout=SUBPROCESS_TIMEOUT,
+                env=_neutralised_env(tdp),
+                cwd=str(tdp),
             )
         except subprocess.TimeoutExpired:
             return _result(start, -1, "", f"pip install timed out after {SUBPROCESS_TIMEOUT}s")
@@ -907,8 +955,10 @@ def _run_subprocess_python(spec: dict, classification: dict, script: str) -> dic
         # Run the script with HERMETIC env. The child has NO API keys,
         # NO API token, NO repo token — it physically cannot call any
         # paid API, so it can't burn quota and can't exfil secrets.
+        # HOME is the temp dir so the child cannot read real ~/.aws,
+        # ~/.ssh, ~/.config/pip, etc.
         run_env = {
-            **_hermetic_base_env(),
+            **_hermetic_base_env(temp_home=tdp),
             "PYTHONPATH":     str(target),
             "PYTHONIOENCODING": "utf-8",
         }
@@ -963,7 +1013,7 @@ def _run_subprocess_node(spec: dict, classification: dict, script: str) -> dict:
                 capture_output=True,
                 text=True,
                 timeout=SUBPROCESS_TIMEOUT,
-                env={**_hermetic_base_env(), "NO_UPDATE_NOTIFIER": "1"},
+                env=_neutralised_env(tdp),
                 cwd=str(tdp),
             )
         except subprocess.TimeoutExpired:
@@ -985,10 +1035,12 @@ def _run_subprocess_node(spec: dict, classification: dict, script: str) -> dict:
             )
 
         run_env = {
-            **_hermetic_base_env(),
+            **_hermetic_base_env(temp_home=tdp),
             "NODE_PATH":          str(tdp / "node_modules"),
             "NO_UPDATE_NOTIFIER": "1",
             "npm_config_loglevel": "error",
+            "npm_config_userconfig": os.devnull,
+            "npm_config_cache":      str(tdp / "npm"),
         }
         try:
             run_proc = subprocess.run(
@@ -1046,6 +1098,8 @@ def _run_subprocess_hf(spec: dict, classification: dict, script: str) -> dict:
                 capture_output=True,
                 text=True,
                 timeout=SUBPROCESS_TIMEOUT,
+                env=_neutralised_env(tdp),
+                cwd=str(tdp),
             )
         except subprocess.TimeoutExpired:
             return _result(start, -1, "", f"pip install (huggingface_hub + transformers) timed out after {SUBPROCESS_TIMEOUT}s")
@@ -1059,13 +1113,14 @@ def _run_subprocess_hf(spec: dict, classification: dict, script: str) -> dict:
             )
 
         run_env = {
-            **_hermetic_base_env(),
+            **_hermetic_base_env(temp_home=tdp),
             "PYTHONPATH":     str(target),
             "PYTHONIOENCODING": "utf-8",
             # Force HF cache under tempdir so it dies with the container.
             "HF_HOME":         str(tdp / "hf_cache"),
             # Hard belt: refuse to use any HF token even if one leaked in.
             "HF_HUB_DISABLE_IMPLICIT_TOKEN": "1",
+            "HF_HUB_DISABLE_TELEMETRY": "1",
             "TRANSFORMERS_OFFLINE": "0",  # we DO need network for from_pretrained
         }
         try:

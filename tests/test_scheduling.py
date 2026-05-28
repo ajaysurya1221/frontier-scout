@@ -89,3 +89,57 @@ def test_disabled_schedule_is_not_due(tmp_path, monkeypatch):
     sched.disabled = True
     save_schedules([sched])
     assert not is_due(sched)
+
+
+# ---------------------------------------------------------------------------
+# v1.2.1 — Codex finding #3: schedule.live + cron runner env preservation
+# ---------------------------------------------------------------------------
+
+
+def test_schedule_live_roundtrips(tmp_path, monkeypatch):
+    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
+    sched = add_schedule(tmp_path, cron_expr="@hourly", live=True)
+    assert sched.live is True
+    reloaded = load_schedules()[0]
+    assert reloaded.live is True
+
+
+def test_schedule_default_is_dry_run(tmp_path, monkeypatch):
+    """Codex #3: never silently spend on a user's API key. Default off."""
+    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
+    sched = add_schedule(tmp_path, cron_expr="@hourly")
+    assert sched.live is False
+
+
+def test_install_cron_runner_preserves_api_keys(tmp_path, monkeypatch):
+    """Codex #3: keys must survive `/usr/bin/env -i`."""
+    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-preserved-canary")
+    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    runner = install_cron_runner()
+    body = runner.read_text()
+    assert "export ANTHROPIC_API_KEY='sk-ant-preserved-canary'" in body
+    # The exec line must re-pass the key through `env -i`.
+    assert 'ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY}"' in body
+    # Keys we didn't set must NOT show up as empty exports.
+    assert "export OPENAI_API_KEY=" not in body
+
+
+def test_install_cron_runner_handles_no_keys(tmp_path, monkeypatch):
+    """When the user has no API key set, the runner must not emit empty
+    `export` lines (which would be syntactically valid but misleading)."""
+    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
+    for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN", "GH_TOKEN"):
+        monkeypatch.delenv(key, raising=False)
+    runner = install_cron_runner()
+    body = runner.read_text()
+    for key in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GITHUB_TOKEN", "GH_TOKEN"):
+        assert f"export {key}=" not in body
+
+
+def test_install_cron_runner_explicit_env_arg(tmp_path, monkeypatch):
+    """Caller can override env entirely for testing / programmatic use."""
+    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
+    runner = install_cron_runner(env={"ANTHROPIC_API_KEY": "test-only"})
+    assert "test-only" in runner.read_text()

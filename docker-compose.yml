@@ -1,21 +1,23 @@
 services:
+  # Core service. Has no required dependencies — Qdrant/OTel are
+  # opt-in demo aids (see `--profile demo` below). v1.2.1 — Codex open
+  # question #4: clarify those are demo-only, not core requirements.
   app:
     build: .
     environment:
       FRONTIER_SCOUT_HOME: /app/.scratch/docker-home
     volumes:
       - .:/app
-    depends_on:
-      - qdrant
-      - otel-collector
 
   qdrant:
     image: qdrant/qdrant:v1.14.1
     ports:
       - "6333:6333"
+    profiles: ["demo"]
 
   otel-collector:
     image: otel/opentelemetry-collector:0.101.0
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
       - ./infra/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+    profiles: ["demo"]

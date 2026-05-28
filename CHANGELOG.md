@@ -4,6 +4,95 @@
 
 - No unreleased changes yet.
 
+## 1.2.1 - 2026-05-28
+
+The Codex-review release. v1.2.0 was tagged on GitHub but never
+published to PyPI; a colleague's read-only audit (file:line citations
+in `CODEX_REVIEW_FOR_CLAUDE.md`) caught eight issues, one of which
+contradicted an explicit security claim and three of which silently
+broke advertised flows. v1.2.1 ships the fixes and is the **first PyPI
+release in the v1.2 line** — v1.2.0 stays as the GitHub-only marker.
+
+### Security fixes
+
+- **Lab hermeticity (Codex #1 · Critical).** Package install
+  subprocesses (`pip install`, HuggingFace `snapshot_download`, Node)
+  no longer inherit the parent process environment. `HOME` points to a
+  temp dir; `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GH_TOKEN`,
+  `AWS_*`, and `HF_TOKEN` are stripped before the install runs.
+  `PIP_CONFIG_FILE`, `npm_config_userconfig`, and `HF_HOME` are
+  neutralised so user dotfiles can't influence the trial. `cwd` for
+  install subprocesses is now the temp dir, not the real repo. New
+  `tests/test_lab_isolation.py` proves a leak-canary key never reaches
+  the install env.
+
+### Correctness fixes
+
+- **Policy actually loads (Codex #2 · High).** `~/.frontier-scout/
+  policy.toml` and `<repo>/.frontier-scout/policy.toml` were inert —
+  every `evaluate_policy(...)` call site passed no `policy=` arg, so
+  `DEFAULT_POLICY` was always used. `evaluate`, `build_dossier`,
+  `run_trial`, and the TUI evaluate action now load the effective
+  policy (repo → home → default). `run_guard` honours `strict` (was
+  silently ignored) and accepts a `repo` arg for forward compatibility
+  with v1.3's per-repo ledger schema.
+
+- **SQLite cascade is real (Codex #4 · Medium-but-load-bearing).**
+  `ON DELETE CASCADE` was declared on the verdicts table but no
+  `PRAGMA foreign_keys = ON` was ever issued, so the cascade was a
+  lie. `clear_scans_for_repo` and `clear_all_scans` leaked orphan
+  verdicts. New `_connect()` helper enables the pragma on every
+  connection (~30 call sites swapped). Both clear functions also do
+  an explicit `DELETE FROM verdicts WHERE scan_id IN (...)` before
+  deleting scans — belt and braces.
+
+- **Reports scope to the right repo (Codex #5 · Medium).**
+  `latest_scan()` returned the globally-newest scan with no repo
+  filter; the CLI `report` and TUI `action_open_report` happily
+  rendered repo B's data while you sat in repo A. Now
+  `latest_scan(repo=...)` filters by resolved path; "no scout yet for
+  this repo" is a loud message, not a silent demo render.
+
+- **Dep trial receipts stop lying (Codex #6 · Medium).** Non-dry-run
+  trials reported `status = "completed"`, `exit_code = 0` even though
+  no test subprocess ever ran. Now: `dry_run=True` → `"prepared"`;
+  resolvable test command → executes in the temp dir under the same
+  hermetic env as the lab and reports `"passed"`/`"failed"`; no
+  resolvable command → `"prepared"` with a summary saying so.
+
+### Operational fixes
+
+- **Scheduled scouts no longer drain API quota (Codex #3 · High).**
+  `Schedule.live` defaults to `False`; the wizard's automation step
+  asks "Run live (uses your API key) or dry-run (free, local)?" and
+  persists the choice. `install_cron_runner` materialises
+  `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GITHUB_TOKEN`/`GH_TOKEN`,
+  and `FRONTIER_SCOUT_HOME` as `export` lines and re-passes them
+  through `/usr/bin/env -i`, so scheduled live scouts can actually
+  reach Anthropic/OpenAI. Documented inline in the runner that this
+  materialises credentials to disk; users who don't want that can
+  leave schedules in dry-run mode (the default) and remove the
+  exports.
+
+### Docs
+
+- README and wizard updated: tab keys are `1`–`2` (Scout, Settings),
+  not `1`–`9`. Every other capability lives on the CLI.
+- `CONTRIBUTING.md` documents the two-stage release path (tag push
+  → GitHub Release with assets, then manual `workflow_dispatch` to
+  publish to PyPI).
+- `docs/blockers.md` archived to `docs/archive/`.
+- `docker-compose.yml` Qdrant and OTel moved behind `profiles:
+  ["demo"]`; not required for core `frontier-scout` use.
+
+### Deferred to v1.2.2 / v1.3
+
+- Lockfile-aware dependency intelligence (Codex #7).
+- Model ID / price catalog audit (Codex #8 — needs API).
+- Per-repo guard ledger schema migration.
+- `doctor --deep`, sandbox capability ladder, trust-receipt command,
+  policy explain command, container/network lab levels.
+
 ## 1.2.0 - 2026-05-28
 
 The honest fix. v1.1 accreted too many features; in real use the

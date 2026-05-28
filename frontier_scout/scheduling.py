@@ -43,6 +43,7 @@ class Schedule:
     last_result_dir: str | None = None
     last_verdict_count: int = 0
     disabled: bool = False
+    live: bool = False  # v1.2.1: default dry-run; opt-in to live scout per schedule
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -58,6 +59,7 @@ class Schedule:
             last_result_dir=data.get("last_result_dir"),
             last_verdict_count=int(data.get("last_verdict_count") or 0),
             disabled=bool(data.get("disabled", False)),
+            live=bool(data.get("live", False)),
         )
 
 
@@ -93,10 +95,22 @@ def save_schedules(schedules: list[Schedule]) -> Path:
     return path
 
 
-def add_schedule(repo: Path | str, *, cron_expr: str = "@daily", notification: str = "file") -> Schedule:
+def add_schedule(
+    repo: Path | str,
+    *,
+    cron_expr: str = "@daily",
+    notification: str = "file",
+    live: bool = False,
+) -> Schedule:
     schedules = load_schedules()
     resolved = str(Path(str(repo)).expanduser().resolve())
-    sched = Schedule(id=_new_id(), repo=resolved, cron_expr=cron_expr, notification=notification)
+    sched = Schedule(
+        id=_new_id(),
+        repo=resolved,
+        cron_expr=cron_expr,
+        notification=notification,
+        live=live,
+    )
     schedules.append(sched)
     save_schedules(schedules)
     return sched
@@ -111,19 +125,77 @@ def remove_schedule(schedule_id: str) -> bool:
     return True
 
 
-def install_cron_runner() -> Path:
-    """Write the cron-runner shell script. Idempotent; preserves the
-    existing file if its content already matches."""
+_PRESERVABLE_KEYS = (
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "GITHUB_TOKEN",
+    "GH_TOKEN",
+    "FRONTIER_SCOUT_HOME",
+)
+
+
+def install_cron_runner(
+    *,
+    preserve_keys: tuple[str, ...] = _PRESERVABLE_KEYS,
+    env: dict[str, str] | None = None,
+) -> Path:
+    """Write the cron-runner shell script.
+
+    For each name in ``preserve_keys`` that is set in ``env`` (defaults to
+    ``os.environ``), the generated script materialises that value as an
+    ``export`` so the cron'd `frontier-scout cron run` can see it.
+    Without this, ``/usr/bin/env -i`` strips the very credentials live
+    scheduled scouts need — Codex review finding #3.
+
+    Trade-off documented inline in the script: secrets end up in a file
+    under ``~/.frontier-scout/``. Users who don't want that should leave
+    schedules in dry-run mode (the default) and remove the export lines.
+
+    Idempotent. Re-running with the same env produces the same file.
+    """
 
     init_home()
-    path = cron_runner_path()
-    body = (
+    source_env = env if env is not None else os.environ
+    exports: list[str] = []
+    for key in preserve_keys:
+        value = source_env.get(key)
+        if not value:
+            continue
+        # shell-quote: replace ' with '\'' inside single-quoted string.
+        quoted = value.replace("'", "'\\''")
+        exports.append(f"export {key}='{quoted}'")
+
+    header = (
         "#!/usr/bin/env bash\n"
         "# Frontier Scout cron runner — installed by `frontier-scout setup`.\n"
-        "# Pass-through of HOME and PATH only; nothing else inherited.\n"
-        "exec /usr/bin/env -i HOME=\"$HOME\" PATH=\"$PATH\" frontier-scout cron run "
+        "# Preserves HOME and PATH plus any credentials that were set in your\n"
+        "# interactive shell when you installed this runner. Edit/remove the\n"
+        "# `export` lines below to change what gets passed to scheduled runs.\n"
+        "#\n"
+        "# Why exports?  /usr/bin/env -i strips the env, so without these the\n"
+        "# scheduled `frontier-scout cron run` would have no ANTHROPIC_API_KEY,\n"
+        "# no FRONTIER_SCOUT_HOME, etc. and would silently fall back to defaults.\n"
+        "\n"
+    )
+    body_lines = [header]
+    for line in exports:
+        body_lines.append(f"{line}\n")
+    body_lines.append(
+        "\n"
+        "exec /usr/bin/env -i "
+        "HOME=\"$HOME\" PATH=\"$PATH\""
+    )
+    # The exports we just wrote need to be re-passed via env -i too.
+    for key in preserve_keys:
+        if source_env.get(key):
+            body_lines.append(f' {key}="${{{key}}}"')
+    body_lines.append(
+        " frontier-scout cron run "
         ">> \"$HOME/.frontier-scout/cron.log\" 2>&1\n"
     )
+    body = "".join(body_lines)
+
+    path = cron_runner_path()
     if path.exists() and path.read_text() == body:
         return path
     path.write_text(body)
@@ -225,11 +297,18 @@ def record_run(
     save_schedules(updated)
 
 
-def run_due(*, dry_run: bool = False) -> list[dict[str, Any]]:
+def run_due(*, dry_run: bool | None = None) -> list[dict[str, Any]]:
     """Execute every due schedule. Returns a list of result summaries.
 
     Each result has ``schedule_id``, ``repo``, ``ran``, ``verdict_count``,
     and ``result_dir`` (or ``error`` if execution failed).
+
+    When ``dry_run`` is None (the default), each schedule's own ``live``
+    flag controls behaviour: ``live=True`` runs a live scan,
+    ``live=False`` stays dry-run. This is v1.2.1's safer default —
+    scheduled scouts never accidentally drain API quota the user forgot
+    they had configured. Passing ``dry_run=True`` or ``dry_run=False``
+    forces every due schedule to that mode.
     """
 
     from frontier_scout.notifications import notify_new_verdicts
@@ -251,8 +330,9 @@ def run_due(*, dry_run: bool = False) -> list[dict[str, Any]]:
             )
             continue
         result_dir = _make_run_dir(schedule)
+        effective_dry_run = (not schedule.live) if dry_run is None else dry_run
         try:
-            payload = run_scan(repo=repo, dry_run=dry_run, persist=True)
+            payload = run_scan(repo=repo, dry_run=effective_dry_run, persist=True)
         except Exception as exc:  # noqa: BLE001 — propagate as data
             results.append(
                 {

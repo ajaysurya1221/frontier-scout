@@ -298,7 +298,7 @@ class AdhocStepScreen(Screen[None]):
                 "  [#24d6a8 bold]cd ~/Desktop/my-repo[/]\n"
                 "  [#24d6a8 bold]frontier-scout[/]\n\n"
                 "That opens Mission Control. Inside the TUI:\n"
-                "  · [#d9f7ff]1 — 9[/] jump between tabs (Scout · Trials · Receipts · …)\n"
+                "  · [#d9f7ff]1 — 2[/] switch between Scout and Settings\n"
                 "  · [#d9f7ff]?[/] shows the full keymap\n"
                 "  · [#d9f7ff]q[/] quits with a confirmation\n\n"
                 "[#6e8aa1]Tip:[/] run [#d9f7ff]`frontier-scout setup`[/] anytime to switch to "

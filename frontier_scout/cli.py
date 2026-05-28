@@ -17,7 +17,7 @@ from .lab import run_lab
 from .mcp_audit import classify_mcp_capabilities
 from .packs import candidate_rows_for_pack
 from .platform.incident_change_scout.workflow import run_incident_demo
-from .policy import default_policy_toml, evaluate_policy
+from .policy import default_policy_toml, evaluate_policy, load_policy
 from .profile import build_scout_profile, export_profile
 from .report import load_verdict_file, render_html, write_demo
 from .scout import detect_stack, run_scan
@@ -155,6 +155,11 @@ def build_parser() -> argparse.ArgumentParser:
     report_cmd = sub.add_parser("report", help="Render a static HTML report from a verdict JSON file or latest scan.")
     report_cmd.add_argument("--input", help="Path to verdict JSON. Defaults to latest SQLite scan, then demo fixture.")
     report_cmd.add_argument("--output", default="demo/briefing.html", help="HTML output path.")
+    report_cmd.add_argument(
+        "--repo",
+        default=".",
+        help="Repository whose latest scan to render (defaults to current directory).",
+    )
 
     lab_cmd = sub.add_parser("lab", help="Try a tool in the hermetic polyglot lab.")
     lab_cmd.add_argument("tool", help="Tool/package name.")
@@ -435,10 +440,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.input:
             date, verdicts, funnel = load_verdict_file(Path(args.input))
         else:
-            payload = latest_scan()
+            payload = latest_scan(repo=Path(args.repo))
             if payload is None:
+                # Codex #5: don't silently demo-render when nothing exists for
+                # *this* repo — that's how reports went out misattributed.
                 paths = write_demo(Path(args.output).parent)
-                print(f"No stored scan found; wrote demo report: {paths['html']}")
+                print(
+                    f"No stored scan for {Path(args.repo).resolve()}; "
+                    f"wrote demo report: {paths['html']}"
+                )
                 return 0
             date = str(payload.get("date") or "latest")
             verdicts = list(payload.get("verdicts") or [])
@@ -460,7 +470,8 @@ def main(argv: list[str] | None = None) -> int:
             source_url=args.url,
         )
         save_permission_manifest(tool_id, manifest)
-        decision = evaluate_policy(evaluation, manifest)
+        policy = load_policy(Path(args.repo))
+        decision = evaluate_policy(evaluation, manifest, policy=policy)
         save_policy_findings(tool_id, decision.findings)
         if args.json:
             print(
@@ -580,7 +591,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "trial":
         stack = detect_stack(Path(args.repo))
         dry_run = args.dry_run or args.sandbox == "report-only"
-        result = run_trial(args.tool, url=args.url, dry_run=dry_run, stack=stack)
+        result = run_trial(args.tool, url=args.url, dry_run=dry_run, stack=stack, repo=args.repo)
         result["sandbox"] = args.sandbox or ("report-only" if dry_run else "local")
         if args.json:
             print(json.dumps(result, indent=2))

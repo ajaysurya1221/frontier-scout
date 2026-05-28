@@ -153,13 +153,14 @@ frontier-scout
 ```
 
 Mission Control lands on the **Scout** tab — the radar that ranks the
-latest AI releases that fit your repo. Tab keys `1`–`9` cycle through
-Scout, Trials, Receipts, Guard, Reports, Packs, Deps, Incident, and
-Settings — every CLI capability is one keystroke away. The import-evidence
-scanner reads ASTs locally, provider availability shows up as cards, and
-nothing reads secrets, logs into services, installs tools, or sends repo
-content to an LLM. Limited terminals can use `frontier-scout setup --plain`;
-automation can use `frontier-scout setup --json`.
+latest AI releases that fit your repo. Tab keys `1`–`2` switch between
+**Scout** and **Settings**; every other capability lives on the CLI
+(`frontier-scout {trial, deps, guard, packs, incident, dossier,
+evaluate}`). The import-evidence scanner reads ASTs locally, provider
+availability shows up as cards, and nothing reads secrets, logs into
+services, installs tools, or sends repo content to an LLM. Limited
+terminals can use `frontier-scout setup --plain`; automation can use
+`frontier-scout setup --json`.
 
 ### Develop locally
 
