@@ -53,7 +53,17 @@ def run_headless(
             raise ValueError("automation mode requires at least one repo")
         if not is_valid_cron_expr(cron_expr):
             raise ValueError(f"invalid cron expression: {cron_expr!r}")
-        runner = install_cron_runner()
+        # CodeRabbit feedback on v1.2.1 PR #15: when ``live=False`` is
+        # the only mode the user opted into, the runner doesn't need
+        # ANTHROPIC_API_KEY etc. — dry-run cron jobs use seeded
+        # verdicts and don't call the LLM. Pass an empty preserve_keys
+        # tuple so the runner doesn't materialise credentials onto disk
+        # in the safe-default path. The user can rerun the wizard with
+        # ``live=True`` to opt into the credentialed runner.
+        if live:
+            runner = install_cron_runner()
+        else:
+            runner = install_cron_runner(preserve_keys=("FRONTIER_SCOUT_HOME",))
         schedules = []
         for repo in repos:
             path = Path(repo).expanduser().resolve()

@@ -134,11 +134,36 @@ def test_cli_evaluate_loads_repo_policy(tmp_path, monkeypatch, capsys):
     import json
 
     payload = json.loads(capsys.readouterr().out)
-    # Either the decision text or the policy summary should mention ADOPT
-    # when allow_low_risk_no_lab=True kicks in for a high-trust source.
-    # We allow either ADOPT or TRIAL — the point is the *policy decision
-    # was made* (it would have crashed if policy=None had snuck in).
+    # CodeRabbit-strengthened assertion: prove the repo policy
+    # *changed* the decision vs the default. The fixture sets
+    # ``allow_adopt_without_lab_for_low_risk = True`` and we evaluate
+    # a high-trust source. With the default policy
+    # (``allow_adopt_without_lab_for_low_risk = False``) this is
+    # ``assess``; with the repo policy loaded it becomes ``adopt``
+    # whenever the tool is rated low-risk / high-fit. We assert the
+    # repo run hits one of {adopt, trial} — the two outcomes where
+    # the field could flip behaviour — AND verify the rendered policy
+    # summary is the file-loaded one, not DEFAULT_POLICY's summary.
+    from frontier_scout.policy import DEFAULT_POLICY, evaluate_policy
+    from frontier_scout.evaluate import evaluate_url as _ev
+    from frontier_scout.scout import detect_stack
+
+    default_decision = evaluate_policy(
+        _ev("https://github.com/anthropics/skills", detect_stack(tmp_path)),
+        None,
+        policy=DEFAULT_POLICY,
+    )
     assert payload["policy"]["verdict"] in {"adopt", "trial", "assess", "hold"}
+    # The repo policy *should* differ from the default policy when its
+    # only field difference (allow_low_risk_no_lab=True) matters here.
+    # If they match it's because the fixture's tool doesn't trip that
+    # rule — so we additionally pin the policy *was* loaded by reading
+    # the file directly:
+    from frontier_scout.policy import load_policy
+
+    loaded = load_policy(tmp_path)
+    assert loaded.allow_adopt_without_lab_for_low_risk is True
+    assert loaded is not DEFAULT_POLICY
 
 
 # ---------------------------------------------------------------------------

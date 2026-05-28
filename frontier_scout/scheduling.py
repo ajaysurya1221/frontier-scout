@@ -197,10 +197,21 @@ def install_cron_runner(
 
     path = cron_runner_path()
     if path.exists() and path.read_text() == body:
+        # Even when the body matches an existing file, re-assert strict
+        # perms — a previous v1.1 install may have left it 0o755.
+        try:
+            path.chmod(0o700)
+        except OSError:
+            pass
         return path
     path.write_text(body)
     try:
-        path.chmod(0o755)
+        # CodeRabbit feedback on v1.2.1 PR #15: this file now embeds API
+        # keys. On multi-user machines a traversable home directory
+        # would leak them to anyone with shell access. Use owner-only
+        # perms (rwx for owner, nothing for group/other). cron runs as
+        # the user so it can still read+execute.
+        path.chmod(0o700)
     except OSError:
         # On some filesystems chmod is a no-op; the user can adjust manually.
         pass

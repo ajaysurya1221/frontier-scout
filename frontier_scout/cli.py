@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from . import __version__
@@ -287,7 +288,7 @@ RECONFIGURE_EXIT_CODE = 42
 
 
 def _run_tui_with_reconfigure_loop(
-    runner: "callable[..., int]",
+    runner: Callable[..., int],
     *,
     max_loops: int = 3,
     **kwargs,

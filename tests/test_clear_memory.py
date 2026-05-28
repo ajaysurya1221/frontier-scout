@@ -95,9 +95,13 @@ def test_clear_all_scans_empties_verdicts(tmp_path, monkeypatch):
     assert _total_verdict_count() == 0
 
 
-def test_foreign_keys_pragma_is_enabled():
-    """``_connect`` turns on foreign key enforcement so cascades actually fire."""
+def test_foreign_keys_pragma_is_enabled(tmp_path, monkeypatch):
+    """``_connect`` turns on foreign key enforcement so cascades actually fire.
 
+    Isolated from the real ``~/.frontier-scout/`` so running the suite
+    locally never touches the developer's actual SQLite store."""
+
+    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
     from frontier_scout.store import _connect, db_path, init_db
 
     init_db()

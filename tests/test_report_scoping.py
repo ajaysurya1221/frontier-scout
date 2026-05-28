@@ -53,15 +53,30 @@ def test_latest_scan_filters_to_requested_repo(tmp_path, monkeypatch):
     payload_b = latest_scan(repo=repo_b)
     assert payload_a is not None
     assert payload_b is not None
-    # The two scoped results must differ (otherwise the filter is a no-op).
-    # We compare on a few fields rather than the whole dict (timestamps,
-    # cost, verdict counts all carry per-scan uniqueness).
-    assert (
-        payload_a.get("repo_id") != payload_b.get("repo_id")
-        or payload_a.get("started_at") != payload_b.get("started_at")
-        or payload_a.get("date") != payload_b.get("date")
-        or payload_a is not payload_b  # at minimum, distinct objects
-    )
+    # CodeRabbit-strengthened assertion: prove filtering by repo, not
+    # just that two distinct objects came back. The two scans were
+    # persisted under different ``repo`` columns; their database row
+    # IDs and resolved-path round-trip lookups must match the requested
+    # repo (and only that repo). We re-query SQLite to confirm the
+    # row IDs match what ``latest_scan(repo=...)`` returned.
+    import sqlite3
+
+    with sqlite3.connect(db_path()) as conn:
+        row_id_for_a = conn.execute(
+            "SELECT id FROM scans WHERE repo = ? ORDER BY id DESC LIMIT 1",
+            (str(repo_a.resolve()),),
+        ).fetchone()[0]
+        row_id_for_b = conn.execute(
+            "SELECT id FROM scans WHERE repo = ? ORDER BY id DESC LIMIT 1",
+            (str(repo_b.resolve()),),
+        ).fetchone()[0]
+    # The IDs we just looked up must match what the scope-filtered
+    # query returned. We exposed the cross-check above (id_a, id_b);
+    # confirm they correspond to the right repos.
+    assert row_id_for_a == id_a
+    assert row_id_for_b == id_b
+    # The two payloads must not have the same SQLite row.
+    assert id_a != id_b, "latest_scan(repo=A) and latest_scan(repo=B) returned the same scan row"
 
 
 def test_latest_scan_returns_global_when_no_repo_arg(tmp_path, monkeypatch):
