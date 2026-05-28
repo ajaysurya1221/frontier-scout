@@ -152,11 +152,28 @@ def render_html(
     date: str = SAMPLE_DATE,
     funnel: dict[str, Any] | None = None,
     include_trials: bool = True,
+    include_artifacts: bool = False,
 ) -> str:
     funnel = {**SAMPLE_FUNNEL, **(funnel or {})}
     grouped = _group_by_tier(verdicts)
     cards = "\n".join(_render_card(v, i + 1) for i, v in enumerate(verdicts))
     trial_section = _render_trial_section_html() if include_trials else ""
+    # CodeRabbit #1: only render artifact-nav when the companion files
+    # actually exist on disk (i.e. the demo flow). The CLI `report`
+    # path writes only the HTML, so unconditionally including these
+    # links would produce dead links there.
+    artifact_nav = (
+        """
+    <nav class="artifacts" aria-label="Demo artifacts">
+      <a class="artifact-link" href="briefing.md">Markdown</a>
+      <a class="artifact-link" href="verdicts.json">Verdicts JSON</a>
+      <a class="artifact-link" href="cost-breakdown.md">Cost Breakdown</a>
+      <a class="artifact-link" href="judge-trace.md">Judge Trace</a>
+      <a class="artifact-link" href="quality-log.jsonl">Quality Log</a>
+    </nav>"""
+        if include_artifacts
+        else ""
+    )
     summary = " · ".join(
         f"{VERDICT_LABEL[tier]} {len(grouped[tier])}"
         for tier in ("adopt", "trial", "assess", "hold")
@@ -258,14 +275,7 @@ footer {{ color: var(--muted); margin-top: 34px; padding-top: 20px; border-top: 
       <div class="metric"><b>${float(funnel.get("total_cost_usd", 0)):.2f}</b><span>run cost</span></div>
       <div class="metric"><b>{funnel.get("judge_self_rating", "n/a")}</b><span>judge</span></div>
     </div>
-    <p class="judge"><strong>Summary:</strong> {summary or "No shipped verdicts."} · {funnel.get("judge_summary", "")}</p>
-    <nav class="artifacts" aria-label="Demo artifacts">
-      <a class="artifact-link" href="briefing.md">Markdown</a>
-      <a class="artifact-link" href="verdicts.json">Verdicts JSON</a>
-      <a class="artifact-link" href="cost-breakdown.md">Cost Breakdown</a>
-      <a class="artifact-link" href="judge-trace.md">Judge Trace</a>
-      <a class="artifact-link" href="quality-log.jsonl">Quality Log</a>
-    </nav>
+    <p class="judge"><strong>Summary:</strong> {summary or "No shipped verdicts."} · {funnel.get("judge_summary", "")}</p>{artifact_nav}
   </section>
   <section>
     <div class="section-title">
@@ -359,7 +369,18 @@ def write_report(
     judge_path = output_dir / "judge-trace.md"
 
     payload = {"date": date, "funnel": {**SAMPLE_FUNNEL, **(funnel or {})}, "verdicts": verdicts}
-    html_path.write_text(render_html(verdicts, date=date, funnel=funnel, include_trials=include_trials))
+    # The demo flow writes all five companion files, so the nav links
+    # resolve. CLI ``report`` callers don't go through write_report —
+    # they call render_html directly with the default include_artifacts=False.
+    html_path.write_text(
+        render_html(
+            verdicts,
+            date=date,
+            funnel=funnel,
+            include_trials=include_trials,
+            include_artifacts=True,
+        )
+    )
     md_path.write_text(render_markdown(verdicts, date=date, funnel=funnel, include_trials=include_trials))
     json_path.write_text(json.dumps(payload, indent=2) + "\n")
     log_path.write_text(json.dumps({"ts": f"{date}T00:00:00+00:00", "component": "demo", **payload["funnel"]}) + "\n")
@@ -382,21 +403,44 @@ def write_demo(output_dir: Path) -> dict[str, Path]:
 _DEFAULT_DEMO_PORT = 7771
 
 
+#: CodeRabbit #2 — only these paths are served. Without an allowlist
+#: a caller who reuses an existing directory (or a generated demo dir
+#: that picks up stray files) would expose them all over the network.
+_DEMO_SERVED_PATHS: frozenset[str] = frozenset(
+    {
+        "/briefing.html",
+        "/briefing.md",
+        "/verdicts.json",
+        "/cost-breakdown.md",
+        "/judge-trace.md",
+        "/quality-log.jsonl",
+    }
+)
+
+
 def serve_demo(output_dir: Path, *, port: int = _DEFAULT_DEMO_PORT) -> None:
-    """Write demo files and host them on a local HTTP server, then open the browser."""
+    """Write demo files and host them on a local HTTP server, then open the browser.
+
+    CodeRabbit #2: the server binds to 127.0.0.1 by default. Only when
+    ``_is_remote_env()`` detects an explicitly remote workspace (VS
+    Code Server / GitHub Codespaces / a devcontainer with port
+    forwarding) do we widen to 0.0.0.0 — and even there, the handler
+    only serves an explicit path allowlist, not the whole directory.
+    """
+
     import webbrowser
     from http.server import HTTPServer
 
     paths = write_demo(output_dir)
     abs_dir = output_dir.resolve()
     remote = _is_remote_env()
+    host = "0.0.0.0" if remote else "127.0.0.1"  # noqa: S104 — intentional remote path
 
-    # Bind to 0.0.0.0 so VS Code / devcontainer port forwarding can reach it.
-    # Fall back to a random port if the preferred one is already in use.
+    handler_cls = _demo_request_handler(abs_dir, _DEMO_SERVED_PATHS)
     try:
-        server = HTTPServer(("0.0.0.0", port), _demo_request_handler(abs_dir))
+        server = HTTPServer((host, port), handler_cls)
     except OSError:
-        server = HTTPServer(("0.0.0.0", 0), _demo_request_handler(abs_dir))
+        server = HTTPServer((host, 0), handler_cls)
 
     actual_port = server.server_address[1]
     url = f"http://localhost:{actual_port}/"
@@ -414,21 +458,39 @@ def serve_demo(output_dir: Path, *, port: int = _DEFAULT_DEMO_PORT) -> None:
         server.shutdown()
 
 
-def _demo_request_handler(abs_dir: Path):
+def _demo_request_handler(abs_dir: Path, allowed_paths: frozenset[str]):
+    """Build a request handler that only serves the allowlisted demo
+    artifacts, even when ``abs_dir`` contains other files. CodeRabbit
+    #2 — the previous handler exposed every file under the output
+    directory to the network."""
+
     from http.server import SimpleHTTPRequestHandler
+    from urllib.parse import urlsplit
 
     class _Handler(SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(abs_dir), **kwargs)
 
+        def _resolve_allowed(self) -> str | None:
+            path = urlsplit(self.path).path or "/"
+            if path == "/":
+                path = "/briefing.html"
+            return path if path in allowed_paths else None
+
         def do_GET(self) -> None:
-            if self.path in {"", "/"}:
-                self.path = "/briefing.html"
+            resolved = self._resolve_allowed()
+            if resolved is None:
+                self.send_error(404)
+                return
+            self.path = resolved
             super().do_GET()
 
         def do_HEAD(self) -> None:
-            if self.path in {"", "/"}:
-                self.path = "/briefing.html"
+            resolved = self._resolve_allowed()
+            if resolved is None:
+                self.send_error(404)
+                return
+            self.path = resolved
             super().do_HEAD()
 
         def log_message(self, format: str, *args: object) -> None:  # noqa: A002

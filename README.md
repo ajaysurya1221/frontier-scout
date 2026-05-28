@@ -206,7 +206,7 @@ terminal. Press **Ctrl+C** to stop serving.
 
 The terminal panel looks like:
 
-```
+```text
 ╭── ◉ FRONTIER · SCOUT  demo ready ───────────────────────────────────╮
 │  Serving at  http://localhost:54321  ·  Ctrl+C to stop               │
 │                                                                       │
