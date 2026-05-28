@@ -56,7 +56,26 @@ def run_setup(
     splash_env = os.environ.get("FRONTIER_SCOUT_SKIP_SPLASH", "")
     effective_splash = show_splash and splash_env.lower() not in ("1", "true", "yes")
     safe_tab = initial_tab if initial_tab in TAB_SLUGS else DEFAULT_TAB
+
+    # If the resolved repo doesn't look like a real repo, swap it for the
+    # user's $HOME so the TUI has something to fingerprint, then push a
+    # picker on top so they can choose. ``looks_like_repo`` is conservative.
+    from frontier_scout.tui.repo_picker import RepoPickerScreen, looks_like_repo
+
+    picker_needed = not looks_like_repo(Path(diagnostics.repo))
     app = SetupApp(diagnostics, show_splash=effective_splash, initial_tab=safe_tab)
+    if picker_needed:
+        def _on_picked(value: str | None) -> None:
+            if value:
+                app._handle_picker_choice(value)  # type: ignore[attr-defined]
+
+        original_on_mount = app.on_mount
+
+        def patched_on_mount() -> None:
+            original_on_mount()
+            app.push_screen(RepoPickerScreen(), _on_picked)
+
+        app.on_mount = patched_on_mount  # type: ignore[method-assign]
     app.run()
     return 0
 

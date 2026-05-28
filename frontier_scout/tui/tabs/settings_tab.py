@@ -66,6 +66,17 @@ class SettingsTab(VerticalScroll):
             yield Label("Environment", classes="settings-title")
             yield Static(self._env_text(), id="settings-env-text", markup=True)
         with Vertical(classes="settings-section"):
+            yield Label("Memory", classes="settings-title")
+            yield Static(self._memory_text(), id="settings-memory-text", markup=True)
+            with Horizontal():
+                yield Button("Clear for this repo", id="settings-memory-repo")
+                yield Button("Clear all repos", id="settings-memory-all")
+        with Vertical(classes="settings-section"):
+            yield Label("Automation", classes="settings-title")
+            yield Static(self._automation_text(), id="settings-automation-text", markup=True)
+            with Horizontal():
+                yield Button("Open setup wizard", id="settings-wizard")
+        with Vertical(classes="settings-section"):
             yield Label("System", classes="settings-title")
             yield Static(self._system_text(), id="settings-system-text", markup=True)
             with Horizontal():
@@ -93,6 +104,72 @@ class SettingsTab(VerticalScroll):
         write_setup_state({})
         self.query_one("#settings-system-text", Static).update(self._system_text())
         self.app_ref.log_event("Setup state cleared.", tone="warn")
+
+    @on(Button.Pressed, "#settings-memory-repo")
+    def _clear_memory_repo(self) -> None:
+        from frontier_scout.store import clear_scans_for_repo
+
+        repo = self.app_ref.diagnostics.repo
+        removed = clear_scans_for_repo(repo)
+        self.app_ref.log_event(
+            f"Cleared {removed} scan(s) for this repo.", tone="warn"
+        )
+        self.query_one("#settings-memory-text", Static).update(self._memory_text())
+
+    @on(Button.Pressed, "#settings-memory-all")
+    def _clear_memory_all(self) -> None:
+        from frontier_scout.store import clear_all_scans
+
+        removed = clear_all_scans()
+        self.app_ref.log_event(
+            f"Cleared {removed} scan(s) across all repos.", tone="warn"
+        )
+        self.query_one("#settings-memory-text", Static).update(self._memory_text())
+
+    @on(Button.Pressed, "#settings-wizard")
+    def _open_wizard(self) -> None:
+        self.app_ref.log_event(
+            "Exit Mission Control (q) and run `frontier-scout setup` to launch the wizard.",
+            tone="info",
+        )
+
+    def _memory_text(self) -> str:
+        return (
+            "[#6e8aa1]Stored scan history lives in ~/.frontier-scout/db.sqlite. "
+            "Clearing wipes verdicts (dry-run results stay reproducible).[/]"
+        )
+
+    def _automation_text(self) -> str:
+        from frontier_scout.scheduling import (
+            crontab_line,
+            cron_runner_path,
+            load_schedules,
+        )
+
+        schedules = load_schedules()
+        runner = cron_runner_path()
+        lines = []
+        if not schedules:
+            lines.append(
+                "[#6e8aa1]No schedules registered yet — run `frontier-scout setup` "
+                "and pick Automation to add one.[/]"
+            )
+        else:
+            for sched in schedules:
+                state = "disabled" if sched.disabled else "active"
+                last = sched.last_run or "never"
+                lines.append(
+                    f"[#d9f7ff bold]{Path(sched.repo).name}[/] · [#6e8aa1]{sched.cron_expr}[/] "
+                    f"· [#6e8aa1]{state}[/] · [#6e8aa1]last: {last}[/]"
+                )
+        if runner.exists():
+            lines.append("")
+            lines.append("[#24d6a8]cron-runner.sh installed.[/] Crontab line:")
+            lines.append(f"  [#d9f7ff]{crontab_line()}[/]")
+        else:
+            lines.append("")
+            lines.append("[#e3c26f]cron-runner.sh not installed yet.[/]")
+        return "\n".join(lines)
 
     def _policy_text(self) -> str:
         candidates = [

@@ -36,6 +36,9 @@ class ImportEvidenceSummary(BaseModel):
 
     top_python: list[tuple[str, int]] = Field(default_factory=list)
     top_javascript: list[tuple[str, int]] = Field(default_factory=list)
+    top_go: list[tuple[str, int]] = Field(default_factory=list)
+    top_rust: list[tuple[str, int]] = Field(default_factory=list)
+    top_ruby: list[tuple[str, int]] = Field(default_factory=list)
     files_scanned: int = 0
     available: bool = True
     partial: bool = False
@@ -77,8 +80,11 @@ _MANIFEST_FILENAMES = frozenset(
         "Pipfile",
         "Pipfile.lock",
         "Cargo.toml",
+        "Cargo.lock",
         "go.mod",
+        "go.sum",
         "Gemfile",
+        "Gemfile.lock",
         "Dockerfile",
         "docker-compose.yml",
         "docker-compose.yaml",
@@ -207,6 +213,56 @@ _PY_AI_RULES: dict[str, tuple[str, str]] = {
     "weaviate": ("ai_tooling", "weaviate"),
     "qdrant_client": ("ai_tooling", "qdrant"),
     "chromadb": ("ai_tooling", "chromadb"),
+}
+
+_GO_FRAMEWORK_RULES: dict[str, tuple[str, str]] = {
+    "github.com/gin-gonic/gin": ("frameworks", "gin"),
+    "github.com/labstack/echo": ("frameworks", "echo"),
+    "github.com/gofiber/fiber": ("frameworks", "fiber"),
+    "net/http": ("frameworks", "net-http"),
+}
+
+_GO_AI_RULES: dict[str, tuple[str, str]] = {
+    "github.com/tmc/langchaingo": ("ai_tooling", "langchain"),
+    "github.com/sashabaranov/go-openai": ("ai_tooling", "openai"),
+    "github.com/anthropics/anthropic-sdk-go": ("ai_tooling", "anthropic"),
+    "github.com/modelcontextprotocol/go-sdk": ("ai_tooling", "mcp"),
+    "github.com/google/generative-ai-go": ("ai_tooling", "google-genai"),
+    "github.com/qdrant/go-client": ("ai_tooling", "qdrant"),
+    "github.com/weaviate/weaviate-go-client": ("ai_tooling", "weaviate"),
+    "github.com/pinecone-io/go-pinecone": ("ai_tooling", "pinecone"),
+}
+
+_RUST_FRAMEWORK_RULES: dict[str, tuple[str, str]] = {
+    "actix_web": ("frameworks", "actix-web"),
+    "axum": ("frameworks", "axum"),
+    "rocket": ("frameworks", "rocket"),
+    "tokio": ("frameworks", "tokio"),
+    "serde": ("frameworks", "serde"),
+}
+
+_RUST_AI_RULES: dict[str, tuple[str, str]] = {
+    "langchain_rust": ("ai_tooling", "langchain"),
+    "rust_bert": ("ai_tooling", "rust-bert"),
+    "candle_core": ("ai_tooling", "candle"),
+    "candle": ("ai_tooling", "candle"),
+    "ollama_rs": ("ai_tooling", "ollama"),
+    "async_openai": ("ai_tooling", "openai"),
+    "anthropic": ("ai_tooling", "anthropic"),
+    "mcp": ("ai_tooling", "mcp"),
+}
+
+_RUBY_FRAMEWORK_RULES: dict[str, tuple[str, str]] = {
+    "rails": ("frameworks", "rails"),
+    "sinatra": ("frameworks", "sinatra"),
+    "rack": ("frameworks", "rack"),
+}
+
+_RUBY_AI_RULES: dict[str, tuple[str, str]] = {
+    "langchainrb": ("ai_tooling", "langchain"),
+    "ruby-openai": ("ai_tooling", "openai"),
+    "anthropic": ("ai_tooling", "anthropic"),
+    "instructor-rb": ("ai_tooling", "instructor"),
 }
 
 _JS_RULES: dict[str, tuple[str, str]] = {
@@ -347,12 +403,22 @@ def build_scout_profile(repo: Path, *, scan_imports: bool = True) -> ScoutProfil
         profile.import_evidence = ImportEvidenceSummary(
             top_python=_top_items(evidence.python_imports, 10),
             top_javascript=_top_items(evidence.js_imports, 10),
+            top_go=_top_items(evidence.go_imports, 10),
+            top_rust=_top_items(evidence.rust_imports, 10),
+            top_ruby=_top_items(evidence.ruby_imports, 10),
             files_scanned=evidence.files_scanned,
             available=evidence.available,
             partial=evidence.partial,
         )
         if evidence.available:
-            _apply_import_rules(profile, evidence.python_imports, evidence.js_imports)
+            _apply_import_rules(
+                profile,
+                evidence.python_imports,
+                evidence.js_imports,
+                go_imports=evidence.go_imports,
+                rust_imports=evidence.rust_imports,
+                ruby_imports=evidence.ruby_imports,
+            )
             _annotate_dependency_evidence(profile, evidence.python_imports, evidence.js_imports)
 
     if profile.agent_configs:
@@ -601,19 +667,18 @@ def _apply_import_rules(
     profile: ScoutProfile,
     python_imports: dict[str, int],
     js_imports: dict[str, int],
+    go_imports: dict[str, int] | None = None,
+    rust_imports: dict[str, int] | None = None,
+    ruby_imports: dict[str, int] | None = None,
 ) -> None:
     for module, count in python_imports.items():
         if count < 1:
             continue
-        key = module
-        framework = _PY_FRAMEWORK_RULES.get(key)
-        if framework is not None:
-            list_name, tag = framework
-            _add(getattr(profile, list_name), tag)
-        ai = _PY_AI_RULES.get(key)
-        if ai is not None:
-            list_name, tag = ai
-            _add(getattr(profile, list_name), tag)
+        for table in (_PY_FRAMEWORK_RULES, _PY_AI_RULES):
+            rule = table.get(module)
+            if rule is not None:
+                list_name, tag = rule
+                _add(getattr(profile, list_name), tag)
     for module, count in js_imports.items():
         if count < 1:
             continue
@@ -621,6 +686,32 @@ def _apply_import_rules(
         if rule is not None:
             list_name, tag = rule
             _add(getattr(profile, list_name), tag)
+    for module, count in (go_imports or {}).items():
+        if count < 1:
+            continue
+        # Go rules are matched on full module path.
+        for table in (_GO_FRAMEWORK_RULES, _GO_AI_RULES):
+            for prefix, rule in table.items():
+                if module == prefix or module.startswith(prefix + "/"):
+                    list_name, tag = rule
+                    _add(getattr(profile, list_name), tag)
+                    break
+    for module, count in (rust_imports or {}).items():
+        if count < 1:
+            continue
+        for table in (_RUST_FRAMEWORK_RULES, _RUST_AI_RULES):
+            rule = table.get(module)
+            if rule is not None:
+                list_name, tag = rule
+                _add(getattr(profile, list_name), tag)
+    for module, count in (ruby_imports or {}).items():
+        if count < 1:
+            continue
+        for table in (_RUBY_FRAMEWORK_RULES, _RUBY_AI_RULES):
+            rule = table.get(module)
+            if rule is not None:
+                list_name, tag = rule
+                _add(getattr(profile, list_name), tag)
 
 
 def _annotate_dependency_evidence(

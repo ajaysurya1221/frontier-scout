@@ -4,6 +4,71 @@
 
 - No unreleased changes yet.
 
+## 1.1.0 - 2026-05-27
+
+The head-turner release. `frontier-scout setup` becomes a global config
+wizard; the TUI gets a repo-picker fallback, notifications, diff-view,
+and clear-memory; tree-sitter coverage extends to Go / Rust / Ruby; and
+a `doctor` command lets every install self-check.
+
+- **Setup wizard** — `frontier-scout setup` (run from anywhere) walks
+  through Welcome → LLM backend (auto-detected with copy-friendly setup
+  commands; **keys never written to disk by us**) → Mode (Automation /
+  Ad-hoc) → either schedule configuration with a one-line crontab the
+  user adds once, or a how-to screen for ad-hoc users. Headless mode
+  via `frontier-scout setup --automation --repo PATH --cron '@daily'`.
+- **Automation + cron scheduling** — `~/.frontier-scout/schedules.json`
+  describes recurring scouts; the wizard installs
+  `~/.frontier-scout/cron-runner.sh` and surfaces the single crontab
+  line. `frontier-scout cron run` is the headless executor invoked by
+  the runner.
+- **Notifications** — when a scheduled scout finds new ADOPT/TRIAL
+  verdicts versus the prior scan for that repo, a JSON notification
+  lands under `~/.frontier-scout/notifications/`. Optional system
+  notification via `terminal-notifier` (macOS) or `notify-send`
+  (Linux). Brand bar surfaces an `(N new)` chip; `Ctrl-N` opens a
+  modal listing them. CLI sibling: `frontier-scout notifications [list|clear]`.
+- **Repo picker fallback** — running `frontier-scout` outside a repo
+  no longer scans an empty cwd. A modal opens listing `$PWD`,
+  `$HOME`, and recent repos; pick one to begin.
+- **Diff view (`d`)** — compare the current scout against the previous
+  persisted scan for the same repo. Modal shows New / Changed /
+  Retired verdicts with verdict + fit + risk shifts.
+- **Clear scout memory** — Scout tab `[c]` and a Memory panel in
+  Settings clear stored scan history for the current repo (or all
+  repos). CLI sibling: `frontier-scout clear-history [--repo PATH | --all]`.
+- **Tree-sitter Go / Rust / Ruby** — `ImportEvidence` gains `go_imports`,
+  `rust_imports`, `ruby_imports`. Curated stdlib filters drop the
+  noise. New `_GO_*_RULES`, `_RUST_*_RULES`, `_RUBY_*_RULES` rule
+  tables in `profile.py` map common AI / agent / framework packages
+  to the same fingerprint tags Python and JS already populate.
+  `Cargo.lock`, `go.sum`, `Gemfile.lock` added to the manifest walker.
+- **`frontier-scout doctor`** — self-diagnostics covering Python /
+  Textual / tree-sitter / home dir / SQLite / schedules / cron-runner
+  / optional CLIs / system notifier. JSON output via `--doctor --json`.
+- **Settings tab gains Memory + Automation panels** — see schedules,
+  the crontab line, and clear-memory buttons without leaving the TUI.
+- **New CLI subcommands** — `open` (explicit TUI launcher), `cron run`
+  (schedule executor), `doctor`, `clear-history`, `notifications`.
+  `setup --wizard` forces the wizard even if other flags would route
+  to the TUI; bare `setup` without flags lands on the wizard, while
+  `setup --repo .` / `--plain` / `--json` keep their v1.0 behavior.
+- **Hero SVG fixed** — radar bottom no longer overlaps the safety
+  footer (was a real defect); version label updated to `v1.1`;
+  bottom badge row moved inside the terminal frame for cleaner
+  composition; alt text + `<title>` updated to the v1.0 tagline.
+- **README narrative refresh** — leads with the selling lines:
+  *"Deep Scout — know before everyone else"*, *"Try before trust"*,
+  *"Fix vulnerabilities you didn't know existed"*, *"Bound risky
+  engineering changes"*. Quickstart now leads with the wizard.
+- **Croniter** added as a runtime dependency (≥2.0, MIT) for cron
+  expression parsing. Falls back to macro-only mode if absent.
+- **Tests**: 179 passing (up from 148). New `tests/test_scheduling.py`,
+  `tests/test_notifications.py`, `tests/test_doctor.py`,
+  `tests/test_wizard.py`, `tests/test_imports_multilang.py`,
+  `tests/test_clear_memory.py`.
+- **Ruff** clean on every new module.
+
 ## 1.0.0 - 2026-05-27
 
 The "everything in the TUI" release. Mission Control v3 is a tabbed,

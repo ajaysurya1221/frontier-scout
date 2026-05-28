@@ -8,13 +8,13 @@ README structure follows the spirit of othneildrew/Best-README-Template
 <div align="center">
 
 <a href="https://github.com/ajaysurya1221/frontier-scout">
-  <img src="docs/assets/frontier-scout-hero.svg" alt="Frontier Scout — try-before-trust radar" width="900">
+  <img src="docs/assets/frontier-scout-hero.svg" alt="Frontier Scout — the radar for latest AI releases that fit your repo" width="900">
 </a>
 
 <h1>Frontier Scout</h1>
 
 <p>
-  <strong>The radar for latest AI releases that fit your repo. Local-first try-before-trust for AI tools, agents, MCP servers, models, and risky engineering changes.</strong>
+  <strong>Deep Scout — know about new AI tools, MCP servers, models, and risky dependency upgrades <em>before</em> everyone else. Personalised, local-first, try-before-trust.</strong>
 </p>
 
 <p>
@@ -45,7 +45,7 @@ README structure follows the spirit of othneildrew/Best-README-Template
 <details>
 <summary>📑 Table of contents</summary>
 
-- [About the project](#-about-the-project)
+- [Why Frontier Scout](#-why-frontier-scout)
 - [Built with](#-built-with)
 - [Quickstart](#-quickstart)
 - [60-second demo](#-60-second-demo)
@@ -61,23 +61,37 @@ README structure follows the spirit of othneildrew/Best-README-Template
 
 ---
 
-## 🔭 About the project
+## 🔭 Why Frontier Scout
 
-Frontier Scout answers the question technical teams now hit every week:
+**Deep Scout — know about new AI tools, MCP servers, models, and risky
+dependency upgrades *before* everyone else.** Frontier Scout reads your repo
+locally (filenames + AST imports, never source content) and turns the firehose
+of public AI releases into a **personalised adoption radar** with
+ADOPT / TRIAL / ASSESS / HOLD verdicts.
 
-> Should this AI tool, agent, MCP server, model, or engineering change get any
-> access to our code, shell, browser, network, or credentials?
+Three promises that anchor the product:
 
-Three compatible surfaces ship in one CLI:
+- **Try before trust.** Every adoption candidate gets a sandbox dry-run
+  receipt, a permission map, and a guard check before it touches your real
+  repo.
+- **Fix vulnerabilities you didn't know existed.** Dependency intelligence
+  cross-references your manifests against curated feeds — security,
+  hardening, and breaking upgrades — and emits a trial recipe, not a
+  lockfile rewrite.
+- **Bound risky engineering changes.** Incident Change Scout turns an
+  incident ticket into cited context, a bounded remediation plan, and a
+  HITL approval interrupt before any write.
 
-- **Tool Test Lab / Adoption Firewall** — one-link `evaluate`, `trial`, and
-  `guard` workflows that record permission manifests and try-before-trust
-  receipts before a tool touches a real project.
-- **AI Tool Radar** — a local adoption radar that turns public AI-tool
-  signals into ADOPT / TRIAL / ASSESS / HOLD verdicts with source evidence.
-- **Incident Change Scout** — a graph-aware engineering workflow that turns
-  an incident ticket into cited context, a bounded remediation plan,
-  approval interrupts, trace/audit logs, and an eval result.
+The TUI is the front door. Inside any repo:
+
+```bash
+frontier-scout
+```
+
+That lands you on Mission Control: nine tabs, scout-first, all reachable
+without typing a single subcommand. Run `frontier-scout setup` from anywhere
+to configure your LLM backend, switch between automation (recurring
+scheduled scouts) and ad-hoc mode, or wipe scout history.
 
 The posture is deliberately boring in the good way: CLI first, SQLite/local
 files by default, static reports, no hosted telemetry, no hidden
@@ -119,10 +133,16 @@ uvx frontier-scout demo
 pip install frontier-scout
 ```
 
-Open Mission Control:
+Configure once (LLM backend, automation vs ad-hoc):
 
 ```bash
-frontier-scout setup --repo .
+frontier-scout setup
+```
+
+Then, inside any repo, open Mission Control:
+
+```bash
+frontier-scout
 ```
 
 Mission Control lands on the **Scout** tab — the radar that ranks the
@@ -269,10 +289,14 @@ possible run.
   scout-first landing with a verdict `DataTable` and per-verdict
   actions, every CLI capability has a TUI surface, `--tab` / `--no-scout`
   flags, dismiss persistence.
-- [ ] **v1.1** — Live discovery wiring (Scout `l`, Packs
-  `+ discover`, Deps live feed), streaming subprocess output in Trials.
-- [ ] **v1.2** — Multi-repo workspace, tree-sitter Go/Rust/Ruby, PyPI
-  publish on tag.
+- [x] **v1.1.0** — Global setup wizard (`frontier-scout setup`),
+  automation mode with cron scheduling, notifications, diff view,
+  Go/Rust/Ruby tree-sitter coverage, `frontier-scout doctor`,
+  `clear-history` / `notifications` / `cron run` CLI siblings.
+- [ ] **v1.2** — Streaming subprocess output in Trials, multi-repo
+  workspace, PyPI auto-publish on tag.
+- [ ] **v1.3** — launchd / Windows Task Scheduler integrations,
+  live discovery feeds, scout card view.
 
 See [ROADMAP.md](ROADMAP.md) for the longer view.
 
