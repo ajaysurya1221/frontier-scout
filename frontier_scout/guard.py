@@ -11,7 +11,19 @@ from .store import list_guard_records
 
 
 def run_guard(repo: Path | str | None = None, *, strict: bool = False) -> list[PolicyFinding]:
-    """Return deterministic findings from the local evidence ledger."""
+    """Return deterministic findings from the local evidence ledger.
+
+    Note: the ``evaluations``/``trial_runs`` schema does not yet carry a
+    repo column, so guard is currently **ledger-global** even when
+    ``repo`` is supplied. The argument is accepted for forward
+    compatibility (v1.3 adds a schema migration + repo scoping). For now,
+    if you want strictly repo-local CI behaviour, run ``frontier-scout
+    setup`` against the repo first so its evidence dominates the ledger.
+
+    ``strict`` upgrades every medium-severity finding to high so that CI
+    treats them as failing. Previously this argument was silently
+    ignored — fixes Codex review finding #2.
+    """
 
     findings: list[PolicyFinding] = []
     for record in list_guard_records():
@@ -20,7 +32,8 @@ def run_guard(repo: Path | str | None = None, *, strict: bool = False) -> list[P
             continue
         if record.get("latest_trial_status") == "completed" and record.get("latest_decision") in {"trial", "adopt"}:
             continue
-        severity = "high" if dangerous & {"write", "shell", "credential", "unknown"} else "medium"
+        base_severity = "high" if dangerous & {"write", "shell", "credential", "unknown"} else "medium"
+        severity = "high" if strict and base_severity == "medium" else base_severity
         findings.append(
             PolicyFinding(
                 severity=severity,  # type: ignore[arg-type]

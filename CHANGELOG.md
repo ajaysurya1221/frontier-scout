@@ -19,6 +19,153 @@
 - Tests: artifact-link presence, root → briefing routing, demo-server
   readiness retry (race-free), allowlist guard.
 
+## 1.2.1 - 2026-05-28
+
+### Late-cycle hardening (Streams H–N)
+
+After the live smoke against a real API key surfaced gaps that the
+unit tests couldn't catch (stubbed subprocesses don't drive a real
+TUI), the v1.2.1 PR landed seven additional streams before publish:
+
+- **H. Policy.require_trial_for_dangerous_capabilities now fires.**
+  The Codex review surfaced this; live smoke confirmed it. Setting the
+  flag to `false` (internal toolchain where every tool *is* network-
+  capable by design) now actually suppresses the `capability.*`
+  findings instead of silently being ignored. Unknown-capability and
+  lab-failure paths stay unconditional — those are correctness, not
+  preference.
+- **I. Setup persistence is honored.** `~/.frontier-scout/config.toml`
+  was being written by the wizard but nobody consulted it. Now bare
+  `frontier-scout` from an onboarded user skips the wizard and goes
+  straight to Mission Control; `frontier-scout setup` from an
+  onboarded user prompts to confirm; `--force` re-runs unconditionally;
+  `frontier-scout --setup` is a top-level alias. The TUI exits with
+  code 42 to signal "re-launch wizard", which `cli.main` honors via a
+  bounded loop.
+- **J. Repo picker offers universal scout + Quit.** When
+  `frontier-scout` opens outside a repo, the picker now adds two
+  explicit escape hatches: 🌐 "Universal scout (no repo)" surfaces the
+  full seeded verdict set with the brand bar flagged "not tailored"
+  (and skips the SQLite persist), and "Quit" closes cleanly instead
+  of opening a half-mounted TUI.
+- **K. Verdict concern taxonomy.** Every verdict now carries a
+  `concerns: list[dict]` field populated by deterministic rules:
+  `weak_fit`, `token_burn`, `abandoned`, `security_surface`,
+  `vendor_lock_in`, `marketing_only`, `unproven`. The Scout-tab
+  detail panel renders them as severity-coloured chips so the user
+  always sees *why* we'd push back on adoption. The verdict schema
+  in `scripts/tools.py:VERDICT_TOOL` gained four optional fields
+  (`cost_per_call_usd`, `last_release_age_days`, `release_url`,
+  `lock_in_risk`); the live scout prompt emits them when known and
+  the rules treat missing fields as "unknown". The judge tool gained
+  a `concern_audits` array so it can flag a missing concern as a
+  quality issue.
+- **L. Scout tab flawless at 80×24.** The CSS gained a `.compact`
+  class that `SetupApp.on_resize` applies whenever the viewport
+  drops below 100×28; the DataTable shrinks from 14 rows to 8 and
+  the detail panel caps at 14 lines. The brand bar drops the
+  tagline and shortens the repo chip to its basename when narrow.
+  The 80×24 warning banner only fires below the POSIX minimum (was
+  100×28).
+- **M. Lab / Evaluate / Dossier from Scout.** Every CLI capability the
+  user previously had to drop to a shell for is now a one-key action
+  on the highlighted row: `L` runs a dry-run lab (classify only); a
+  second `L` within 3s upgrades to a live hermetic install (mirrors
+  the live-scout double-press pattern); `e` runs the Adoption
+  Firewall evaluation and writes the verdict to the log; `D` builds
+  a dossier and saves it under `~/.frontier-scout/dossiers/`. The
+  HelpScreen body was updated to document these.
+- **N. Settings → Open setup wizard button.** Wired to
+  `app.exit(return_code=42)` so the in-TUI reconfigure path the user
+  expects after I lands works end-to-end.
+
+The Codex-review release. v1.2.0 was tagged on GitHub but never
+published to PyPI; a colleague's read-only audit (file:line citations
+in `CODEX_REVIEW_FOR_CLAUDE.md`) caught eight issues, one of which
+contradicted an explicit security claim and three of which silently
+broke advertised flows. v1.2.1 ships the fixes and is the **first PyPI
+release in the v1.2 line** — v1.2.0 stays as the GitHub-only marker.
+
+### Security fixes
+
+- **Lab hermeticity (Codex #1 · Critical).** Package install
+  subprocesses (`pip install`, HuggingFace `snapshot_download`, Node)
+  no longer inherit the parent process environment. `HOME` points to a
+  temp dir; `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GH_TOKEN`,
+  `AWS_*`, and `HF_TOKEN` are stripped before the install runs.
+  `PIP_CONFIG_FILE`, `npm_config_userconfig`, and `HF_HOME` are
+  neutralised so user dotfiles can't influence the trial. `cwd` for
+  install subprocesses is now the temp dir, not the real repo. New
+  `tests/test_lab_isolation.py` proves a leak-canary key never reaches
+  the install env.
+
+### Correctness fixes
+
+- **Policy actually loads (Codex #2 · High).** `~/.frontier-scout/
+  policy.toml` and `<repo>/.frontier-scout/policy.toml` were inert —
+  every `evaluate_policy(...)` call site passed no `policy=` arg, so
+  `DEFAULT_POLICY` was always used. `evaluate`, `build_dossier`,
+  `run_trial`, and the TUI evaluate action now load the effective
+  policy (repo → home → default). `run_guard` honours `strict` (was
+  silently ignored) and accepts a `repo` arg for forward compatibility
+  with v1.3's per-repo ledger schema.
+
+- **SQLite cascade is real (Codex #4 · Medium-but-load-bearing).**
+  `ON DELETE CASCADE` was declared on the verdicts table but no
+  `PRAGMA foreign_keys = ON` was ever issued, so the cascade was a
+  lie. `clear_scans_for_repo` and `clear_all_scans` leaked orphan
+  verdicts. New `_connect()` helper enables the pragma on every
+  connection (~30 call sites swapped). Both clear functions also do
+  an explicit `DELETE FROM verdicts WHERE scan_id IN (...)` before
+  deleting scans — belt and braces.
+
+- **Reports scope to the right repo (Codex #5 · Medium).**
+  `latest_scan()` returned the globally-newest scan with no repo
+  filter; the CLI `report` and TUI `action_open_report` happily
+  rendered repo B's data while you sat in repo A. Now
+  `latest_scan(repo=...)` filters by resolved path; "no scout yet for
+  this repo" is a loud message, not a silent demo render.
+
+- **Dep trial receipts stop lying (Codex #6 · Medium).** Non-dry-run
+  trials reported `status = "completed"`, `exit_code = 0` even though
+  no test subprocess ever ran. Now: `dry_run=True` → `"prepared"`;
+  resolvable test command → executes in the temp dir under the same
+  hermetic env as the lab and reports `"passed"`/`"failed"`; no
+  resolvable command → `"prepared"` with a summary saying so.
+
+### Operational fixes
+
+- **Scheduled scouts no longer drain API quota (Codex #3 · High).**
+  `Schedule.live` defaults to `False`; the wizard's automation step
+  asks "Run live (uses your API key) or dry-run (free, local)?" and
+  persists the choice. `install_cron_runner` materialises
+  `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GITHUB_TOKEN`/`GH_TOKEN`,
+  and `FRONTIER_SCOUT_HOME` as `export` lines and re-passes them
+  through `/usr/bin/env -i`, so scheduled live scouts can actually
+  reach Anthropic/OpenAI. Documented inline in the runner that this
+  materialises credentials to disk; users who don't want that can
+  leave schedules in dry-run mode (the default) and remove the
+  exports.
+
+### Docs
+
+- README and wizard updated: tab keys are `1`–`2` (Scout, Settings),
+  not `1`–`9`. Every other capability lives on the CLI.
+- `CONTRIBUTING.md` documents the two-stage release path (tag push
+  → GitHub Release with assets, then manual `workflow_dispatch` to
+  publish to PyPI).
+- `docs/blockers.md` archived to `docs/archive/`.
+- `docker-compose.yml` Qdrant and OTel moved behind `profiles:
+  ["demo"]`; not required for core `frontier-scout` use.
+
+### Deferred to v1.2.2 / v1.3
+
+- Lockfile-aware dependency intelligence (Codex #7).
+- Model ID / price catalog audit (Codex #8 — needs API).
+- Per-repo guard ledger schema migration.
+- `doctor --deep`, sandbox capability ladder, trust-receipt command,
+  policy explain command, container/network lab levels.
+
 ## 1.2.0 - 2026-05-28
 
 The honest fix. v1.1 accreted too many features; in real use the

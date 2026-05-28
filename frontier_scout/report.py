@@ -9,6 +9,19 @@ from typing import Any
 
 SAMPLE_DATE = "2026-05-21"
 
+#: Stream K — v1.2.1 verdict schema additions.
+#:
+#: Concern rules in ``frontier_scout.scout._concerns`` read these
+#: fields. The live LLM scout in ``scripts/scout.py`` was updated to
+#: emit them; the dry-run fixture below populates them so the Scout
+#: tab renders the "Concerns" section from day one.
+#:
+#: * ``cost_per_call_usd``: best-effort estimate of per-call cost on
+#:   the user's API. ``None`` means "unknown / not metered".
+#: * ``last_release_age_days``: days since the most recent release.
+#:   ``None`` means "unknown / not yet probed".
+#: * ``release_url``: deep link to the release page (optional).
+#: * ``lock_in_risk``: ``"none" | "low" | "medium" | "high"``.
 SAMPLE_VERDICTS: list[dict[str, Any]] = [
     {
         "tool_name": "anthropics/skills",
@@ -25,6 +38,10 @@ SAMPLE_VERDICTS: list[dict[str, Any]] = [
         "severity": "critical",
         "readiness": 5,
         "tags": ["skill", "claude-code", "agentic-coding"],
+        "cost_per_call_usd": 0.0,
+        "last_release_age_days": 7,
+        "release_url": "https://github.com/anthropics/skills/releases",
+        "lock_in_risk": "low",
     },
     {
         "tool_name": "modelcontextprotocol/servers",
@@ -41,6 +58,10 @@ SAMPLE_VERDICTS: list[dict[str, Any]] = [
         "severity": "high",
         "readiness": 4,
         "tags": ["mcp", "agent-tools", "developer-tools"],
+        "cost_per_call_usd": 0.0,
+        "last_release_age_days": 14,
+        "release_url": "https://github.com/modelcontextprotocol/servers/releases",
+        "lock_in_risk": "low",
     },
     {
         "tool_name": "browser-use/browser-use",
@@ -57,6 +78,10 @@ SAMPLE_VERDICTS: list[dict[str, Any]] = [
         "severity": "high",
         "readiness": 4,
         "tags": ["browser", "agent-framework", "automation"],
+        "cost_per_call_usd": 0.02,
+        "last_release_age_days": 21,
+        "release_url": "https://github.com/browser-use/browser-use/releases",
+        "lock_in_risk": "medium",
     },
     {
         "tool_name": "Qwen/Qwen3-Coder-30B",
@@ -73,6 +98,10 @@ SAMPLE_VERDICTS: list[dict[str, Any]] = [
         "severity": "standard",
         "readiness": 3,
         "tags": ["model-drop", "coding-model", "local-inference"],
+        "cost_per_call_usd": 0.08,  # cost of self-hosted inference per call
+        "last_release_age_days": 30,
+        "release_url": "https://huggingface.co/Qwen/Qwen3-Coder-30B",
+        "lock_in_risk": "none",
     },
     {
         "tool_name": "deepseek-ai/DeepSeek-V4-Pro",
@@ -89,6 +118,10 @@ SAMPLE_VERDICTS: list[dict[str, Any]] = [
         "severity": "standard",
         "readiness": 4,
         "tags": ["model-drop", "reasoning", "large-model"],
+        "cost_per_call_usd": 0.15,  # >0.05 → token_burn concern fires
+        "last_release_age_days": 5,
+        "release_url": "https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro",
+        "lock_in_risk": "low",
     },
 ]
 

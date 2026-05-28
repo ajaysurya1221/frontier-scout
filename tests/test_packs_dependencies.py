@@ -162,7 +162,9 @@ def test_dependency_trial_uses_temp_directory_without_mutating_repo(tmp_path, mo
     )
 
     assert manifest.read_text() == "langchain-core==1.3.5\n"
-    assert result["lab_result"]["status"] == "skipped"
+    # v1.2.1 — Codex #6: dry-run is now reported as "prepared", not
+    # "skipped"/"completed", to make clear no subprocess ran.
+    assert result["lab_result"]["status"] == "prepared"
     assert "temp" in result["lab_result"]["summary"].lower()
     assert Path(result["receipt_path"]).exists()
 

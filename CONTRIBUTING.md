@@ -64,18 +64,32 @@ vulnerability reporting when it is enabled for the repository. If private
 reporting is unavailable, open a minimal public issue asking for a private
 contact path without disclosing details.
 
-## Versioning and release (v0.1 policy)
+## Versioning and release
 
-Use semantic versioning for v0.1 patch releases.
+Use semantic versioning. As of v1.2.1 the release path has two stages:
+a tag-driven GitHub Release (automatic, with assets), and a manual
+PyPI publish step (`workflow_dispatch`). Splitting them lets us verify
+the wheel installs from the GitHub Release before pushing it to PyPI
+where it can never be unpublished.
 
-1. Bump `project.version` in `pyproject.toml`.
-2. Add or update the matching section in `CHANGELOG.md` with the same version
-   number (for example, `## 0.1.1 - 2026-05-24`).
-3. Merge the release branch into `main`.
-4. Create and push an annotated tag `vX.Y.Z`.
+1. Bump `project.version` in `pyproject.toml` and the matching string in
+   `frontier_scout/__init__.py`.
+2. Add a `## X.Y.Z - YYYY-MM-DD` section to `CHANGELOG.md`. Use the
+   same title for the GitHub Release notes.
+3. Open a PR on `feat/vX.Y.Z-...`, wait for green CI, resolve any
+   CodeRabbit threads, get review count down, admin-merge with
+   protections temporarily lowered if needed, restore protections.
+4. Create and push an annotated tag `vX.Y.Z` on the merge commit.
 
-Pushing a version tag triggers `.github/workflows/release.yml`, which:
+Pushing the tag triggers `.github/workflows/release.yml`, which:
 
 - builds wheel and sdist,
-- publishes to PyPI using trusted publishing (OIDC),
-- creates a GitHub Release using the matching `CHANGELOG.md` section.
+- creates a GitHub Release using the matching `CHANGELOG.md` section
+  and attaches the wheel + sdist as assets.
+
+The PyPI publish job is gated on `workflow_dispatch` so it stays
+manual. After confirming the GitHub Release looks right (assets
+present, notes correct), trigger the `Release` workflow manually with
+`workflow_dispatch` to publish to PyPI via trusted publishing (OIDC,
+configured in `release.yml`). v1.2.1 is the first PyPI release in the
+v1.2 line — v1.2.0 stayed GitHub-only.

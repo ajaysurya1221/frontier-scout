@@ -153,13 +153,27 @@ frontier-scout
 ```
 
 Mission Control lands on the **Scout** tab — the radar that ranks the
-latest AI releases that fit your repo. Tab keys `1`–`9` cycle through
-Scout, Trials, Receipts, Guard, Reports, Packs, Deps, Incident, and
-Settings — every CLI capability is one keystroke away. The import-evidence
-scanner reads ASTs locally, provider availability shows up as cards, and
-nothing reads secrets, logs into services, installs tools, or sends repo
-content to an LLM. Limited terminals can use `frontier-scout setup --plain`;
-automation can use `frontier-scout setup --json`.
+latest AI releases that fit your repo. Tab keys `1`–`2` switch between
+**Scout** and **Settings**. From the highlighted verdict row, every
+core CLI capability is one keystroke: **Enter** for a dry-run trial,
+**L** for a dry-run lab (press again within 3s to spend on a live
+hermetic install), **e** for the Adoption-Firewall evaluation, **D**
+for a dossier saved under `~/.frontier-scout/dossiers/`. Run it
+outside a repo and the picker offers 🌐 **Universal scout (no repo)**
+so you still get the latest releases on a golden plate, just not
+tailored. The setup is remembered — once you've run the wizard,
+`frontier-scout` from any directory drops you straight into Mission
+Control; use `frontier-scout setup` or **Settings → Open setup
+wizard** to reconfigure. The verdict detail panel surfaces explicit
+**Concerns** — `burns tokens`, `abandoned`, `vendor lock-in`,
+`security surface`, `marketing-only`, `unproven` — so you always see
+why we'd push back on adoption. The import-evidence scanner reads
+ASTs locally, provider availability shows up as cards, and nothing
+reads secrets, logs into services, installs tools, or sends repo
+content to an LLM. Limited terminals can use
+`frontier-scout setup --plain`; automation can use
+`frontier-scout setup --json`. The layout reflows for VS Code-style
+80×24 panels.
 
 On **first launch**, a one-time welcome overlay appears after the brand
 splash and walks you through the three core actions — Scout verdicts,

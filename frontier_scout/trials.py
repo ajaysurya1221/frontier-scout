@@ -8,7 +8,7 @@ from typing import Any
 
 from .evaluate import evaluate_url
 from .mcp_audit import classify_mcp_capabilities
-from .policy import evaluate_policy
+from .policy import evaluate_policy, load_policy
 from .store import (
     create_trial_run,
     finish_trial_run,
@@ -26,8 +26,14 @@ def run_trial(
     url: str | None = None,
     dry_run: bool = False,
     stack: dict | None = None,
+    repo: Path | str | None = None,
 ) -> dict[str, Any]:
-    """Run or preview a local trial and write a durable receipt."""
+    """Run or preview a local trial and write a durable receipt.
+
+    Loads the effective policy for ``repo`` (repo → home → DEFAULT_POLICY)
+    so that user-edited policy files are honoured. Fixes Codex review
+    finding #2.
+    """
 
     source_url = url or _url_from_tool(tool)
     evaluation = evaluate_url(source_url, stack or {})
@@ -67,7 +73,8 @@ def run_trial(
         }
 
     save_lab_result(trial_id, lab_result)
-    decision = evaluate_policy(evaluation, manifest, lab_result)
+    policy = load_policy(Path(str(repo))) if repo is not None else load_policy(None)
+    decision = evaluate_policy(evaluation, manifest, lab_result, policy=policy)
     save_policy_findings(tool_id, decision.findings, trial_id=trial_id)
     finish_trial_run(trial_id, status="completed", decision=decision.verdict)
 

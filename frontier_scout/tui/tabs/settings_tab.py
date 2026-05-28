@@ -158,10 +158,25 @@ class SettingsTab(VerticalScroll):
 
     @on(Button.Pressed, "#settings-wizard")
     def _open_wizard(self) -> None:
-        self.app_ref.log_event(
-            "Quit (q), then run `frontier-scout setup` from your shell to launch the wizard.",
-            tone="info",
-        )
+        """Stream N — exit the TUI with the reconfigure sentinel
+        (``cli.RECONFIGURE_EXIT_CODE``). ``cli.main`` catches this and
+        launches the wizard, then re-enters the TUI. Falls back to the
+        old "quit and run setup" message if the parent app isn't the
+        SetupApp we expect (e.g. embedded use)."""
+
+        try:
+            from frontier_scout.cli import RECONFIGURE_EXIT_CODE
+
+            self.app_ref.log_event(
+                "Relaunching wizard — your existing config and schedules are preserved.",
+                tone="info",
+            )
+            self.app_ref.exit(return_code=RECONFIGURE_EXIT_CODE)
+        except Exception:  # noqa: BLE001 — defensive fallback
+            self.app_ref.log_event(
+                "Quit (q), then run `frontier-scout setup --force` to re-run the wizard.",
+                tone="info",
+            )
 
     # ------------------------------------------------------------------
     # Renderers — every one tolerates missing files / dirs / state.

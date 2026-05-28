@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from . import __version__
@@ -17,7 +18,7 @@ from .lab import run_lab
 from .mcp_audit import classify_mcp_capabilities
 from .packs import candidate_rows_for_pack
 from .platform.incident_change_scout.workflow import run_incident_demo
-from .policy import default_policy_toml, evaluate_policy
+from .policy import default_policy_toml, evaluate_policy, load_policy
 from .profile import build_scout_profile, export_profile
 from .report import load_verdict_file, render_html, serve_demo, write_demo
 from .scout import detect_stack, run_scan
@@ -45,6 +46,14 @@ def build_parser() -> argparse.ArgumentParser:
         description="Local AI adoption radar for tools, MCP servers, agent frameworks, and model drops.",
     )
     parser.add_argument("--version", action="version", version=f"frontier-scout {__version__}")
+    # Stream I: top-level alias matches the mental model `frontier-scout --setup`.
+    # We translate to ``command = "setup"`` after parse.
+    parser.add_argument(
+        "--setup",
+        dest="top_setup",
+        action="store_true",
+        help="Alias for the `setup` subcommand. Equivalent to `frontier-scout setup`.",
+    )
     sub = parser.add_subparsers(dest="command")
 
     init_cmd = sub.add_parser("init", help="Create the local Frontier Scout home and print detected stack signals.")
@@ -105,6 +114,16 @@ def build_parser() -> argparse.ArgumentParser:
         default="@daily",
         help="Wizard: cron expression for automation mode (default @daily).",
     )
+    # Stream I — onboarded users can skip the wizard prompt with --force.
+    setup_cmd.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Re-run the wizard even if ~/.frontier-scout/config.toml already "
+            "marks setup as complete. Without --force, an onboarded user gets "
+            "a confirmation prompt (interactive) or a no-op (non-interactive)."
+        ),
+    )
     setup_cmd.set_defaults(scan_imports=True, show_splash=True, auto_scout=True)
 
     sub.add_parser("open", help="Open Mission Control on the current repo (explicit TUI launcher).").add_argument(
@@ -162,6 +181,11 @@ def build_parser() -> argparse.ArgumentParser:
     report_cmd = sub.add_parser("report", help="Render a static HTML report from a verdict JSON file or latest scan.")
     report_cmd.add_argument("--input", help="Path to verdict JSON. Defaults to latest SQLite scan, then demo fixture.")
     report_cmd.add_argument("--output", default="demo/briefing.html", help="HTML output path.")
+    report_cmd.add_argument(
+        "--repo",
+        default=".",
+        help="Repository whose latest scan to render (defaults to current directory).",
+    )
 
     lab_cmd = sub.add_parser("lab", help="Try a tool in the hermetic polyglot lab.")
     lab_cmd.add_argument("tool", help="Tool/package name.")
@@ -265,17 +289,100 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+#: Stream N — Settings tab's "Reconfigure" button exits the TUI with this
+#: code; ``main`` reads it as "user asked to re-run the wizard".
+RECONFIGURE_EXIT_CODE = 42
+
+
+def _run_tui_with_reconfigure_loop(
+    runner: Callable[..., int],
+    *,
+    max_loops: int = 3,
+    **kwargs,
+) -> int:
+    """Run the TUI, and if it exits with ``RECONFIGURE_EXIT_CODE``,
+    launch the wizard then re-enter the TUI. Bounded loop (``max_loops``)
+    so a misbehaving Settings button can't trap the user."""
+
+    for _ in range(max_loops):
+        rc = runner(**kwargs)
+        if rc != RECONFIGURE_EXIT_CODE:
+            return rc
+        # User clicked "Reconfigure" in Settings. Launch the wizard,
+        # then re-enter the TUI on the same repo.
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            from .wizard.app import WizardApp
+
+            WizardApp().run()
+        else:
+            from .wizard.headless import run_headless
+
+            run_headless(mode="adhoc")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # Stream I — top-level ``--setup`` alias. Re-parse with the
+    # ``--setup`` flag stripped and the ``setup`` subcommand prepended,
+    # so all of ``setup``'s defaults and option parsing apply uniformly.
+    if getattr(args, "top_setup", False) and args.command is None:
+        clean = [a for a in (argv or []) if a != "--setup"]
+        args = parser.parse_args(["setup", *clean])
+
     if args.command is None:
         if sys.stdin.isatty() and sys.stdout.isatty():
             from .tui.runner import run_setup
+            from .wizard.config import is_onboarded
 
-            return run_setup(repo=Path("."), plain=False, json_output=False, ollama_url="http://localhost:11434")
+            # Stream I — first-launch UX: if the user has never run the
+            # wizard, route them through it once. After that, every bare
+            # ``frontier-scout`` goes straight to Mission Control.
+            if not is_onboarded():
+                from .wizard.app import WizardApp
+
+                wizard_result = WizardApp().run()
+                # Whatever the wizard returns, we then enter the TUI on
+                # the current directory — that's the user's expectation
+                # of "do the thing".
+                _ = wizard_result
+            return _run_tui_with_reconfigure_loop(
+                run_setup,
+                repo=Path("."),
+                plain=False,
+                json_output=False,
+                ollama_url="http://localhost:11434",
+            )
         parser.print_help()
         return 0
     if args.command == "setup":
+        # Stream I — if already onboarded and no explicit --force / --wizard,
+        # don't blindly re-run the wizard. Interactively ask; non-interactively
+        # treat as a no-op so cron / CI calls don't hang.
+        from .wizard.config import is_onboarded
+
+        already = is_onboarded()
+        wants_force = args.wizard or args.force
+        if already and not wants_force and not args.automation:
+            interactive = sys.stdin.isatty() and sys.stdout.isatty()
+            if interactive:
+                try:
+                    answer = input(
+                        "Frontier Scout is already set up "
+                        "(~/.frontier-scout/config.toml). Re-run wizard? [y/N] "
+                    ).strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    answer = ""
+                if answer not in ("y", "yes"):
+                    print("Setup unchanged. Use `frontier-scout` to open Mission Control.")
+                    return 0
+            else:
+                print(
+                    "Already onboarded. Pass --force to re-run the wizard non-interactively."
+                )
+                return 0
         # Decide: wizard or TUI?
         # - If --wizard explicitly passed → wizard.
         # - If --plain or --json passed → TUI/diagnostic (back-compat).
@@ -297,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
             if result == "open-tui":
                 from .tui.runner import run_setup as _run_setup
 
-                return _run_setup(repo=Path("."))
+                return _run_tui_with_reconfigure_loop(_run_setup, repo=Path("."))
             return 0
         if args.automation:
             from .wizard.headless import run_headless
@@ -318,7 +425,8 @@ def main(argv: list[str] | None = None) -> int:
             if args.packs
             else None
         )
-        return run_setup(
+        return _run_tui_with_reconfigure_loop(
+            run_setup,
             repo=Path(args.repo),
             plain=args.plain,
             json_output=args.json,
@@ -332,7 +440,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "open":
         from .tui.runner import run_setup as _run_setup
 
-        return _run_setup(repo=Path(args.repo))
+        return _run_tui_with_reconfigure_loop(_run_setup, repo=Path(args.repo))
     if args.command == "cron":
         if args.cron_command == "run":
             from .scheduling import run_due
@@ -445,10 +553,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.input:
             date, verdicts, funnel = load_verdict_file(Path(args.input))
         else:
-            payload = latest_scan()
+            payload = latest_scan(repo=Path(args.repo))
             if payload is None:
+                # Codex #5: don't silently demo-render when nothing exists for
+                # *this* repo — that's how reports went out misattributed.
                 paths = write_demo(Path(args.output).parent)
-                print(f"No stored scan found; wrote demo report: {paths['html']}")
+                print(
+                    f"No stored scan for {Path(args.repo).resolve()}; "
+                    f"wrote demo report: {paths['html']}"
+                )
                 return 0
             date = str(payload.get("date") or "latest")
             verdicts = list(payload.get("verdicts") or [])
@@ -470,7 +583,8 @@ def main(argv: list[str] | None = None) -> int:
             source_url=args.url,
         )
         save_permission_manifest(tool_id, manifest)
-        decision = evaluate_policy(evaluation, manifest)
+        policy = load_policy(Path(args.repo))
+        decision = evaluate_policy(evaluation, manifest, policy=policy)
         save_policy_findings(tool_id, decision.findings)
         if args.json:
             print(
@@ -590,7 +704,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "trial":
         stack = detect_stack(Path(args.repo))
         dry_run = args.dry_run or args.sandbox == "report-only"
-        result = run_trial(args.tool, url=args.url, dry_run=dry_run, stack=stack)
+        result = run_trial(args.tool, url=args.url, dry_run=dry_run, stack=stack, repo=args.repo)
         result["sandbox"] = args.sandbox or ("report-only" if dry_run else "local")
         if args.json:
             print(json.dumps(result, indent=2))

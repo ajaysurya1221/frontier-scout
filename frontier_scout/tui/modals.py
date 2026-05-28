@@ -13,20 +13,27 @@ from textual.widgets import Static
 
 _HELP_BODY = """\
 Navigation
-  1 — 9             jump to tab by number
+  1 / 2             jump between Scout and Settings tabs
   Tab / Shift-Tab   cycle widgets within active tab
   ↑ ↓               move within tables
   Enter             run focused action / submit field
 
-Scout tab
-  s                 rescout (dry-run)
-  l                 live scout (requires API key + double-press)
-  /                 filter substring
+Scout tab — row actions on the highlighted verdict
+  Enter             dry-run trial (writes a local receipt)
+  s                 rescout (re-run the dry-run scout)
+  c                 clear stored scans for this repo
+  L                 dry-run lab (classify only, no install)
+                    → press L again within 3s to spend on a live install
+  e                 evaluate (Adoption-Firewall verdict for the URL)
+  D                 build dossier (saved under ~/.frontier-scout/dossiers/)
 
 System
-  /                 change repo path (when not on Scout filter)
+  /                 change repo path
   ?                 toggle this help
+  r                 open the latest scout report
+  d                 diff vs last scan
   Ctrl-L            clear result log
+  Ctrl-N            open notifications
   q                 quit (confirmation required)
   Esc               close modal / cancel
 """

@@ -27,11 +27,17 @@ def run_headless(
     repos: list[str] | None = None,
     cron_expr: str = "@daily",
     notification: str = "file",
+    live: bool = False,
 ) -> dict:
     """Apply the wizard's choices without showing UI.
 
     Returns a dict describing what was written and the crontab line the
     user still needs to add (when mode == 'automation').
+
+    ``live`` controls whether scheduled scouts run as live scans (uses
+    your Anthropic / OpenAI key, spends API quota) or stay dry-run
+    (default, free, local-only). v1.2.1 makes dry-run the explicit
+    default so existing installs don't suddenly start spending.
     """
 
     if mode not in ("automation", "adhoc"):
@@ -47,16 +53,32 @@ def run_headless(
             raise ValueError("automation mode requires at least one repo")
         if not is_valid_cron_expr(cron_expr):
             raise ValueError(f"invalid cron expression: {cron_expr!r}")
-        runner = install_cron_runner()
+        # CodeRabbit feedback on v1.2.1 PR #15: when ``live=False`` is
+        # the only mode the user opted into, the runner doesn't need
+        # ANTHROPIC_API_KEY etc. — dry-run cron jobs use seeded
+        # verdicts and don't call the LLM. Pass an empty preserve_keys
+        # tuple so the runner doesn't materialise credentials onto disk
+        # in the safe-default path. The user can rerun the wizard with
+        # ``live=True`` to opt into the credentialed runner.
+        if live:
+            runner = install_cron_runner()
+        else:
+            runner = install_cron_runner(preserve_keys=("FRONTIER_SCOUT_HOME",))
         schedules = []
         for repo in repos:
             path = Path(repo).expanduser().resolve()
             schedules.append(
-                add_schedule(path, cron_expr=cron_expr, notification=notification)
+                add_schedule(
+                    path,
+                    cron_expr=cron_expr,
+                    notification=notification,
+                    live=live,
+                )
             )
         result["schedules"] = [s.to_dict() for s in schedules]
         result["cron_runner"] = str(runner)
         result["crontab_line"] = crontab_line()
+        result["live"] = live
 
     mark_wizard_complete()
     return result

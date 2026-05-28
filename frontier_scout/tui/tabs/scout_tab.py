@@ -94,13 +94,40 @@ class ScoutTab(VerticalScroll):
         margin-top: 1;
         height: auto;
     }
+
+    /* Stream L — adaptive layout for embedded terminals (VS Code,
+       tmux split, etc.). ``.compact`` is added by SetupApp.on_resize
+       whenever the viewport falls below 100x24 so the table doesn't
+       eat the entire visible area. */
+    ScoutTab.compact .scout-controls {
+        height: auto;
+        margin-bottom: 0;
+    }
+
+    ScoutTab.compact DataTable {
+        height: 8;
+    }
+
+    ScoutTab.compact #scout-detail {
+        margin-top: 0;
+        max-height: 14;
+    }
     """
 
     BINDINGS: ClassVar = [
         Binding("s", "rescout", "Rescout", show=True),
         Binding("c", "clear_memory", "Clear memory", show=True),
         Binding("enter", "primary_action", "Try locally", show=True),
+        # Stream M — full TUI surface for the CLI capabilities the
+        # user previously had to drop to a shell for.
+        Binding("L", "lab_selected", "Lab (2× to spend)", show=True),
+        Binding("e", "evaluate_selected", "Evaluate", show=True),
+        Binding("D", "dossier_selected", "Dossier", show=True),
     ]
+
+    #: Double-press window for the live-lab confirmation. Mirrors the
+    #: existing live-scout double-press pattern in v1.1.
+    _LAB_LIVE_CONFIRM_WINDOW_S = 3.0
 
     def __init__(self, app_ref) -> None:  # type: ignore[no-untyped-def]
         super().__init__()
@@ -110,6 +137,10 @@ class ScoutTab(VerticalScroll):
         state = read_setup_state()
         self._scope_ai = bool(state.get("scout_scope_ai", True))
         self._scope_deps = bool(state.get("scout_scope_deps", True))
+        # Stream M — remember the last time the user pressed L, so a
+        # second press within the confirmation window upgrades to a
+        # real (live) lab run instead of just classifying.
+        self._last_lab_press: float = 0.0
 
     # ------------------------------------------------------------------
     # Compose / mount
@@ -195,10 +226,18 @@ class ScoutTab(VerticalScroll):
         repo = Path(self.app_ref.diagnostics.repo)
         rows: list[dict[str, Any]] = []
         errors: list[str] = []
+        # Stream J — universal mode skips the repo-profile filter and
+        # surfaces every seeded verdict. We also don't persist a scan
+        # row for a non-repo so the SQLite table stays repo-scoped.
+        universal = bool(getattr(self.app_ref, "universal_mode", False))
 
         if self._scope_ai:
             try:
-                payload = run_scan(repo=repo, dry_run=True, persist=True)
+                payload = run_scan(
+                    repo=repo,
+                    dry_run=True,
+                    persist=not universal,
+                )
                 for v in payload.get("verdicts") or []:
                     rows.append(self._ai_verdict_to_row(v))
             except Exception as exc:  # noqa: BLE001
@@ -372,6 +411,7 @@ class ScoutTab(VerticalScroll):
         color = _VERDICT_COLORS.get(verdict, "#d9f7ff")
         fit_reasons = v.get("fit_reasons") or []
         unknowns = v.get("unknowns") or []
+        concerns = v.get("concerns") or []
         lines = [
             f"[{color} bold]{verdict}[/]  [#d9f7ff]{v.get('tool_name', '—')}[/]",
             f"[#6e8aa1]category: {v.get('category', '—')}   fit: {v.get('fit', '—')}   risk: {v.get('risk', '—')}[/]",
@@ -389,6 +429,20 @@ class ScoutTab(VerticalScroll):
                 lines.append(f"  · {r}")
         else:
             lines.append("  · seeded match; not personalised yet")
+        # Stream K — the centerpiece. Show concerns prominently so
+        # the user always knows why we'd push back on adoption.
+        if concerns:
+            lines.extend(["", "[#d9f7ff bold]Concerns[/]"])
+            severity_color = {
+                "high": "#ff6b6b",
+                "medium": "#e3c26f",
+                "low": "#7aa6ff",
+            }
+            for c in concerns[:6]:
+                slug_color = severity_color.get(c.get("severity", "low"), "#6e8aa1")
+                label = c.get("label", c.get("slug", "?"))
+                evidence = c.get("evidence", "")
+                lines.append(f"  [{slug_color}]●[/] [bold]{label}[/] — {evidence}")
         lines.extend(
             [
                 "",
@@ -492,6 +546,7 @@ class ScoutTab(VerticalScroll):
                 url=v.get("source_url"),
                 dry_run=True,
                 stack=stack,
+                repo=self.app_ref.diagnostics.repo,
             )
         except Exception as exc:  # noqa: BLE001
             self.app_ref.call_from_thread(
@@ -604,3 +659,181 @@ class ScoutTab(VerticalScroll):
             tone="warn",
         )
         self._scout_worker()
+
+    # ------------------------------------------------------------------
+    # Stream M — lab / evaluate / dossier from a Scout row
+    # ------------------------------------------------------------------
+
+    def action_lab_selected(self) -> None:
+        """L → dry-run lab. Second L within the confirm window → live lab.
+
+        Mirrors the v1.1 ``live`` scout double-press: first press is
+        free, second press within ``_LAB_LIVE_CONFIRM_WINDOW_S`` runs
+        the real hermetic install and spends API quota.
+        """
+
+        import time
+
+        row = self._highlighted()
+        if not row:
+            self.app_ref.log_event(
+                "No row highlighted — pick a verdict first.", tone="warn"
+            )
+            return
+        if row["kind"] != "ai":
+            self.app_ref.log_event(
+                "Lab only runs against AI-tool rows; pick a tool, not a dep.",
+                tone="warn",
+            )
+            return
+        v = row["raw"]
+        tool = v.get("tool_name", "")
+        url = v.get("source_url")
+        if not url:
+            self.app_ref.log_event(
+                f"{tool}: no source URL on this verdict — can't lab it.",
+                tone="warn",
+            )
+            return
+        now = time.monotonic()
+        live = (now - self._last_lab_press) < self._LAB_LIVE_CONFIRM_WINDOW_S
+        self._last_lab_press = 0.0 if live else now
+        if not live:
+            self.app_ref.log_event(
+                f"L → dry-run lab for {tool}. Press L again within "
+                f"{self._LAB_LIVE_CONFIRM_WINDOW_S:.0f}s to spend on a live "
+                "install.",
+                tone="info",
+            )
+        self._lab_worker(tool=tool, url=url, live=live)
+
+    @work(thread=True, exclusive=True)
+    def _lab_worker(self, *, tool: str, url: str, live: bool) -> None:
+        try:
+            import importlib
+            import sys
+            from pathlib import Path
+
+            scripts_dir = (
+                Path(__file__).resolve().parent.parent.parent.parent / "scripts"
+            )
+            if str(scripts_dir) not in sys.path:
+                sys.path.insert(0, str(scripts_dir))
+            lab_runner = importlib.import_module("lab_runner")
+            rc = lab_runner.run(tool, url, user="", dry_run=not live)
+        except Exception as exc:  # noqa: BLE001
+            self.app_ref.call_from_thread(
+                self.app_ref.log_event,
+                f"Lab failed for {tool}: {exc}",
+                "error",
+            )
+            return
+        tone = "ok" if rc == 0 else "warn"
+        verb = "lab" if live else "dry-run lab"
+        self.app_ref.call_from_thread(
+            self.app_ref.log_event,
+            f"{verb} {tool}: rc={rc} (receipt in ~/.frontier-scout/labs/)",
+            tone,
+        )
+
+    def action_evaluate_selected(self) -> None:
+        """e → run the Adoption Firewall evaluation on the highlighted
+        verdict's source URL and write the decision to the log."""
+
+        row = self._highlighted()
+        if not row or row["kind"] != "ai":
+            self.app_ref.log_event(
+                "Evaluate needs an AI-tool row highlighted.", tone="warn"
+            )
+            return
+        v = row["raw"]
+        url = v.get("source_url")
+        if not url:
+            self.app_ref.log_event(
+                f"{v.get('tool_name', '?')}: no URL to evaluate.", tone="warn"
+            )
+            return
+        self._evaluate_worker(url=url, tool=v.get("tool_name", "?"))
+
+    @work(thread=True, exclusive=True)
+    def _evaluate_worker(self, *, url: str, tool: str) -> None:
+        try:
+            from pathlib import Path
+
+            from frontier_scout.evaluate import evaluate_url
+            from frontier_scout.mcp_audit import classify_mcp_capabilities
+            from frontier_scout.policy import evaluate_policy, load_policy
+            from frontier_scout.scout import detect_stack
+
+            repo = Path(self.app_ref.diagnostics.repo)
+            stack = detect_stack(repo)
+            evaluation = evaluate_url(url, stack)
+            manifest = (
+                evaluation.permission_manifest
+                or classify_mcp_capabilities(
+                    url,
+                    tool_name=evaluation.tool_name,
+                    source_url=url,
+                )
+            )
+            policy = load_policy(repo)
+            decision = evaluate_policy(evaluation, manifest, policy=policy)
+        except Exception as exc:  # noqa: BLE001
+            self.app_ref.call_from_thread(
+                self.app_ref.log_event,
+                f"Evaluate failed for {tool}: {exc}",
+                "error",
+            )
+            return
+        verdict_str = str(decision.verdict).upper()
+        self.app_ref.call_from_thread(
+            self.app_ref.log_event,
+            f"Evaluate {tool}: {verdict_str} — {decision.summary}",
+            "ok" if verdict_str == "ADOPT" else "info",
+        )
+
+    def action_dossier_selected(self) -> None:
+        """D → build a dossier for the highlighted tool, save it, open it."""
+
+        row = self._highlighted()
+        if not row or row["kind"] != "ai":
+            self.app_ref.log_event(
+                "Dossier needs an AI-tool row highlighted.", tone="warn"
+            )
+            return
+        tool = row["raw"].get("tool_name", "")
+        if not tool:
+            return
+        self._dossier_worker(tool=tool)
+
+    @work(thread=True, exclusive=True)
+    def _dossier_worker(self, *, tool: str) -> None:
+        try:
+            from pathlib import Path
+
+            from frontier_scout.dossier import build_dossier
+            from frontier_scout.store import home_dir
+
+            repo = Path(self.app_ref.diagnostics.repo)
+            payload = build_dossier(tool, repo=repo)
+            target_dir = home_dir() / "dossiers"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            safe_name = "".join(
+                ch if ch.isalnum() or ch in "-_" else "-" for ch in tool
+            ).strip("-").lower() or "tool"
+            target_path = target_dir / f"{safe_name}.json"
+            import json
+
+            target_path.write_text(json.dumps(payload, indent=2, default=str))
+        except Exception as exc:  # noqa: BLE001
+            self.app_ref.call_from_thread(
+                self.app_ref.log_event,
+                f"Dossier failed for {tool}: {exc}",
+                "error",
+            )
+            return
+        self.app_ref.call_from_thread(
+            self.app_ref.log_event,
+            f"Dossier for {tool} → {target_path}",
+            "ok",
+        )

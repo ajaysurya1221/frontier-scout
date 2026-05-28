@@ -105,10 +105,16 @@ class SetupApp(App[None]):
         *,
         show_splash: bool = True,  # accepted but ignored — splash deleted in v1.2.
         initial_tab: str = DEFAULT_TAB,
+        universal_mode: bool = False,
     ) -> None:
         super().__init__()
         self.diagnostics = diagnostics
         self._initial_tab = initial_tab if initial_tab in TAB_SLUGS else DEFAULT_TAB
+        # Stream J — when set, ScoutTab skips repo-profile-based filtering
+        # and surfaces every seeded verdict so the user gets value even
+        # without a repo. Toggled either from the constructor (rare) or
+        # from the picker callback in ``runner.py`` (typical).
+        self.universal_mode = universal_mode
 
     # ------------------------------------------------------------------
     # Compose / mount
@@ -136,13 +142,41 @@ class SetupApp(App[None]):
             "Local-first. No repo content sent to an LLM. No tools installed.",
             tone="ok",
         )
-        if self.size.width < 100 or self.size.height < 28:
+        # Stream L — only warn at the *true* POSIX minimum (80x24).
+        # Below that the layout genuinely can't fit; above that we
+        # adapt via the .compact CSS class in on_resize.
+        if self.size.width < 80 or self.size.height < 24:
             self._set_status_banner(
-                "Terminal is small — resize for the full layout, or run: frontier-scout setup --plain",
+                "Terminal is below 80×24 — resize, or run: frontier-scout setup --plain",
                 tone="warn",
             )
+        self._apply_compact_layout()
         self.log_event(f"Ready · repo {self.diagnostics.repo}", tone="muted")
         self._remember_recent_repo(self.diagnostics.repo)
+
+    def on_resize(self, event) -> None:  # type: ignore[no-untyped-def]
+        # Stream L — toggle the .compact class on the ScoutTab so the
+        # layout reflows live when the user resizes their terminal
+        # (or attaches a smaller pane in tmux/VS Code).
+        self._apply_compact_layout()
+        # Brand bar is also adaptive — re-render it.
+        try:
+            self.query_one("#brand-bar", Static).update(self._brand_bar_text())
+        except Exception:  # noqa: BLE001 — pre-mount resize event
+            pass
+
+    def _apply_compact_layout(self) -> None:
+        try:
+            from frontier_scout.tui.tabs.scout_tab import ScoutTab
+
+            scout = self.query_one(ScoutTab)
+        except Exception:  # noqa: BLE001 — tab not mounted yet
+            return
+        narrow = self.size.width < 100 or self.size.height < 28
+        if narrow:
+            scout.add_class("compact")
+        else:
+            scout.remove_class("compact")
 
     def _remember_recent_repo(self, repo: str) -> None:
         from frontier_scout.store import read_setup_state, write_setup_state
@@ -164,11 +198,31 @@ class SetupApp(App[None]):
             if unread > 0
             else ""
         )
+        # Stream J — when universal mode is active, show that prominently
+        # so the user always knows verdicts aren't tailored.
+        if self.universal_mode:
+            repo_chip = "[#e3c26f]🌐 universal mode (not tailored)[/]"
+        else:
+            repo_chip = f"[#7aa6ff]📁 {self.diagnostics.repo}[/]"
+        # Stream L — when the terminal is narrow, drop the tagline and
+        # shorten the repo chip to its basename to keep the brand bar
+        # on one line.
+        narrow = bool(self.size.width and self.size.width < 100)
+        if narrow and not self.universal_mode:
+            repo_basename = Path(self.diagnostics.repo).name or self.diagnostics.repo
+            repo_chip = f"[#7aa6ff]📁 {repo_basename}[/]"
+        if narrow:
+            return (
+                f"[#24d6a8 bold]◉ FRONTIER · SCOUT[/]  "
+                f"[#6e8aa1]v{__version__}[/]   "
+                f"{repo_chip}   "
+                f"[#24d6a8 underline]📊 r[/]{chip}"
+            )
         return (
             f"[#24d6a8 bold]◉ FRONTIER · SCOUT[/]  "
             f"[#6e8aa1]v{__version__}[/]   "
             f"[#6e8aa1]the radar for latest AI releases that fit your repo[/]   "
-            f"[#7aa6ff]📁 {self.diagnostics.repo}[/]   "
+            f"{repo_chip}   "
             f"[#24d6a8 underline]📊 report (press r)[/]{chip}"
         )
 
@@ -328,10 +382,13 @@ class SetupApp(App[None]):
         report_dir = home_dir() / "reports"
         report_dir.mkdir(parents=True, exist_ok=True)
         repo_id_path = report_dir / f"{repo.name}.html"
-        payload = latest_scan()
+        # Codex #5: scope to *this* repo. Before v1.2.1 the TUI would render
+        # whatever scan happened most recently across all repos.
+        payload = latest_scan(repo=repo)
         if payload is None:
             self.log_event(
-                "No scout yet — wait for the Scout tab to finish, then press r.",
+                f"No scout for {repo} yet — wait for the Scout tab to "
+                "finish, then press r.",
                 tone="warn",
             )
             return
