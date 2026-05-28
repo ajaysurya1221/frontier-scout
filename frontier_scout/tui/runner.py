@@ -1,9 +1,14 @@
-"""Entry points for the setup terminal UI."""
+"""Entry points for the setup terminal UI — v1.2.
+
+No splash, no welcome modal. If the resolved repo doesn't look like a
+repo, the TUI opens with a repo picker on top so the user can choose
+before scanning anything. Import scan is *not* run synchronously; the
+Scout tab fires its own worker after mount.
+"""
 
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -20,18 +25,25 @@ def run_setup(
     ollama_url: str = "http://localhost:11434",
     packs: list[str] | None = None,
     scan_imports: bool = True,
-    show_splash: bool = True,
+    show_splash: bool = True,  # ignored — splash deleted in v1.2.
     initial_tab: str = DEFAULT_TAB,
     auto_scout: bool = True,
 ) -> int:
     """Run setup in JSON, plain, or Textual mode."""
 
     selected_packs = packs if packs is not None else read_setup_state().get("selected_packs", [])
+
+    # In TUI mode we defer the import scan so the UI mounts fast (<1s).
+    # In plain/JSON mode we run the scan synchronously because the
+    # caller wants the data in the output.
+    tui_mode = not (plain or json_output)
+    scan_for_diagnostics = scan_imports if not tui_mode else False
+
     diagnostics = setup_diagnostics(
         repo,
         ollama_url=ollama_url,
         selected_packs=selected_packs,
-        scan_imports=scan_imports,
+        scan_imports=scan_for_diagnostics,
     )
     if json_output:
         payload = diagnostics.model_dump()
@@ -45,6 +57,7 @@ def run_setup(
             output += _scout_plain_section(repo)
         print(output, end="")
         return 0
+
     try:
         from frontier_scout.tui.setup_app import SetupApp
     except ImportError as exc:
@@ -53,29 +66,24 @@ def run_setup(
         print()
         print(diagnostics_to_plain(diagnostics), end="")
         return 0
-    splash_env = os.environ.get("FRONTIER_SCOUT_SKIP_SPLASH", "")
-    effective_splash = show_splash and splash_env.lower() not in ("1", "true", "yes")
-    safe_tab = initial_tab if initial_tab in TAB_SLUGS else DEFAULT_TAB
 
-    # If the resolved repo doesn't look like a real repo, swap it for the
-    # user's $HOME so the TUI has something to fingerprint, then push a
-    # picker on top so they can choose. ``looks_like_repo`` is conservative.
+    safe_tab = initial_tab if initial_tab in TAB_SLUGS else DEFAULT_TAB
     from frontier_scout.tui.repo_picker import RepoPickerScreen, looks_like_repo
 
     picker_needed = not looks_like_repo(Path(diagnostics.repo))
-    app = SetupApp(diagnostics, show_splash=effective_splash, initial_tab=safe_tab)
+    app = SetupApp(diagnostics, initial_tab=safe_tab)
     if picker_needed:
-        def _on_picked(value: str | None) -> None:
-            if value:
-                app._handle_picker_choice(value)  # type: ignore[attr-defined]
-
         original_on_mount = app.on_mount
 
         def patched_on_mount() -> None:
             original_on_mount()
-            app.push_screen(RepoPickerScreen(), _on_picked)
+            app.push_screen(
+                RepoPickerScreen(),
+                lambda v: app._handle_picker_choice(v) if v else None,
+            )
 
         app.on_mount = patched_on_mount  # type: ignore[method-assign]
+
     app.run()
     return 0
 
