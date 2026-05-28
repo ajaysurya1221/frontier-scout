@@ -152,11 +152,28 @@ def render_html(
     date: str = SAMPLE_DATE,
     funnel: dict[str, Any] | None = None,
     include_trials: bool = True,
+    include_artifacts: bool = False,
 ) -> str:
     funnel = {**SAMPLE_FUNNEL, **(funnel or {})}
     grouped = _group_by_tier(verdicts)
     cards = "\n".join(_render_card(v, i + 1) for i, v in enumerate(verdicts))
     trial_section = _render_trial_section_html() if include_trials else ""
+    # CodeRabbit #1: only render artifact-nav when the companion files
+    # actually exist on disk (i.e. the demo flow). The CLI `report`
+    # path writes only the HTML, so unconditionally including these
+    # links would produce dead links there.
+    artifact_nav = (
+        """
+    <nav class="artifacts" aria-label="Demo artifacts">
+      <a class="artifact-link" href="briefing.md">Markdown</a>
+      <a class="artifact-link" href="verdicts.json">Verdicts JSON</a>
+      <a class="artifact-link" href="cost-breakdown.md">Cost Breakdown</a>
+      <a class="artifact-link" href="judge-trace.md">Judge Trace</a>
+      <a class="artifact-link" href="quality-log.jsonl">Quality Log</a>
+    </nav>"""
+        if include_artifacts
+        else ""
+    )
     summary = " · ".join(
         f"{VERDICT_LABEL[tier]} {len(grouped[tier])}"
         for tier in ("adopt", "trial", "assess", "hold")
@@ -200,6 +217,20 @@ h1 {{ margin: 8px 0 10px; font-size: clamp(34px, 5vw, 64px); line-height: 1.02; 
 .metric b {{ display: block; font-size: 20px; }}
 .metric span {{ color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }}
 .judge {{ margin-top: 16px; max-width: 900px; color: var(--muted); }}
+.artifacts {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }}
+.artifact-link {{
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 10px;
+}}
+.artifact-link:hover {{ border-color: var(--accent); color: var(--accent); }}
 .section-title {{ margin: 34px 0 10px; display: flex; justify-content: space-between; gap: 16px; align-items: end; }}
 .section-title h2 {{ margin: 0; font-size: 24px; }}
 .section-title p {{ margin: 0; color: var(--muted); }}
@@ -244,7 +275,7 @@ footer {{ color: var(--muted); margin-top: 34px; padding-top: 20px; border-top: 
       <div class="metric"><b>${float(funnel.get("total_cost_usd", 0)):.2f}</b><span>run cost</span></div>
       <div class="metric"><b>{funnel.get("judge_self_rating", "n/a")}</b><span>judge</span></div>
     </div>
-    <p class="judge"><strong>Summary:</strong> {summary or "No shipped verdicts."} · {funnel.get("judge_summary", "")}</p>
+    <p class="judge"><strong>Summary:</strong> {summary or "No shipped verdicts."} · {funnel.get("judge_summary", "")}</p>{artifact_nav}
   </section>
   <section>
     <div class="section-title">
@@ -338,7 +369,18 @@ def write_report(
     judge_path = output_dir / "judge-trace.md"
 
     payload = {"date": date, "funnel": {**SAMPLE_FUNNEL, **(funnel or {})}, "verdicts": verdicts}
-    html_path.write_text(render_html(verdicts, date=date, funnel=funnel, include_trials=include_trials))
+    # The demo flow writes all five companion files, so the nav links
+    # resolve. CLI ``report`` callers don't go through write_report —
+    # they call render_html directly with the default include_artifacts=False.
+    html_path.write_text(
+        render_html(
+            verdicts,
+            date=date,
+            funnel=funnel,
+            include_trials=include_trials,
+            include_artifacts=True,
+        )
+    )
     md_path.write_text(render_markdown(verdicts, date=date, funnel=funnel, include_trials=include_trials))
     json_path.write_text(json.dumps(payload, indent=2) + "\n")
     log_path.write_text(json.dumps({"ts": f"{date}T00:00:00+00:00", "component": "demo", **payload["funnel"]}) + "\n")
@@ -356,6 +398,178 @@ def write_report(
 
 def write_demo(output_dir: Path) -> dict[str, Path]:
     return write_report(output_dir, SAMPLE_VERDICTS, date=SAMPLE_DATE, funnel=SAMPLE_FUNNEL, include_trials=False)
+
+
+_DEFAULT_DEMO_PORT = 7771
+
+
+#: CodeRabbit #2 — only these paths are served. Without an allowlist
+#: a caller who reuses an existing directory (or a generated demo dir
+#: that picks up stray files) would expose them all over the network.
+_DEMO_SERVED_PATHS: frozenset[str] = frozenset(
+    {
+        "/briefing.html",
+        "/briefing.md",
+        "/verdicts.json",
+        "/cost-breakdown.md",
+        "/judge-trace.md",
+        "/quality-log.jsonl",
+    }
+)
+
+
+def serve_demo(output_dir: Path, *, port: int = _DEFAULT_DEMO_PORT) -> None:
+    """Write demo files and host them on a local HTTP server, then open the browser.
+
+    CodeRabbit #2: the server binds to 127.0.0.1 by default. Only when
+    ``_is_remote_env()`` detects an explicitly remote workspace (VS
+    Code Server / GitHub Codespaces / a devcontainer with port
+    forwarding) do we widen to 0.0.0.0 — and even there, the handler
+    only serves an explicit path allowlist, not the whole directory.
+    """
+
+    import webbrowser
+    from http.server import HTTPServer
+
+    paths = write_demo(output_dir)
+    abs_dir = output_dir.resolve()
+    remote = _is_remote_env()
+    host = "0.0.0.0" if remote else "127.0.0.1"  # noqa: S104 — intentional remote path
+
+    handler_cls = _demo_request_handler(abs_dir, _DEMO_SERVED_PATHS)
+    try:
+        server = HTTPServer((host, port), handler_cls)
+    except OSError:
+        server = HTTPServer((host, 0), handler_cls)
+
+    actual_port = server.server_address[1]
+    url = f"http://localhost:{actual_port}/"
+
+    if not remote:
+        webbrowser.open(url)
+
+    _print_demo_next_steps(paths, url, remote=remote)
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.shutdown()
+
+
+def _demo_request_handler(abs_dir: Path, allowed_paths: frozenset[str]):
+    """Build a request handler that only serves the allowlisted demo
+    artifacts, even when ``abs_dir`` contains other files. CodeRabbit
+    #2 — the previous handler exposed every file under the output
+    directory to the network."""
+
+    from http.server import SimpleHTTPRequestHandler
+    from urllib.parse import urlsplit
+
+    class _Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(abs_dir), **kwargs)
+
+        def _resolve_allowed(self) -> str | None:
+            path = urlsplit(self.path).path or "/"
+            if path == "/":
+                path = "/briefing.html"
+            return path if path in allowed_paths else None
+
+        def do_GET(self) -> None:
+            resolved = self._resolve_allowed()
+            if resolved is None:
+                self.send_error(404)
+                return
+            self.path = resolved
+            super().do_GET()
+
+        def do_HEAD(self) -> None:
+            resolved = self._resolve_allowed()
+            if resolved is None:
+                self.send_error(404)
+                return
+            self.path = resolved
+            super().do_HEAD()
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            pass
+
+    return _Handler
+
+
+def _is_remote_env() -> bool:
+    """Return True when running inside a devcontainer, Codespace, or headless Linux."""
+    import os
+    import sys
+
+    if any(os.environ.get(v) for v in ("REMOTE_CONTAINERS", "CODESPACE_NAME", "VSCODE_REMOTE_CONTAINERS_SESSION")):
+        return True
+    # Headless Linux with no display server — webbrowser.open() would be a no-op.
+    if sys.platform == "linux" and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+        return True
+    return False
+
+
+def _print_demo_next_steps(paths: dict[str, Path], url: str, *, remote: bool = False) -> None:
+    try:
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.text import Text
+
+        console = Console()
+        t = Text()
+        t.append("  Serving at  ", style="dim")
+        t.append(url, style="bold #24d6a8 underline")
+        t.append("  ·  Ctrl+C to stop\n\n", style="dim")
+        for check, name, desc in [
+            ("✓", paths["html"].name, "adoption receipts"),
+            ("✓", paths["json"].name, "raw verdict data"),
+            ("✓", paths["judge"].name, "quality trace"),
+        ]:
+            t.append(f"  {check}  ", style="#24d6a8")
+            t.append(name, style="bold")
+            t.append(f"   {desc}\n", style="dim")
+
+        if remote:
+            t.append("\n  Running inside a devcontainer / remote environment.\n", style="#e3c26f")
+            t.append("  VS Code should show a port-forward notification — or open\n", style="dim")
+            t.append("  the Ports panel (", style="dim")
+            t.append("Ctrl+Shift+P → Forward a Port", style="bold")
+            t.append(f"), add port ", style="dim")
+            t.append(str(url.split(":")[2].rstrip("/")), style="bold")
+            t.append(", then open:\n", style="dim")
+            t.append(f"  → {url}\n", style="bold #24d6a8")
+        else:
+            t.append("\n  Browser opened at ", style="dim")
+            t.append(url, style="bold #24d6a8")
+            t.append("\n", style="dim")
+
+        t.append("\n  Next steps:\n", style="bold #d9f7ff")
+        for cmd, hint in [
+            ("frontier-scout setup", "← Mission Control TUI"),
+            ("frontier-scout scan --dry-run", "← verdicts for this repo"),
+            ("ANTHROPIC_API_KEY=<key> frontier-scout scan", "← live scan"),
+        ]:
+            t.append("    ")
+            t.append(cmd, style="bold")
+            t.append(f"  {hint}\n", style="dim")
+        console.print(
+            Panel(
+                t,
+                title="[bold #24d6a8]◉ FRONTIER · SCOUT[/]  demo ready",
+                border_style="#25405c",
+                padding=(0, 1),
+            )
+        )
+    except ImportError:
+        print(f"\nDemo at {url} — Ctrl+C to stop")
+        if remote:
+            print(f"  devcontainer: forward port {url.split(':')[2].rstrip('/')} then open {url}")
+        print(f"  {paths['html']}")
+        print(f"  {paths['json']}")
+        print("\nNext: frontier-scout setup  |  frontier-scout scan --dry-run")
 
 
 def render_cost_breakdown(funnel: dict[str, Any]) -> str:

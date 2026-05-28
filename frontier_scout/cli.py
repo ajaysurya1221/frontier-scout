@@ -19,7 +19,7 @@ from .packs import candidate_rows_for_pack
 from .platform.incident_change_scout.workflow import run_incident_demo
 from .policy import default_policy_toml, evaluate_policy
 from .profile import build_scout_profile, export_profile
-from .report import load_verdict_file, render_html, write_demo
+from .report import load_verdict_file, render_html, serve_demo, write_demo
 from .scout import detect_stack, run_scan
 from .store import (
     get_pack,
@@ -139,6 +139,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     demo_cmd = sub.add_parser("demo", help="Generate an offline demo report with no API keys or network calls.")
     demo_cmd.add_argument("--output-dir", default="demo", help="Directory for demo artifacts.")
+    demo_cmd.add_argument(
+        "--no-serve",
+        dest="serve",
+        action="store_false",
+        help="Write files only; skip the local HTTP server and browser launch.",
+    )
+    demo_cmd.set_defaults(serve=True)
 
     scan_cmd = sub.add_parser("scan", help="Run a live scan, or use --dry-run for seeded output.")
     scan_cmd.add_argument("--repo", default=".", help="Repository used for stack-fit detection.")
@@ -411,9 +418,12 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"- {dep.ecosystem}:{dep.name}{dep.specifier}{resolved} ({dep.manifest_path})")
         return 0
     if args.command == "demo":
-        paths = write_demo(Path(args.output_dir))
-        print(f"Wrote HTML report: {paths['html']}")
-        print(f"Wrote verdict data: {paths['json']}")
+        if args.serve:
+            serve_demo(Path(args.output_dir))
+        else:
+            paths = write_demo(Path(args.output_dir))
+            print(f"Wrote HTML report: {paths['html']}")
+            print(f"Wrote verdict data: {paths['json']}")
         return 0
     if args.command == "scan":
         payload = run_scan(
