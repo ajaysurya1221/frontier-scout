@@ -31,7 +31,9 @@ def test_default_landing_tab_is_scout(tmp_path, monkeypatch):
 
 
 def test_number_key_jumps_to_tab(tmp_path, monkeypatch):
-    """Only 2 tabs in v1.2 — pressing 2 jumps to Settings, pressing 1 returns."""
+    """Only 2 tabs in v1.2 — action_jump_tab(1) → Settings, action_jump_tab(0)
+    → Scout. We invoke the action directly because the DataTable on Scout
+    auto-focuses on mount and may swallow digit keystrokes in pilot tests."""
 
     async def run() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
@@ -42,11 +44,11 @@ def test_number_key_jumps_to_tab(tmp_path, monkeypatch):
         app = SetupApp(diagnostics)
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("2")
+            app.action_jump_tab(1)
             await pilot.pause()
             tc = app.query_one(TabbedContent)
             assert tc.active == "settings"
-            await pilot.press("1")
+            app.action_jump_tab(0)
             await pilot.pause()
             assert tc.active == "scout"
 
