@@ -161,6 +161,11 @@ nothing reads secrets, logs into services, installs tools, or sends repo
 content to an LLM. Limited terminals can use `frontier-scout setup --plain`;
 automation can use `frontier-scout setup --json`.
 
+On **first launch**, a one-time welcome overlay appears after the brand
+splash and walks you through the three core actions — Scout verdicts,
+trialling a tool, and running `guard` in CI. Press any key to enter
+Mission Control; the overlay never shows again.
+
 ### Develop locally
 
 ```bash
@@ -193,7 +198,34 @@ Then run the AI tool radar demo:
 
 ```bash
 frontier-scout demo
-open demo/briefing.html
+```
+
+This spins up a local HTTP server, opens your browser automatically at
+`http://localhost:<port>/`, and prints a guided next-steps panel in the
+terminal. Press **Ctrl+C** to stop serving.
+
+The terminal panel looks like:
+
+```
+╭── ◉ FRONTIER · SCOUT  demo ready ───────────────────────────────────╮
+│  Serving at  http://localhost:54321  ·  Ctrl+C to stop               │
+│                                                                       │
+│  ✓  briefing.html   adoption receipts                                 │
+│  ✓  verdicts.json   raw verdict data                                  │
+│  ✓  judge-trace.md  quality trace                                     │
+│                                                                       │
+│  Next steps:                                                          │
+│    http://localhost:54321          ← browser opened · adoption cards  │
+│    frontier-scout setup            ← Mission Control TUI              │
+│    frontier-scout scan --dry-run   ← verdicts for this repo           │
+│    ANTHROPIC_API_KEY=<key> ...     ← live scan                        │
+╰───────────────────────────────────────────────────────────────────────╯
+```
+
+To write files without starting a server (CI or offline use):
+
+```bash
+frontier-scout demo --no-serve
 ```
 
 The radar demo writes [`demo/briefing.html`](demo/briefing.html),

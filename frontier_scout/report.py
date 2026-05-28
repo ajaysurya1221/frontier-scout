@@ -200,6 +200,20 @@ h1 {{ margin: 8px 0 10px; font-size: clamp(34px, 5vw, 64px); line-height: 1.02; 
 .metric b {{ display: block; font-size: 20px; }}
 .metric span {{ color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }}
 .judge {{ margin-top: 16px; max-width: 900px; color: var(--muted); }}
+.artifacts {{ display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }}
+.artifact-link {{
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 10px;
+}}
+.artifact-link:hover {{ border-color: var(--accent); color: var(--accent); }}
 .section-title {{ margin: 34px 0 10px; display: flex; justify-content: space-between; gap: 16px; align-items: end; }}
 .section-title h2 {{ margin: 0; font-size: 24px; }}
 .section-title p {{ margin: 0; color: var(--muted); }}
@@ -245,6 +259,13 @@ footer {{ color: var(--muted); margin-top: 34px; padding-top: 20px; border-top: 
       <div class="metric"><b>{funnel.get("judge_self_rating", "n/a")}</b><span>judge</span></div>
     </div>
     <p class="judge"><strong>Summary:</strong> {summary or "No shipped verdicts."} · {funnel.get("judge_summary", "")}</p>
+    <nav class="artifacts" aria-label="Demo artifacts">
+      <a class="artifact-link" href="briefing.md">Markdown</a>
+      <a class="artifact-link" href="verdicts.json">Verdicts JSON</a>
+      <a class="artifact-link" href="cost-breakdown.md">Cost Breakdown</a>
+      <a class="artifact-link" href="judge-trace.md">Judge Trace</a>
+      <a class="artifact-link" href="quality-log.jsonl">Quality Log</a>
+    </nav>
   </section>
   <section>
     <div class="section-title">
@@ -356,6 +377,137 @@ def write_report(
 
 def write_demo(output_dir: Path) -> dict[str, Path]:
     return write_report(output_dir, SAMPLE_VERDICTS, date=SAMPLE_DATE, funnel=SAMPLE_FUNNEL, include_trials=False)
+
+
+_DEFAULT_DEMO_PORT = 7771
+
+
+def serve_demo(output_dir: Path, *, port: int = _DEFAULT_DEMO_PORT) -> None:
+    """Write demo files and host them on a local HTTP server, then open the browser."""
+    import webbrowser
+    from http.server import HTTPServer
+
+    paths = write_demo(output_dir)
+    abs_dir = output_dir.resolve()
+    remote = _is_remote_env()
+
+    # Bind to 0.0.0.0 so VS Code / devcontainer port forwarding can reach it.
+    # Fall back to a random port if the preferred one is already in use.
+    try:
+        server = HTTPServer(("0.0.0.0", port), _demo_request_handler(abs_dir))
+    except OSError:
+        server = HTTPServer(("0.0.0.0", 0), _demo_request_handler(abs_dir))
+
+    actual_port = server.server_address[1]
+    url = f"http://localhost:{actual_port}/"
+
+    if not remote:
+        webbrowser.open(url)
+
+    _print_demo_next_steps(paths, url, remote=remote)
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.shutdown()
+
+
+def _demo_request_handler(abs_dir: Path):
+    from http.server import SimpleHTTPRequestHandler
+
+    class _Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(abs_dir), **kwargs)
+
+        def do_GET(self) -> None:
+            if self.path in {"", "/"}:
+                self.path = "/briefing.html"
+            super().do_GET()
+
+        def do_HEAD(self) -> None:
+            if self.path in {"", "/"}:
+                self.path = "/briefing.html"
+            super().do_HEAD()
+
+        def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+            pass
+
+    return _Handler
+
+
+def _is_remote_env() -> bool:
+    """Return True when running inside a devcontainer, Codespace, or headless Linux."""
+    import os
+    import sys
+
+    if any(os.environ.get(v) for v in ("REMOTE_CONTAINERS", "CODESPACE_NAME", "VSCODE_REMOTE_CONTAINERS_SESSION")):
+        return True
+    # Headless Linux with no display server — webbrowser.open() would be a no-op.
+    if sys.platform == "linux" and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+        return True
+    return False
+
+
+def _print_demo_next_steps(paths: dict[str, Path], url: str, *, remote: bool = False) -> None:
+    try:
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.text import Text
+
+        console = Console()
+        t = Text()
+        t.append("  Serving at  ", style="dim")
+        t.append(url, style="bold #24d6a8 underline")
+        t.append("  ·  Ctrl+C to stop\n\n", style="dim")
+        for check, name, desc in [
+            ("✓", paths["html"].name, "adoption receipts"),
+            ("✓", paths["json"].name, "raw verdict data"),
+            ("✓", paths["judge"].name, "quality trace"),
+        ]:
+            t.append(f"  {check}  ", style="#24d6a8")
+            t.append(name, style="bold")
+            t.append(f"   {desc}\n", style="dim")
+
+        if remote:
+            t.append("\n  Running inside a devcontainer / remote environment.\n", style="#e3c26f")
+            t.append("  VS Code should show a port-forward notification — or open\n", style="dim")
+            t.append("  the Ports panel (", style="dim")
+            t.append("Ctrl+Shift+P → Forward a Port", style="bold")
+            t.append(f"), add port ", style="dim")
+            t.append(str(url.split(":")[2].rstrip("/")), style="bold")
+            t.append(", then open:\n", style="dim")
+            t.append(f"  → {url}\n", style="bold #24d6a8")
+        else:
+            t.append("\n  Browser opened at ", style="dim")
+            t.append(url, style="bold #24d6a8")
+            t.append("\n", style="dim")
+
+        t.append("\n  Next steps:\n", style="bold #d9f7ff")
+        for cmd, hint in [
+            ("frontier-scout setup", "← Mission Control TUI"),
+            ("frontier-scout scan --dry-run", "← verdicts for this repo"),
+            ("ANTHROPIC_API_KEY=<key> frontier-scout scan", "← live scan"),
+        ]:
+            t.append("    ")
+            t.append(cmd, style="bold")
+            t.append(f"  {hint}\n", style="dim")
+        console.print(
+            Panel(
+                t,
+                title="[bold #24d6a8]◉ FRONTIER · SCOUT[/]  demo ready",
+                border_style="#25405c",
+                padding=(0, 1),
+            )
+        )
+    except ImportError:
+        print(f"\nDemo at {url} — Ctrl+C to stop")
+        if remote:
+            print(f"  devcontainer: forward port {url.split(':')[2].rstrip('/')} then open {url}")
+        print(f"  {paths['html']}")
+        print(f"  {paths['json']}")
+        print("\nNext: frontier-scout setup  |  frontier-scout scan --dry-run")
 
 
 def render_cost_breakdown(funnel: dict[str, Any]) -> str:
