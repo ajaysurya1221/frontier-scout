@@ -486,12 +486,20 @@ class ScoutTab(VerticalScroll):
         from frontier_scout.trials import run_trial
 
         stack = stack_from_profile(self.app_ref.diagnostics.profile)
-        result = run_trial(
-            v.get("tool_name", ""),
-            url=v.get("source_url"),
-            dry_run=True,
-            stack=stack,
-        )
+        try:
+            result = run_trial(
+                v.get("tool_name", ""),
+                url=v.get("source_url"),
+                dry_run=True,
+                stack=stack,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.app_ref.call_from_thread(
+                self.app_ref.log_event,
+                f"Trial failed for {v.get('tool_name', '?')}: {exc}",
+                "error",
+            )
+            return
         self.app_ref.call_from_thread(
             self.app_ref.log_event,
             f"Trial receipt for {result.get('tool_name')}: {result.get('receipt_path')}",
@@ -503,13 +511,21 @@ class ScoutTab(VerticalScroll):
         from frontier_scout.dep_trial import run_dependency_trial
 
         repo = Path(self.app_ref.diagnostics.repo)
-        result = run_dependency_trial(
-            f.get("package_name", ""),
-            from_version=f.get("from_version", ""),
-            to_version=f.get("to_version", ""),
-            repo=repo,
-            dry_run=True,
-        )
+        try:
+            result = run_dependency_trial(
+                f.get("package_name", ""),
+                from_version=f.get("from_version", ""),
+                to_version=f.get("to_version", ""),
+                repo=repo,
+                dry_run=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.app_ref.call_from_thread(
+                self.app_ref.log_event,
+                f"Dep trial failed for {f.get('package_name', '?')}: {exc}",
+                "error",
+            )
+            return
         self.app_ref.call_from_thread(
             self.app_ref.log_event,
             f"Dep trial receipt for {result.get('tool_name')}: {result.get('receipt_path')}",
@@ -561,6 +577,9 @@ class ScoutTab(VerticalScroll):
             self._render_detail(self._rows[0])
         else:
             self._render_empty()
+        # Keep the header count in sync with the visible rows.
+        status = self.query_one("#scout-status", Static)
+        status.update(f"[#6e8aa1]· {len(self._rows)} finding(s) · press [s] to rescout[/]")
         self.app_ref.log_event(f"Dismissed {tool}.", tone="warn")
 
     # ------------------------------------------------------------------
