@@ -90,6 +90,7 @@ class ScoutTab(VerticalScroll):
         Binding("s", "rescout", "Rescout", show=True),
         Binding("l", "live_scout", "Live scout", show=True),
         Binding("slash", "filter", "Filter", show=False),
+        Binding("c", "clear_memory", "Clear memory", show=True),
     ]
 
     def __init__(self, app_ref) -> None:  # type: ignore[no-untyped-def]
@@ -154,7 +155,13 @@ class ScoutTab(VerticalScroll):
         table = self.query_one("#scout-table", DataTable)
         table.clear()
         if not filtered:
-            table.add_row("[dim]—[/]", "[dim]no verdicts[/]", "[dim]—[/]", "[dim]—[/]", "[dim]—[/]")
+            table.add_row(
+                "[dim]—[/]",
+                "[dim]no verdicts yet — press [s] to scout (free + local)[/]",
+                "[dim]—[/]",
+                "[dim]—[/]",
+                "[dim]—[/]",
+            )
             self.app_ref.log_event(
                 f"Scout complete · 0 verdicts ({'live' if not dry_run else 'dry-run'})",
                 tone="muted",
@@ -334,6 +341,18 @@ class ScoutTab(VerticalScroll):
         self._live_armed = False
         self.app_ref.log_event("Live scout running…", tone="warn")
         self._scout_worker(dry_run=False)
+
+    def action_clear_memory(self) -> None:
+        from frontier_scout.store import clear_scans_for_repo
+
+        repo = self.app_ref.diagnostics.repo
+        removed = clear_scans_for_repo(repo)
+        self.app_ref.log_event(
+            f"Cleared scout memory for this repo · {removed} stored scan(s) removed.",
+            tone="warn",
+        )
+        # Re-run a fresh dry-run so the table reflects the cleared state.
+        self._scout_worker(dry_run=True)
 
     def action_filter(self) -> None:
         field = self.query_one("#scout-filter", Input)

@@ -63,8 +63,33 @@ _PY_EXTS = frozenset({".py"})
 _TS_EXTS = frozenset({".ts"})
 _TSX_EXTS = frozenset({".tsx"})
 _JS_EXTS = frozenset({".js", ".jsx", ".mjs", ".cjs"})
+_GO_EXTS = frozenset({".go"})
+_RUST_EXTS = frozenset({".rs"})
+_RUBY_EXTS = frozenset({".rb"})
 
 _MAX_FILE_BYTES = 1_000_000  # 1 MB per source file
+
+# Curated stdlib skiplists for the new languages. Small on purpose — the goal
+# is to drop the noisiest names, not be exhaustive.
+_GO_STDLIB: frozenset[str] = frozenset(
+    {
+        "fmt", "os", "io", "net", "time", "strings", "strconv", "errors", "context",
+        "bytes", "bufio", "encoding", "encoding/json", "encoding/xml", "encoding/base64",
+        "log", "log/slog", "math", "math/rand", "path", "path/filepath",
+        "regexp", "sort", "sync", "sync/atomic", "testing", "unicode", "unicode/utf8",
+        "runtime", "reflect", "embed", "flag", "go", "internal", "plugin",
+        "database/sql", "html", "html/template", "text/template", "net/http",
+        "net/url", "crypto", "crypto/rand", "crypto/sha256", "crypto/tls",
+    }
+)
+_RUST_STDLIB: frozenset[str] = frozenset({"std", "core", "alloc", "self", "super", "crate"})
+_RUBY_STDLIB: frozenset[str] = frozenset(
+    {
+        "json", "yaml", "uri", "net/http", "openssl", "digest", "base64", "csv",
+        "tempfile", "fileutils", "pathname", "logger", "set", "date", "time",
+        "securerandom", "ostruct", "open3", "etc", "io", "stringio",
+    }
+)
 
 
 class ImportEvidence(BaseModel):
@@ -72,6 +97,9 @@ class ImportEvidence(BaseModel):
 
     python_imports: dict[str, int] = Field(default_factory=dict)
     js_imports: dict[str, int] = Field(default_factory=dict)
+    go_imports: dict[str, int] = Field(default_factory=dict)
+    rust_imports: dict[str, int] = Field(default_factory=dict)
+    ruby_imports: dict[str, int] = Field(default_factory=dict)
     files_scanned: int = 0
     files_skipped: int = 0
     errors: int = 0
@@ -105,8 +133,16 @@ def scan_imports(
     except Exception:
         return ImportEvidence(available=False)
 
+    # Optional language parsers — degrade gracefully if a single grammar fails to load.
+    go_parser = _try_parser("go")
+    rust_parser = _try_parser("rust")
+    ruby_parser = _try_parser("ruby")
+
     py_counts: Counter[str] = Counter()
     js_counts: Counter[str] = Counter()
+    go_counts: Counter[str] = Counter()
+    rust_counts: Counter[str] = Counter()
+    ruby_counts: Counter[str] = Counter()
     files_scanned = 0
     files_skipped = 0
     errors = 0
@@ -151,6 +187,21 @@ def scan_imports(
             elif ext in _JS_EXTS:
                 for pkg in _extract_js(js_parser, text):
                     js_counts[pkg] += 1
+            elif ext in _GO_EXTS and go_parser is not None:
+                for pkg in _extract_go(go_parser, text):
+                    if pkg in _GO_STDLIB or pkg.split("/", 1)[0] in _GO_STDLIB:
+                        continue
+                    go_counts[pkg] += 1
+            elif ext in _RUST_EXTS and rust_parser is not None:
+                for pkg in _extract_rust(rust_parser, text):
+                    if pkg in _RUST_STDLIB:
+                        continue
+                    rust_counts[pkg] += 1
+            elif ext in _RUBY_EXTS and ruby_parser is not None:
+                for pkg in _extract_ruby(ruby_parser, text):
+                    if pkg in _RUBY_STDLIB:
+                        continue
+                    ruby_counts[pkg] += 1
             files_scanned += 1
         except Exception:
             errors += 1
@@ -158,6 +209,9 @@ def scan_imports(
     return ImportEvidence(
         python_imports=dict(py_counts),
         js_imports=dict(js_counts),
+        go_imports=dict(go_counts),
+        rust_imports=dict(rust_counts),
+        ruby_imports=dict(ruby_counts),
         files_scanned=files_scanned,
         files_skipped=files_skipped,
         errors=errors,
@@ -201,7 +255,15 @@ def _collect_source_files(repo: Path, *, max_depth: int) -> list[tuple[Path, flo
                 continue
             p = Path(entry.path)
             ext = p.suffix.lower()
-            if ext in _PY_EXTS or ext in _JS_EXTS or ext in _TS_EXTS or ext in _TSX_EXTS:
+            if (
+                ext in _PY_EXTS
+                or ext in _JS_EXTS
+                or ext in _TS_EXTS
+                or ext in _TSX_EXTS
+                or ext in _GO_EXTS
+                or ext in _RUST_EXTS
+                or ext in _RUBY_EXTS
+            ):
                 try:
                     st = entry.stat(follow_symlinks=False)
                     results.append((p, st.st_mtime))
@@ -324,3 +386,118 @@ def _walk(node: Any):
     yield node
     for i in range(node.child_count()):
         yield from _walk(node.child(i))
+
+
+def _try_parser(language: str) -> Any | None:
+    try:
+        from tree_sitter_language_pack import get_parser  # type: ignore
+
+        return get_parser(language)
+    except Exception:
+        return None
+
+
+def _extract_go(parser: Any, text: str) -> set[str]:
+    """Return imported Go package paths. Take the full module path; the
+    caller filters stdlib via the top-level segment."""
+
+    pkgs: set[str] = set()
+    try:
+        tree = parser.parse(text)
+    except Exception:
+        return pkgs
+    src_bytes = text.encode("utf-8", errors="replace")
+    root = tree.root_node()
+    for node in _walk(root):
+        kind = node.kind()
+        if kind != "import_spec":
+            continue
+        for i in range(node.child_count()):
+            child = node.child(i)
+            if child.kind() == "interpreted_string_literal":
+                raw = src_bytes[child.start_byte() : child.end_byte()].decode(errors="replace")
+                path = raw.strip().strip('"').strip()
+                if path:
+                    pkgs.add(path)
+                break
+    return pkgs
+
+
+def _extract_rust(parser: Any, text: str) -> set[str]:
+    """Return crate roots from ``use`` declarations."""
+
+    pkgs: set[str] = set()
+    try:
+        tree = parser.parse(text)
+    except Exception:
+        return pkgs
+    src_bytes = text.encode("utf-8", errors="replace")
+    root = tree.root_node()
+    for node in _walk(root):
+        if node.kind() != "use_declaration":
+            continue
+        crate = _rust_crate_root(node, src_bytes)
+        if crate:
+            pkgs.add(crate)
+    return pkgs
+
+
+def _rust_crate_root(use_node: Any, src_bytes: bytes) -> str | None:
+    """Walk down a ``use_declaration`` to find the leftmost identifier."""
+
+    cur = use_node
+    while cur is not None and cur.child_count() > 0:
+        argument = None
+        for i in range(cur.child_count()):
+            child = cur.child(i)
+            if child.kind() in ("scoped_identifier", "scoped_use_list", "use_as_clause", "identifier"):
+                argument = child
+                break
+        if argument is None:
+            break
+        if argument.kind() == "identifier":
+            return src_bytes[argument.start_byte() : argument.end_byte()].decode(errors="replace")
+        # Recurse: scoped_identifier/scoped_use_list have a 'path' child of the same family.
+        cur = argument
+    return None
+
+
+def _extract_ruby(parser: Any, text: str) -> set[str]:
+    """Return the string arg of ``require`` / ``require_relative`` calls."""
+
+    pkgs: set[str] = set()
+    try:
+        tree = parser.parse(text)
+    except Exception:
+        return pkgs
+    src_bytes = text.encode("utf-8", errors="replace")
+    root = tree.root_node()
+    for node in _walk(root):
+        if node.kind() != "call":
+            continue
+        method_name = None
+        args_node = None
+        for i in range(node.child_count()):
+            child = node.child(i)
+            if child.kind() == "identifier" and method_name is None:
+                method_name = src_bytes[child.start_byte() : child.end_byte()].decode(errors="replace")
+            elif child.kind() == "argument_list":
+                args_node = child
+        if method_name not in ("require", "require_relative"):
+            continue
+        if method_name == "require_relative":
+            continue  # local path, not a package
+        if args_node is None:
+            continue
+        for j in range(args_node.child_count()):
+            arg = args_node.child(j)
+            if arg.kind() == "string":
+                for k in range(arg.child_count()):
+                    content = arg.child(k)
+                    if content.kind() == "string_content":
+                        raw = src_bytes[content.start_byte() : content.end_byte()].decode(errors="replace")
+                        if raw:
+                            pkgs.add(raw)
+                        break
+                break
+    return pkgs

@@ -959,6 +959,53 @@ def save_pack_override(
         return int(cur.lastrowid)
 
 
+def clear_scans_for_repo(repo: Path | str) -> int:
+    """Delete every stored scan + verdict for ``repo``. Returns the number of
+    scan rows removed. Idempotent."""
+
+    path = db_path()
+    if not path.exists():
+        return 0
+    target = str(Path(str(repo)).expanduser().resolve())
+    with sqlite3.connect(path) as conn:
+        cur = conn.execute("DELETE FROM scans WHERE repo = ?", (target,))
+        return cur.rowcount or 0
+
+
+def clear_all_scans() -> int:
+    """Delete every stored scan + verdict. Returns the number of rows removed."""
+
+    path = db_path()
+    if not path.exists():
+        return 0
+    with sqlite3.connect(path) as conn:
+        cur = conn.execute("DELETE FROM scans")
+        return cur.rowcount or 0
+
+
+def previous_scan_verdicts(*, repo: str) -> list[dict[str, Any]]:
+    """Return the previous-to-latest scan's verdicts for ``repo``. Used by the
+    notifications diff."""
+
+    path = db_path()
+    if not path.exists():
+        return []
+    resolved = str(Path(repo).expanduser().resolve())
+    with sqlite3.connect(path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT payload_json FROM scans WHERE repo = ? ORDER BY id DESC LIMIT 2",
+            (resolved,),
+        ).fetchall()
+    if len(rows) < 2:
+        return []
+    try:
+        payload = json.loads(rows[1]["payload_json"])
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return list(payload.get("verdicts") or [])
+
+
 def setup_state_path() -> Path:
     return home_dir() / "setup_state.json"
 

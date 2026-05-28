@@ -50,8 +50,16 @@ def build_parser() -> argparse.ArgumentParser:
     init_cmd = sub.add_parser("init", help="Create the local Frontier Scout home and print detected stack signals.")
     init_cmd.add_argument("--repo", default=".", help="Repository to inspect for stack signals.")
 
-    setup_cmd = sub.add_parser("setup", help="Open the first-run terminal setup mission control.")
-    setup_cmd.add_argument("--repo", default=".", help="Repository to inspect for local setup signals.")
+    setup_cmd = sub.add_parser(
+        "setup",
+        help="Run the global setup wizard, or with --repo / --plain / --json launch Mission Control directly.",
+    )
+    setup_cmd.add_argument(
+        "--wizard",
+        action="store_true",
+        help="Force the wizard even if other flags are present.",
+    )
+    setup_cmd.add_argument("--repo", default=None, help="Repository to inspect for local setup signals (launches Mission Control).")
     setup_cmd.add_argument("--plain", action="store_true", help="Use stable plain-text setup output.")
     setup_cmd.add_argument("--json", action="store_true", help="Print setup diagnostics as JSON.")
     setup_cmd.add_argument(
@@ -87,7 +95,37 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_false",
         help="Do not auto-run the dry-run scout on the Scout tab.",
     )
+    setup_cmd.add_argument(
+        "--automation",
+        action="store_true",
+        help="Wizard: non-interactive automation mode (use with --repo and --cron).",
+    )
+    setup_cmd.add_argument(
+        "--cron",
+        default="@daily",
+        help="Wizard: cron expression for automation mode (default @daily).",
+    )
     setup_cmd.set_defaults(scan_imports=True, show_splash=True, auto_scout=True)
+
+    sub.add_parser("open", help="Open Mission Control on the current repo (explicit TUI launcher).").add_argument(
+        "--repo", default=".", help="Repo path."
+    )
+
+    cron_cmd = sub.add_parser("cron", help="Headless schedule executor (called by cron-runner.sh).")
+    cron_sub = cron_cmd.add_subparsers(dest="cron_command")
+    cron_sub.add_parser("run", help="Run any due schedules immediately.")
+
+    doctor_cmd = sub.add_parser("doctor", help="Self-diagnostics for your Frontier Scout install.")
+    doctor_cmd.add_argument("--json", action="store_true", help="Emit JSON instead of formatted text.")
+
+    clear_cmd = sub.add_parser("clear-history", help="Clear stored scout history.")
+    clear_cmd.add_argument("--repo", help="Only this repo (defaults to current directory).")
+    clear_cmd.add_argument("--all", action="store_true", help="Clear all stored scans across every repo.")
+
+    notif_cmd = sub.add_parser("notifications", help="Inspect Frontier Scout notifications.")
+    notif_sub = notif_cmd.add_subparsers(dest="notifications_command")
+    notif_sub.add_parser("list", help="List recent notifications.")
+    notif_sub.add_parser("clear", help="Delete every notification.")
 
     profile_cmd = sub.add_parser("profile", help="Build a local Scout Profile for repo-aware recommendations.")
     profile_cmd.add_argument("--repo", default=".", help="Repository to inspect for local signals.")
@@ -231,6 +269,41 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 0
     if args.command == "setup":
+        # Decide: wizard or TUI?
+        # - If --wizard explicitly passed → wizard.
+        # - If --plain or --json passed → TUI/diagnostic (back-compat).
+        # - If --repo passed → TUI on that repo (back-compat).
+        # - If --automation flag passed → headless wizard.
+        # - Else → interactive wizard.
+        want_tui = bool(args.repo) or args.plain or args.json
+        if args.wizard or (not want_tui and not args.automation):
+            from .wizard.app import WizardApp
+
+            if not (sys.stdin.isatty() and sys.stdout.isatty()):
+                print("setup wizard requires an interactive TTY; falling back to ad-hoc defaults.")
+                from .wizard.headless import run_headless
+
+                run_headless(mode="adhoc")
+                return 0
+            app = WizardApp()
+            result = app.run()
+            if result == "open-tui":
+                from .tui.runner import run_setup as _run_setup
+
+                return _run_setup(repo=Path("."))
+            return 0
+        if args.automation:
+            from .wizard.headless import run_headless
+
+            if not args.repo:
+                parser.error("--automation requires --repo")
+            payload = run_headless(
+                mode="automation",
+                repos=[args.repo],
+                cron_expr=args.cron,
+            )
+            print(json.dumps(payload, indent=2, default=str))
+            return 0
         from .tui.runner import run_setup
 
         packs = (
@@ -249,6 +322,56 @@ def main(argv: list[str] | None = None) -> int:
             initial_tab=args.tab,
             auto_scout=args.auto_scout,
         )
+    if args.command == "open":
+        from .tui.runner import run_setup as _run_setup
+
+        return _run_setup(repo=Path(args.repo))
+    if args.command == "cron":
+        if args.cron_command == "run":
+            from .scheduling import run_due
+
+            results = run_due()
+            print(json.dumps({"results": results}, indent=2, default=str))
+            return 0
+        parser.error("cron requires a subcommand (e.g. `cron run`).")
+        return 2
+    if args.command == "doctor":
+        from .doctor import render_json, render_text, run_doctor
+
+        checks = run_doctor()
+        if args.json:
+            print(render_json(checks))
+        else:
+            print(render_text(checks), end="")
+        return 1 if any(c.status == "fail" for c in checks) else 0
+    if args.command == "clear-history":
+        from .store import clear_all_scans, clear_scans_for_repo
+
+        if args.all:
+            removed = clear_all_scans()
+            print(f"Cleared {removed} scan(s) across all repos.")
+            return 0
+        repo = args.repo or "."
+        removed = clear_scans_for_repo(repo)
+        print(f"Cleared {removed} scan(s) for {Path(repo).resolve()}.")
+        return 0
+    if args.command == "notifications":
+        from .notifications import clear_all, list_notifications
+
+        if args.notifications_command == "clear":
+            count = clear_all()
+            print(f"Cleared {count} notification(s).")
+            return 0
+        notifications = list_notifications()
+        if not notifications:
+            print("No notifications.")
+            return 0
+        for n in notifications:
+            unread = "" if n.get("read") else " [UNREAD]"
+            print(f"{n.get('timestamp', '—')}  {n.get('repo', '—')}{unread}")
+            for v in (n.get("new_verdicts") or [])[:5]:
+                print(f"  {str(v.get('verdict','—')).upper():<7} {v.get('tool_name','—')}")
+        return 0
     if args.command == "init":
         home = init_home()
         stack = detect_stack(Path(args.repo))

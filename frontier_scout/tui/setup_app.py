@@ -13,7 +13,10 @@ from textual.containers import Container, Vertical
 from textual.widgets import RichLog, Static, TabbedContent, TabPane
 
 from frontier_scout import __version__
+from frontier_scout.notifications import unread_count
+from frontier_scout.tui.diff_modal import DiffScreen
 from frontier_scout.tui.modals import HelpScreen, QuitConfirmScreen, RepoPathPromptScreen
+from frontier_scout.tui.notifications_modal import NotificationsScreen
 from frontier_scout.tui.setup_diagnostics import SetupDiagnostics, setup_diagnostics
 from frontier_scout.tui.tabs import DEFAULT_TAB, TAB_REGISTRY, TAB_SLUGS
 from frontier_scout.tui.tabs.deps_tab import DepsTab
@@ -101,6 +104,8 @@ class SetupApp(App[None]):
         Binding("slash", "edit_repo", "Repo path"),
         Binding("/", "edit_repo", "Repo path"),
         Binding("ctrl+l", "clear_log", "Clear log"),
+        Binding("ctrl+n", "open_notifications", "Notifications"),
+        Binding("d", "open_diff", "Diff vs last scan", show=False),
         Binding("1", "jump_tab(0)", "Scout", show=False),
         Binding("2", "jump_tab(1)", "Trials", show=False),
         Binding("3", "jump_tab(2)", "Receipts", show=False),
@@ -171,17 +176,33 @@ class SetupApp(App[None]):
                 tone="warn",
             )
         self.log_event(f"Ready · repo {self.diagnostics.repo}", tone="muted")
+        self._remember_recent_repo(self.diagnostics.repo)
+
+    def _remember_recent_repo(self, repo: str) -> None:
+        from frontier_scout.store import read_setup_state, write_setup_state
+
+        state = read_setup_state()
+        recent = [r for r in (state.get("recent_repos") or []) if r != repo]
+        recent.insert(0, repo)
+        state["recent_repos"] = recent[:10]
+        write_setup_state(state)
 
     # ------------------------------------------------------------------
     # Bars
     # ------------------------------------------------------------------
 
     def _brand_bar_text(self) -> str:
+        unread = unread_count()
+        chip = (
+            f"   [#e3c26f bold]({unread} new)[/]"
+            if unread > 0
+            else ""
+        )
         return (
             f"[#24d6a8 bold]◉ FRONTIER · SCOUT[/]  "
             f"[#6e8aa1]v{__version__}[/]   "
             f"[#6e8aa1]the radar for latest AI releases that fit your repo[/]   "
-            f"[#7aa6ff]📁 {self.diagnostics.repo}[/]"
+            f"[#7aa6ff]📁 {self.diagnostics.repo}[/]{chip}"
         )
 
     def _analyse_bar_text(self) -> str:
@@ -302,6 +323,40 @@ class SetupApp(App[None]):
             return
         tc = self.query_one(TabbedContent)
         tc.active = slug
+
+    def action_open_notifications(self) -> None:
+        self.push_screen(NotificationsScreen(), self._notifications_closed)
+
+    def _notifications_closed(self, _: object) -> None:
+        # Refresh the brand bar chip in case unread count changed.
+        self.query_one("#brand-bar", Static).update(self._brand_bar_text())
+
+    def _handle_picker_choice(self, value: str) -> None:
+        """Called by the runner when the user picks a repo from the modal."""
+
+        path = Path(value).expanduser()
+        try:
+            resolved = path.resolve()
+        except OSError:
+            self._set_status_banner(f"Invalid path: {value}", tone="error")
+            return
+        if not resolved.exists() or not resolved.is_dir():
+            self._set_status_banner(f"Not a directory: {resolved}", tone="error")
+            return
+        self._set_status_banner(f"Scanning {resolved}…", tone="info")
+        self._refresh_diagnostics(resolved)
+
+    def action_open_diff(self) -> None:
+        from frontier_scout.scout import run_scan
+        from frontier_scout.store import previous_scan_verdicts
+
+        current = run_scan(
+            repo=Path(self.diagnostics.repo),
+            dry_run=True,
+            persist=False,
+        ).get("verdicts") or []
+        previous = previous_scan_verdicts(repo=self.diagnostics.repo)
+        self.push_screen(DiffScreen(current=current, previous=previous))
 
 
 def _join_or(items: list[str], fallback: str) -> str:
