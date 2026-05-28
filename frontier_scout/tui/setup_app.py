@@ -339,7 +339,7 @@ class SetupApp(App[None]):
             verdicts = list(payload.get("verdicts") or [])
             date = str(payload.get("date") or "latest")
             repo_id_path.write_text(render_html(verdicts, date=date, funnel=payload))
-            webbrowser.open(f"file://{repo_id_path.resolve()}")
+            webbrowser.open(repo_id_path.resolve().as_uri())
             self.log_event(f"Opened report: {repo_id_path}", tone="ok")
         except Exception as exc:  # noqa: BLE001
             self.log_event(f"Could not render report: {exc}", tone="error")
