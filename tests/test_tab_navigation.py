@@ -33,7 +33,12 @@ def test_default_landing_tab_is_scout(tmp_path, monkeypatch):
 def test_number_key_jumps_to_tab(tmp_path, monkeypatch):
     """Only 2 tabs in v1.2 — action_jump_tab(1) → Settings, action_jump_tab(0)
     → Scout. We invoke the action directly because the DataTable on Scout
-    auto-focuses on mount and may swallow digit keystrokes in pilot tests."""
+    auto-focuses on mount and may swallow digit keystrokes in pilot tests.
+
+    Textual schedules the visible-tab switch through a reactive watcher
+    after ``tc.active = slug`` returns, so we poll a few times rather than
+    assuming a single ``pilot.pause()`` is enough on slower CI runners.
+    """
 
     async def run() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
@@ -41,16 +46,21 @@ def test_number_key_jumps_to_tab(tmp_path, monkeypatch):
         from frontier_scout.tui.setup_app import SetupApp
         from textual.widgets import TabbedContent
 
+        async def wait_for_active(expected: str) -> None:
+            tc = app.query_one(TabbedContent)
+            for _ in range(40):
+                await pilot.pause()
+                if tc.active == expected:
+                    return
+            raise AssertionError(f"expected active tab {expected!r}, got {tc.active!r}")
+
         app = SetupApp(diagnostics)
         async with app.run_test() as pilot:
             await pilot.pause()
             app.action_jump_tab(1)
-            await pilot.pause()
-            tc = app.query_one(TabbedContent)
-            assert tc.active == "settings"
+            await wait_for_active("settings")
             app.action_jump_tab(0)
-            await pilot.pause()
-            assert tc.active == "scout"
+            await wait_for_active("scout")
 
     asyncio.run(run())
 
