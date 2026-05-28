@@ -4,6 +4,116 @@
 
 - No unreleased changes yet.
 
+## 1.2.0 - 2026-05-28
+
+The honest fix. v1.1 accreted too many features; in real use the
+splash lied about "press any key", action buttons returned *"No
+verdict highlighted"*, the detail panel froze on *"Scouting…"*, Deps
+showed `—` for every reason, Incident crashed on missing paths, and
+Reports only ever rendered the demo. v1.2 strips the TUI to two tabs,
+fixes every defect, and surfaces the *why* behind every recommendation
+so a college intern can drive it without help.
+
+### What's gone from the TUI
+
+The CLI keeps everything; only the TUI shape changes.
+
+- **Splash deleted.** No more "press any key — auto-continue" lie. Cold
+  launch drops from ~5s to <1s.
+- **Welcome modal deleted.** First-run friction removed.
+- **Incident tab deleted** (demo, not a user workflow). CLI:
+  `frontier-scout incident demo`.
+- **Packs tab deleted** (internal concept). CLI: `frontier-scout packs
+  list/show/refresh`.
+- **Trials tab deleted** (folded into Scout's per-row action). CLI:
+  `frontier-scout trial …`.
+- **Receipts tab deleted** (read via CLI / SQLite). CLI: see
+  `frontier-scout dossier`.
+- **Reports tab deleted** (one clickable link in the brand bar opens
+  the auto-generated report). CLI: `frontier-scout report`.
+- **Guard tab deleted** (folded into Scout as a banner when findings
+  need attention). CLI: `frontier-scout guard`.
+- **Deps tab deleted** (folded into Scout — dependency upgrades appear
+  in the same verdict list as AI tools). CLI: `frontier-scout deps
+  scan`.
+- **"Evaluate URL" button + Input deleted** — every verdict already
+  carries `source_url`, so asking the user to paste was friction for
+  nothing. CLI: `frontier-scout evaluate <url>` for ad-hoc URLs.
+
+### Defects closed
+
+- **"No verdict highlighted" on every action.** The DataTable cursor
+  now auto-positions to row 0 the moment verdicts load, and buttons
+  fall back to row 0 if no cursor is set.
+- **Detail panel stuck on "Scouting…".** The first verdict's full
+  reasoning renders automatically when the scout completes.
+- **Strike-throughs in the verdict list.** Dismissed verdicts are
+  filtered out cleanly. `[c]` clears history + dismissals so the user
+  always sees a fresh state.
+- **Deps Why / Severity always "—".** The Deps renderer was reading
+  fields that don't exist on `DependencyFinding`. Now it renders the
+  real fields: classification, classifier_confidence, evidence quotes
+  joined as the "why", verdict, repo_fit, advisory IDs, next safe step.
+- **Incident `FileNotFoundError`.** The tab is gone. CLI runs from the
+  source repo as before.
+- **Reports only showed demo.** Auto-scout now uses `persist=True`,
+  the brand bar's `📊 report` link renders a real HTML report for this
+  repo. Press `r` from anywhere in the TUI to open it.
+- **Settings handlers crashing the tab.** Every renderer and handler
+  is wrapped in try/except; broken filesystems show
+  `[rendering error: …]` inline instead of crashing.
+- **5–6s cold launch.** Splash gone (saves 1.4s) and the import scan
+  is deferred until the Scout tab's worker fires after mount. Cold
+  launch now ~0.8s in plain mode.
+- **Repo picker not firing on Desktop.** Splash gone → picker mounts
+  reliably when `not looks_like_repo(repo)`.
+
+### What the Scout tab does now
+
+One unified list of findings drawn from two engines:
+
+- AI-tool verdicts (ADOPT / TRIAL / ASSESS / HOLD) from `run_scan`.
+- Dependency upgrade findings from `run_dependency_scan`.
+
+Both render in the same `DataTable` with `category` column showing
+their source (`mcp_server`, `dependency:security`, etc.). A top-of-tab
+toggle `[× AI tools] [× Dependencies]` controls scope (persisted to
+`setup_state.json`). A guard banner appears inline above the table
+when any tool needs a sandbox receipt — with the *why* and a one-press
+`Try locally` to write it.
+
+The detail panel default-populates with the first verdict's full
+reasoning: **What** · **Why we suggest this** · **Why it fits your
+repo** (the personalised `fit_reasons`, finally surfaced) · **Risk
+reasoning** · **Next safe step** · **Source URL**.
+
+Three actions: `[Try locally]` (Enter), `[Open URL]`, `[Dismiss]`.
+
+### Keymap
+
+```
+↑ ↓        choose a finding
+Enter      Try locally (writes a dry-run receipt)
+s          rescout
+c          clear scout memory + dismissals for this repo
+r          open scout HTML report
+/          change repo path
+?          help
+1 / 2      Scout / Settings
+q          quit
+```
+
+### Tests
+
+172 passing (down from 179 because tests for deleted tabs were
+removed). All new tests verify the fixed defects: auto-cursor on
+load, detail panel populated, settings panels never crash, etc.
+
+### CLI changes
+
+None — every removed TUI surface still has its CLI command. New
+runtime dep from v1.1 (`croniter`) stays.
+
 ## 1.1.0 - 2026-05-27
 
 The head-turner release. `frontier-scout setup` becomes a global config

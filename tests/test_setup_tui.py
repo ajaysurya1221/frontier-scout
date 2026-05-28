@@ -310,21 +310,23 @@ def test_setup_too_small_terminal_message(tmp_path, monkeypatch):
     asyncio.run(run_test())
 
 
-def test_splash_screen_dismisses_on_keypress(tmp_path, monkeypatch):
+def test_splash_no_longer_mounted_in_v12(tmp_path, monkeypatch):
+    """v1.2 deletes the splash. `show_splash=True` is accepted for back-compat
+    but the splash never mounts — the main screen is visible immediately."""
+
     async def run_test() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
         diagnostics = setup_diagnostics(_seed_repo(tmp_path / "repo"), ollama_timeout_s=0.001)
 
         from frontier_scout.tui.setup_app import SetupApp
-        from frontier_scout.tui.splash import SplashScreen
+        from textual.widgets import TabbedContent
 
         app = SetupApp(diagnostics, show_splash=True)
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert isinstance(app.screen, SplashScreen)
-            await pilot.press("enter")
-            await pilot.pause()
-            assert not isinstance(app.screen, SplashScreen)
+            # The TabbedContent is reachable immediately — no splash overlay.
+            tc = app.query_one(TabbedContent)
+            assert tc.active == "scout"
 
     asyncio.run(run_test())
 

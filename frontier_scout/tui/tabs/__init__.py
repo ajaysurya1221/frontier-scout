@@ -1,9 +1,7 @@
-"""Mission Control tab registry.
+"""Mission Control tab registry — v1.2 simplified to Scout + Settings.
 
-Each tab module under this package exports one widget class that can be
-mounted inside a Textual ``TabPane``. The registry below names every tab
-and the title shown in the tab strip; ``setup_app`` consumes it to build
-the ``TabbedContent`` host.
+Every other surface (Incident, Packs, Trials, Receipts, Reports, Guard,
+Deps) lives on the CLI; the TUI focuses on the scout-and-act flow.
 """
 
 from __future__ import annotations
@@ -19,15 +17,8 @@ class TabSpec:
 
 
 TAB_REGISTRY: list[TabSpec] = [
-    TabSpec("scout", "⌖ Scout", "Discover the latest AI releases that fit this repo"),
-    TabSpec("trials", "⚡ Trials", "Run and review try-before-trust receipts"),
-    TabSpec("receipts", "📋 Receipts", "Local evidence ledger for evaluated tools"),
-    TabSpec("guard", "🛡 Guard", "Local policy checks for risky adoption evidence"),
-    TabSpec("reports", "📊 Reports", "Render static radar reports"),
-    TabSpec("packs", "🧰 Packs", "Living Scout Packs — seeds, candidates, discovery"),
-    TabSpec("deps", "📦 Deps", "Dependency intelligence — find meaningful upgrades"),
-    TabSpec("incident", "🪐 Incident", "Engineering Scout incident-forensics demo"),
-    TabSpec("settings", "⚙ Settings", "Policy, environment, and system state"),
+    TabSpec("scout", "⌖ Scout", "Discover and act on AI tools + dependency upgrades that fit your repo"),
+    TabSpec("settings", "⚙ Settings", "Policy, environment, automation, and history"),
 ]
 
 TAB_SLUGS = [spec.slug for spec in TAB_REGISTRY]

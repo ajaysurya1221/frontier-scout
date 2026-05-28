@@ -1,7 +1,13 @@
-"""Mission Control v1 — tabbed, scout-first, all-features-in-one-screen."""
+"""Mission Control v1.2 — the honest fix.
+
+No splash, no welcome modal, no demo features in the TUI. Two tabs:
+Scout (the entire product) and Settings. Brand bar gains a clickable
+'open report' link.
+"""
 
 from __future__ import annotations
 
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 from typing import ClassVar
@@ -9,7 +15,7 @@ from typing import ClassVar
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Vertical
+from textual.containers import Container
 from textual.widgets import RichLog, Static, TabbedContent, TabPane
 
 from frontier_scout import __version__
@@ -19,19 +25,12 @@ from frontier_scout.tui.modals import HelpScreen, QuitConfirmScreen, RepoPathPro
 from frontier_scout.tui.notifications_modal import NotificationsScreen
 from frontier_scout.tui.setup_diagnostics import SetupDiagnostics, setup_diagnostics
 from frontier_scout.tui.tabs import DEFAULT_TAB, TAB_REGISTRY, TAB_SLUGS
-from frontier_scout.tui.tabs.deps_tab import DepsTab
-from frontier_scout.tui.tabs.guard_tab import GuardTab
-from frontier_scout.tui.tabs.incident_tab import IncidentTab
-from frontier_scout.tui.tabs.packs_tab import PacksTab
-from frontier_scout.tui.tabs.receipts_tab import ReceiptsTab
-from frontier_scout.tui.tabs.reports_tab import ReportsTab
 from frontier_scout.tui.tabs.scout_tab import ScoutTab
 from frontier_scout.tui.tabs.settings_tab import SettingsTab
-from frontier_scout.tui.tabs.trials_tab import TrialsTab
 
 
 class SetupApp(App[None]):
-    """The v1 tabbed Mission Control."""
+    """Two-tab Mission Control: Scout + Settings."""
 
     CSS = """
     Screen {
@@ -72,29 +71,18 @@ class SetupApp(App[None]):
         padding: 1 1 0 1;
     }
 
-    Tabs {
-        background: #0d1622;
-    }
-
-    Tab {
-        color: #6e8aa1;
-    }
-
-    Tab.-active {
-        color: #24d6a8;
-        text-style: bold;
-    }
+    Tabs { background: #0d1622; }
+    Tab { color: #6e8aa1; }
+    Tab.-active { color: #24d6a8; text-style: bold; }
 
     #result-log {
-        height: 8;
+        height: 6;
         border: round #25405c;
         background: #0d1622;
         color: #d9f7ff;
     }
 
-    #result-log:focus-within {
-        border: round #24d6a8;
-    }
+    #result-log:focus-within { border: round #24d6a8; }
     """
 
     BINDINGS: ClassVar = [
@@ -103,30 +91,23 @@ class SetupApp(App[None]):
         Binding("?", "show_help", "Help"),
         Binding("slash", "edit_repo", "Repo path"),
         Binding("/", "edit_repo", "Repo path"),
-        Binding("ctrl+l", "clear_log", "Clear log"),
-        Binding("ctrl+n", "open_notifications", "Notifications"),
+        Binding("ctrl+l", "clear_log", "Clear log", show=False),
+        Binding("ctrl+n", "open_notifications", "Notifications", show=False),
         Binding("d", "open_diff", "Diff vs last scan", show=False),
+        Binding("r", "open_report", "Open report", show=False),
         Binding("1", "jump_tab(0)", "Scout", show=False),
-        Binding("2", "jump_tab(1)", "Trials", show=False),
-        Binding("3", "jump_tab(2)", "Receipts", show=False),
-        Binding("4", "jump_tab(3)", "Guard", show=False),
-        Binding("5", "jump_tab(4)", "Reports", show=False),
-        Binding("6", "jump_tab(5)", "Packs", show=False),
-        Binding("7", "jump_tab(6)", "Deps", show=False),
-        Binding("8", "jump_tab(7)", "Incident", show=False),
-        Binding("9", "jump_tab(8)", "Settings", show=False),
+        Binding("2", "jump_tab(1)", "Settings", show=False),
     ]
 
     def __init__(
         self,
         diagnostics: SetupDiagnostics,
         *,
-        show_splash: bool = True,
+        show_splash: bool = True,  # accepted but ignored — splash deleted in v1.2.
         initial_tab: str = DEFAULT_TAB,
     ) -> None:
         super().__init__()
         self.diagnostics = diagnostics
-        self._show_splash = show_splash
         self._initial_tab = initial_tab if initial_tab in TAB_SLUGS else DEFAULT_TAB
 
     # ------------------------------------------------------------------
@@ -147,30 +128,15 @@ class SetupApp(App[None]):
         yield RichLog(id="result-log", markup=True, auto_scroll=True, wrap=True)
 
     def _build_tab(self, slug: str) -> Container:
-        mapping = {
-            "scout": ScoutTab,
-            "trials": TrialsTab,
-            "receipts": ReceiptsTab,
-            "guard": GuardTab,
-            "reports": ReportsTab,
-            "packs": PacksTab,
-            "deps": DepsTab,
-            "incident": IncidentTab,
-            "settings": SettingsTab,
-        }
-        cls = mapping[slug]
-        return cls(self)
+        mapping = {"scout": ScoutTab, "settings": SettingsTab}
+        return mapping[slug](self)
 
     def on_mount(self) -> None:
-        if self._show_splash:
-            from frontier_scout.tui.splash import SplashScreen
-
-            self.push_screen(SplashScreen())
         self._set_status_banner(
             "Local-first. No repo content sent to an LLM. No tools installed.",
             tone="ok",
         )
-        if self.size.width < 110 or self.size.height < 30:
+        if self.size.width < 100 or self.size.height < 28:
             self._set_status_banner(
                 "Terminal is small — resize for the full layout, or run: frontier-scout setup --plain",
                 tone="warn",
@@ -202,7 +168,8 @@ class SetupApp(App[None]):
             f"[#24d6a8 bold]◉ FRONTIER · SCOUT[/]  "
             f"[#6e8aa1]v{__version__}[/]   "
             f"[#6e8aa1]the radar for latest AI releases that fit your repo[/]   "
-            f"[#7aa6ff]📁 {self.diagnostics.repo}[/]{chip}"
+            f"[#7aa6ff]📁 {self.diagnostics.repo}[/]   "
+            f"[#24d6a8 underline]📊 report (press r)[/]{chip}"
         )
 
     def _analyse_bar_text(self) -> str:
@@ -228,7 +195,7 @@ class SetupApp(App[None]):
         return f"{line1}\n{line2}"
 
     # ------------------------------------------------------------------
-    # Status / log helpers (called by tabs)
+    # Status / log helpers
     # ------------------------------------------------------------------
 
     def _set_status_banner(self, text: str, *, tone: str = "ok") -> None:
@@ -252,7 +219,7 @@ class SetupApp(App[None]):
         log.write(f"[#25405c]{ts}[/] [{color}]{message}[/]")
 
     # ------------------------------------------------------------------
-    # Repo-path modal
+    # Modal/action helpers
     # ------------------------------------------------------------------
 
     def action_edit_repo(self) -> None:
@@ -274,17 +241,14 @@ class SetupApp(App[None]):
             self._set_status_banner("Repo path unchanged.", tone="muted")
             return
         if not resolved.exists() or not resolved.is_dir():
-            self._set_status_banner(
-                f"Not a directory: {resolved}.", tone="error"
-            )
+            self._set_status_banner(f"Not a directory: {resolved}.", tone="error")
             return
         self._set_status_banner(f"Scanning {resolved}…", tone="info")
         self._refresh_diagnostics(resolved)
 
     @work(thread=True, exclusive=True)
     def _refresh_diagnostics(self, repo: Path) -> None:
-        selected = list(self.diagnostics.scout_packs_selected)
-        new_diag = setup_diagnostics(repo, selected_packs=selected, scan_imports=True)
+        new_diag = setup_diagnostics(repo, scan_imports=True)
         self.call_from_thread(self._apply_diagnostics, new_diag)
 
     def _apply_diagnostics(self, new_diag: SetupDiagnostics) -> None:
@@ -296,9 +260,32 @@ class SetupApp(App[None]):
         )
         self.log_event(f"Diagnostics refreshed for {new_diag.repo}", tone="muted")
 
-    # ------------------------------------------------------------------
-    # Quit / help / log / tab jumps
-    # ------------------------------------------------------------------
+    def _handle_picker_choice(self, value: str) -> None:
+        """Called by the runner when the user picks a repo from the modal."""
+
+        path = Path(value).expanduser()
+        try:
+            resolved = path.resolve()
+        except OSError:
+            self._set_status_banner(f"Invalid path: {value}", tone="error")
+            return
+        if not resolved.exists() or not resolved.is_dir():
+            self._set_status_banner(f"Not a directory: {resolved}", tone="error")
+            return
+        self._set_status_banner(f"Scanning {resolved}…", tone="info")
+        self._refresh_diagnostics(resolved)
+
+    def action_open_diff(self) -> None:
+        from frontier_scout.scout import run_scan
+        from frontier_scout.store import previous_scan_verdicts
+
+        current = run_scan(
+            repo=Path(self.diagnostics.repo),
+            dry_run=True,
+            persist=False,
+        ).get("verdicts") or []
+        previous = previous_scan_verdicts(repo=self.diagnostics.repo)
+        self.push_screen(DiffScreen(current=current, previous=previous))
 
     def action_request_quit(self) -> None:
         self.push_screen(QuitConfirmScreen(), self._handle_quit_choice)
@@ -328,35 +315,34 @@ class SetupApp(App[None]):
         self.push_screen(NotificationsScreen(), self._notifications_closed)
 
     def _notifications_closed(self, _: object) -> None:
-        # Refresh the brand bar chip in case unread count changed.
         self.query_one("#brand-bar", Static).update(self._brand_bar_text())
 
-    def _handle_picker_choice(self, value: str) -> None:
-        """Called by the runner when the user picks a repo from the modal."""
+    def action_open_report(self) -> None:
+        """Open the most recently rendered scout report for this repo,
+        regenerating it from the latest persisted scan if needed."""
 
-        path = Path(value).expanduser()
+        from frontier_scout.report import render_html
+        from frontier_scout.store import home_dir, latest_scan
+
+        repo = Path(self.diagnostics.repo)
+        report_dir = home_dir() / "reports"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        repo_id_path = report_dir / f"{repo.name}.html"
+        payload = latest_scan()
+        if payload is None:
+            self.log_event(
+                "No scout yet — wait for the Scout tab to finish, then press r.",
+                tone="warn",
+            )
+            return
         try:
-            resolved = path.resolve()
-        except OSError:
-            self._set_status_banner(f"Invalid path: {value}", tone="error")
-            return
-        if not resolved.exists() or not resolved.is_dir():
-            self._set_status_banner(f"Not a directory: {resolved}", tone="error")
-            return
-        self._set_status_banner(f"Scanning {resolved}…", tone="info")
-        self._refresh_diagnostics(resolved)
-
-    def action_open_diff(self) -> None:
-        from frontier_scout.scout import run_scan
-        from frontier_scout.store import previous_scan_verdicts
-
-        current = run_scan(
-            repo=Path(self.diagnostics.repo),
-            dry_run=True,
-            persist=False,
-        ).get("verdicts") or []
-        previous = previous_scan_verdicts(repo=self.diagnostics.repo)
-        self.push_screen(DiffScreen(current=current, previous=previous))
+            verdicts = list(payload.get("verdicts") or [])
+            date = str(payload.get("date") or "latest")
+            repo_id_path.write_text(render_html(verdicts, date=date, funnel=payload))
+            webbrowser.open(f"file://{repo_id_path.resolve()}")
+            self.log_event(f"Opened report: {repo_id_path}", tone="ok")
+        except Exception as exc:  # noqa: BLE001
+            self.log_event(f"Could not render report: {exc}", tone="error")
 
 
 def _join_or(items: list[str], fallback: str) -> str:

@@ -88,10 +88,17 @@ The TUI is the front door. Inside any repo:
 frontier-scout
 ```
 
-That lands you on Mission Control: nine tabs, scout-first, all reachable
-without typing a single subcommand. Run `frontier-scout setup` from anywhere
-to configure your LLM backend, switch between automation (recurring
-scheduled scouts) and ad-hoc mode, or wipe scout history.
+That lands you on Mission Control — two tabs only: **Scout** (the
+product) and **Settings**. The Scout tab shows one unified list of
+findings (AI tools + dependency upgrades), each row with full
+reasoning: *what* it is, *why* we suggest it, *why it fits your repo*,
+*risk reasoning*, and the *next safe step*. Press Enter to write a
+dry-run receipt. Run `frontier-scout setup` from anywhere to configure
+your LLM backend or schedule recurring scouts.
+
+Every other CLI command (`evaluate`, `trial`, `guard`, `report`,
+`packs`, `deps`, `incident`, `dossier`) still works for scripting and
+CI; the TUI no longer tries to surface them all on one screen.
 
 The posture is deliberately boring in the good way: CLI first, SQLite/local
 files by default, static reports, no hosted telemetry, no hidden
