@@ -45,7 +45,7 @@ jobs:
       - name: Release preflight (CLI + deterministic demo + build)
         run: |
           frontier-scout --help > /dev/null
-          frontier-scout demo
+          frontier-scout demo --no-serve
           git diff --exit-code -- demo/
           FRONTIER_SCOUT_HOME=.scratch/ci-home frontier-scout evaluate https://github.com/modelcontextprotocol/servers --json > /dev/null
           FRONTIER_SCOUT_HOME=.scratch/ci-home frontier-scout trial browser-use/browser-use --url https://github.com/browser-use/browser-use --dry-run --json > /dev/null

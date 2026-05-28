@@ -2,7 +2,22 @@
 
 ## Unreleased
 
-- No unreleased changes yet.
+### Demo UX (lands in 1.2.2)
+
+- `frontier-scout demo` now starts a localhost HTTP server by default
+  and opens the briefing in the browser. Use `--no-serve` for CI /
+  offline / file-only runs.
+- The demo briefing page links the companion artifacts:
+  `briefing.md`, `verdicts.json`, `cost-breakdown.md`,
+  `judge-trace.md`, `quality-log.jsonl`. The artifact nav only renders
+  when those files exist (CLI `report` flow doesn't show dead links).
+- Server binds to `127.0.0.1` by default; widens to `0.0.0.0` only
+  when `_is_remote_env()` detects VS Code Server / Codespaces / a
+  devcontainer with port forwarding. The handler enforces a path
+  allowlist so other files in the output dir never leak.
+- README adds the `frontier-scout demo` walkthrough.
+- Tests: artifact-link presence, root → briefing routing, demo-server
+  readiness retry (race-free), allowlist guard.
 
 ## 1.2.1 - 2026-05-28
 

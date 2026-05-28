@@ -211,3 +211,4 @@ class RepoPathPromptScreen(ModalScreen[str | None]):
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+

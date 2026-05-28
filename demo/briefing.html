@@ -36,6 +36,20 @@ h1 { margin: 8px 0 10px; font-size: clamp(34px, 5vw, 64px); line-height: 1.02; l
 .metric b { display: block; font-size: 20px; }
 .metric span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 .judge { margin-top: 16px; max-width: 900px; color: var(--muted); }
+.artifacts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.artifact-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 7px 10px;
+}
+.artifact-link:hover { border-color: var(--accent); color: var(--accent); }
 .section-title { margin: 34px 0 10px; display: flex; justify-content: space-between; gap: 16px; align-items: end; }
 .section-title h2 { margin: 0; font-size: 24px; }
 .section-title p { margin: 0; color: var(--muted); }
@@ -81,6 +95,13 @@ footer { color: var(--muted); margin-top: 34px; padding-top: 20px; border-top: 1
       <div class="metric"><b>high</b><span>judge</span></div>
     </div>
     <p class="judge"><strong>Summary:</strong> ADOPT 1 · TRIAL 2 · ASSESS 1 · HOLD 1 · Tight upstream pass: vetoed patch-release noise, kept source-backed verdicts, and preserved conservative risk calls.</p>
+    <nav class="artifacts" aria-label="Demo artifacts">
+      <a class="artifact-link" href="briefing.md">Markdown</a>
+      <a class="artifact-link" href="verdicts.json">Verdicts JSON</a>
+      <a class="artifact-link" href="cost-breakdown.md">Cost Breakdown</a>
+      <a class="artifact-link" href="judge-trace.md">Judge Trace</a>
+      <a class="artifact-link" href="quality-log.jsonl">Quality Log</a>
+    </nav>
   </section>
   <section>
     <div class="section-title">
