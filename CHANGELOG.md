@@ -2,22 +2,91 @@
 
 ## Unreleased
 
-### Demo UX (lands in 1.2.2)
+- No unreleased changes yet.
 
-- `frontier-scout demo` now starts a localhost HTTP server by default
-  and opens the briefing in the browser. Use `--no-serve` for CI /
-  offline / file-only runs.
-- The demo briefing page links the companion artifacts:
-  `briefing.md`, `verdicts.json`, `cost-breakdown.md`,
-  `judge-trace.md`, `quality-log.jsonl`. The artifact nav only renders
-  when those files exist (CLI `report` flow doesn't show dead links).
-- Server binds to `127.0.0.1` by default; widens to `0.0.0.0` only
-  when `_is_remote_env()` detects VS Code Server / Codespaces / a
-  devcontainer with port forwarding. The handler enforces a path
-  allowlist so other files in the output dir never leak.
-- README adds the `frontier-scout demo` walkthrough.
-- Tests: artifact-link presence, root → briefing routing, demo-server
-  readiness retry (race-free), allowlist guard.
+## 1.3.0 - 2026-05-28
+
+### Mission Control redesign — the "I can actually use this" release
+
+v1.2.1 shipped with real bugs nobody had tested for: bindings like
+`L / e / D` had no buttons, the Scout worker auto-fired on mount so
+the detail panel sat on `Scouting your repo…` indefinitely, and
+domain jargon (`ADOPT / TRIAL / ASSESS / HOLD / verdict / concern /
+dossier`) assumed prior knowledge. v1.3.0 ships the redesign in six
+work streams (A–F).
+
+#### Streams (A) ProgressReporter + (F) `--progress` CLI
+
+- New `frontier_scout/progress.py` — `ProgressReporter` protocol
+  (`stage / advance / log`) plus `NullReporter`, `RecordingReporter`,
+  `StderrReporter`. Backends accept an optional `reporter=` kwarg;
+  default `None` is a true no-op so every existing CLI caller is
+  unaffected.
+- `scout.run_scan`, `dependencies.run_dependency_scan`, `guard.run_guard`,
+  `evaluate.evaluate_url`, `dossier.build_dossier` all emit 2–4 stage
+  events. Lab progress lands in v1.3.x.
+- CLI `frontier-scout scan --progress` streams `● Detecting stack
+  [1/4]` style lines to stderr without breaking the JSON / plain
+  payload on stdout. Pipeline-safe (newline-delimited on non-TTY,
+  `\r`-rewritten on TTY).
+
+#### Stream (B) Shell, subtitles, glossary
+
+- New `frontier_scout/tui/glossary.py` — `TERMS` dict (every concern
+  slug from v1.2.1 Stream K, plus verdict tiers, workflows, modes)
+  and `TAB_SUBTITLES` (one plain-English line per tab).
+- New `GlossaryScreen` modal bound to `?`. Old `?` → Help moves to
+  `H`. Newcomers' first reaction (hit `?`) gets vocabulary, which is
+  what they actually need first.
+- New `frontier_scout/tui/progress_view.py` — `StatusStrip`
+  (Static-based one-row spinner + stage trail + counter,
+  Braille-spinner at 6 Hz), `ProgressStrip` (auto-hidden Textual
+  `ProgressBar`), `TuiProgressReporter` (concrete `ProgressReporter`
+  that fans events to both via `call_from_thread`).
+- Shell layout gains a per-tab subtitle row and the sticky
+  status/progress strips. Subtitle refreshes on tab change.
+
+#### Stream (C) Scout view affordances
+
+- New **▶ Scout now (s)** button (variant=success). Worker no longer
+  auto-fires on mount; users always know they triggered the scout
+  and there's no stuck "Scouting your repo…" screen.
+- Lab / Evaluate / Dossier exposed as visible buttons in the action
+  bar. Bindings (`L / e / D`) still work for power users.
+- DataTable gains a **Concerns** column: `● count` chip coloured by
+  highest-severity concern (red / amber / blue) so concerns are
+  visible at a glance, not buried in the detail panel.
+- Scope toggles (AI / Dependencies) persist without auto-rerunning
+  — avoids surprise scouts on every click. Next ▶ Scout now uses
+  the toggled state.
+- Worker now wires the v1.3.0 `TuiProgressReporter` so the status
+  strip shows live stage events as the three backends run
+  sequentially.
+
+#### Stream (D) Settings affordances
+
+- Every panel ships with a one-line muted subtitle explaining what
+  the panel is for, directly under the title.
+
+#### Stream (E) Layout
+
+- v1.2.1 Stream L's adaptive `.compact` CSS class continues to ship.
+  The full responsive grid (narrow / standard / wide breakpoints) is
+  parked for v1.3.x.
+
+#### Demo UX bits from PR #13
+
+The Demo UX entries from PR #13 (was originally targeted at v1.2.2)
+land here too: localhost HTTP server, `--no-serve`, briefing
+artifact links, path allowlist, race-free server tests.
+
+### Verification
+
+- 287/287 tests; ruff clean on touched files.
+- Live `--progress` CLI smoke confirms stderr stream + intact JSON
+  on stdout.
+- Manual TUI smoke at 80×24, 100×30, 160×50: ▶ Scout now button
+  visible, no auto-fire, ? opens glossary, stage events flow.
 
 ## 1.2.1 - 2026-05-28
 

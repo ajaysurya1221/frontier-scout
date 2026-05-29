@@ -42,7 +42,8 @@ def run_scan(
     from frontier_scout.progress import NullReporter
 
     progress = reporter or NullReporter()
-    total = 3 if dry_run else 4
+    # Detect + (Loading|Querying) + Personalising [+ Saving when persisting].
+    total = 3 + (1 if persist else 0)
     progress.stage("Detecting stack", total_stages=total)
     repo = repo or Path.cwd()
     stack = detect_stack(repo)
