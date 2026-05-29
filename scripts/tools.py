@@ -367,6 +367,19 @@ JUDGE_TOOL = {
                             "enum": ["adopt", "trial", "assess", "hold"],
                             "description": "Required iff action=retier.",
                         },
+                        "new_fit": {
+                            "type": "string",
+                            "enum": ["high", "medium", "low"],
+                            "description": (
+                                "Optional fit override. Set this (typically high→medium) "
+                                "when the draft over-claims fit — e.g. it treats a "
+                                "name-adjacent but DISTINCT package as adopted "
+                                "(pydantic in STACK_PROFILE does NOT justify pydantic-ai "
+                                "fit=high), or assumes daily use of a tool absent from "
+                                "STACK_PROFILE. Lower the fit to what the profile actually "
+                                "supports."
+                            ),
+                        },
                         "severity": {
                             "type": "string",
                             "enum": ["critical", "high", "standard"],

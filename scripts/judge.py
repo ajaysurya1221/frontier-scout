@@ -213,6 +213,11 @@ def apply_judge_decisions(
         out = dict(v)
         if action == "retier" and d.get("new_tier"):
             out["verdict"] = d["new_tier"]
+        # Honor a fit override regardless of action: the judge can keep the
+        # tier but still downgrade an ungrounded fit claim (e.g. pydantic in
+        # the stack does NOT justify pydantic-ai fit=high).
+        if d.get("new_fit"):
+            out["fit"] = d["new_fit"]
         out["severity"] = d.get("severity", "standard")
         out["readiness"] = int(d.get("readiness", 3))
         out["_judge_reason"] = d.get("reason", "")

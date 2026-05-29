@@ -110,6 +110,33 @@ Things that are NEVER an ADOPT (downgrade to TRIAL or skip):
 
 If no concrete action is possible (no try, evaluate, swap, or read assigned to
 the user), DO NOT emit a verdict. Skip the item. Quality > quantity.
+
+FIT-GROUNDING DISCIPLINE (the radar's core promise is *custom-fit without
+over-claiming*):
+  - Every fit / "why it matters" claim MUST reference only technologies that
+    appear VERBATIM in STACK_PROFILE. Do not assert a package is "in your
+    stack" unless its exact name is listed (e.g. STACK_PROFILE has `pydantic`
+    → do NOT claim `pydantic-ai`; they are different packages).
+  - Do not assert the user "uses X daily" or "builds with X" unless X is in
+    STACK_PROFILE. Tooling the user might plausibly use is not the same as
+    tooling they actually have.
+  - When the stack signal is thin, say so and lower the fit rating rather than
+    inventing a connection. An honest "general fit" beats a fabricated
+    "stack-direct hit." A fabricated fit claim is worse than a skipped verdict.
+  - NAME-ADJACENCY IS NOT ADOPTION. If a tool's name resembles something in
+    STACK_PROFILE but is a *different* package (e.g. `pydantic-ai` vs the
+    `pydantic` you have; `langchain-community` vs `langchain`), you MUST state
+    the non-match explicitly the first time you mention fit, e.g.
+    "pydantic-ai (not detected in your stack — you have pydantic, a separate
+    package)". Then frame relevance as conditional: "if you've adopted the
+    agent framework, …". Never write prose that *assumes* the user already
+    runs the adjacent tool.
+  - BANNED PHRASINGS (these are over-claims — never write them unless the exact
+    tool is in STACK_PROFILE): "X is in your stack", "you already use X",
+    "you build with X daily", "X sits directly on top of your stack",
+    "the natural agent layer for your stack", "zero-friction for you because
+    you run X". If you catch yourself writing one about a tool not listed
+    verbatim, rewrite it as an explicit non-detection disclosure + conditional.
 """.strip()
 
 
@@ -154,6 +181,20 @@ this scale doesn't pay back the operational cost for a solo project.
 **Adoption cost**: A weekend to provision GPU infra, plus ongoing cost.
 **Next action**: ``Monitor 6 months`` — revisit if a quantised variant lands
 that fits under 10 GB.
+
+─── EXEMPLAR: HOLD (agent_framework, adjacent-but-NOT-adopted) ───────
+### pydantic/pydantic-ai — HOLD — agent_framework — high — low
+**What**: Security patch for pydantic-ai (the agent framework), fixing an
+SSRF-class issue in local file handling.
+**Why it matters**: pydantic-ai is NOT detected in your stack — you have
+``pydantic`` (the data-validation library), which is a separate package. So
+this likely does not affect you. *If* you have separately adopted the
+pydantic-ai agent framework, this is a patch-now security fix; otherwise it's
+an FYI only.
+**Why this week**: Patch release closing the advisory window.
+**Adoption cost**: n/a unless adopted; if adopted, a one-line version bump.
+**Next action**: ``Check if pydantic-ai is a direct dependency`` — if yes,
+bump to the patched version; if no, dismiss.
 """.strip()
 
 
@@ -184,6 +225,16 @@ Hard rules (veto unconditionally if any apply):
   - risk is "low" but the underlying tool is <12 months old AND has no
     organizational maintainer — downgrade to "medium".
   - ProductHunt-only item with no GitHub presence and no skill/MCP/agent surface.
+  - UNGROUNDED FIT CLAIM: the verdict asserts a stack match that STACK_PROFILE
+    does not support — names a package not listed verbatim (e.g. claims
+    "pydantic-ai is in your stack" when only `pydantic` is present), or asserts
+    the user "uses X daily / builds with X" when X is absent from the profile.
+    Set "new_fit" to the honest level the profile supports ("high"→"medium"
+    when the signal is only name-adjacent, "medium"→"low" when there is no
+    signal at all) and strip the fabricated claim in your reason. If fit was
+    the SOLE justification for the tier, also retier down or veto. The radar
+    must never over-claim fit — a hedged "general fit" always beats a
+    fabricated "stack-direct hit".
 
 ADOPT bar (only label as ADOPT if at least one is true):
   - Already part of the user's stack (per STACK_PROFILE) AND a substantive new
