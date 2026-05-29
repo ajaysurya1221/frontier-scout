@@ -280,15 +280,15 @@ def test_scout_dismiss_persists_to_state(tmp_path, monkeypatch):
 
         app = SetupApp(diagnostics, show_splash=False)
         async with app.run_test() as pilot:
-            # Wait for auto-scout
+            # v1.3.0 Stream C — no auto-scout. Trigger it explicitly.
+            await pilot.click("#scout-run")
             for _ in range(50):
                 await pilot.pause()
                 table = app.query_one("#scout-table", DataTable)
                 if table.row_count > 0:
                     break
             else:
-                raise AssertionError("Scout tab did not populate")
-            # Highlight first row and press Dismiss
+                raise AssertionError("Scout tab did not populate after ▶ Scout now")
             table.cursor_coordinate = (0, 0)
             await pilot.pause()
             app.query_one("#scout-dismiss", Button).press()
