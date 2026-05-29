@@ -28,8 +28,19 @@ agent ecosystem right now:
                     Hermes / Browser Use / similar) or an agent runtime
   - dev_tool        a CLI, IDE plug-in, debugger, evaluator, or other developer
                     productivity utility that isn't itself a skill / MCP / agent
+                    — and whose PRIMARY purpose is building, running, or
+                    evaluating AI / agentic systems (an LLM eval harness, an
+                    agent debugger, a prompt IDE, a vector-store CLI). A
+                    general-purpose web framework, HTTP client, ORM, or build
+                    tool is NOT a dev_tool here — it is dependency-scan
+                    material, not an AI-radar item.
   - model_drop      a foundation-model release on HuggingFace or a vendor blog
                     (new weights, tokenizer, or hosted endpoint)
+
+Frontier Scout is an AI-ADOPTION RADAR. Every category above describes an
+AI-NATIVE artifact. If an item is generic infrastructure with no AI / agent /
+LLM surface, it does not belong in any of these categories — score it low and
+do not emit a verdict.
 
 When in doubt between two categories, prefer the one the user would search
 for. A repo named ``foo-mcp-server`` is mcp_server even if it ships a CLI;
@@ -157,6 +168,14 @@ Hard rules (veto unconditionally if any apply):
   - tool_name is NOT a tool — it's an event, an incident, a news headline
     (e.g. "X leaked credentials", "Y suffered breach"). Frontier Scout
     evaluates *tools*, not events. Veto regardless of tier.
+  - tool_name is general-purpose infrastructure with NO AI / agent / LLM
+    surface — a web framework (FastAPI, Flask, Django, Express, Next.js), an
+    HTTP client (requests, httpx, axios), an ORM / DB driver (SQLAlchemy,
+    Prisma), or a build / lint tool (webpack, vite, ruff, eslint). Frontier
+    Scout is an AI-ADOPTION RADAR; these are dependency-scan material, not
+    AI-radar items. Veto regardless of fit — EVEN when the framework appears
+    in STACK_PROFILE. The only exception is a release that adds a first-class
+    AI / agent / LLM capability, which the draft must explicitly name.
   - Verdict is ADOPT but the item is a patch release / lockfile bump / chore
     release of an already-known framework.
   - next_action contains "awareness only", "monitor", or "0 cost" with no

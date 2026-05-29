@@ -366,6 +366,71 @@ def _filter_by_pack(verdicts: list[dict[str, Any]], pack: str | None) -> list[di
     return filtered or verdicts
 
 
+#: General-purpose infrastructure with no AI / agent / LLM surface. Frontier
+#: Scout is an AI-adoption radar — a release of one of these is dependency-scan
+#: material, not an AI-tools verdict. This is a deterministic backstop for the
+#: LLM rubric guardrails in scripts/prompts.py + scripts/tools.py: even if a
+#: model mislabels FastAPI as a "dev_tool", this drops it from the AI feed.
+#: Matched on the normalised tool_name, so "FastAPI 0.115" → "fastapi".
+_NON_AI_INFRA: frozenset[str] = frozenset(
+    {
+        # web frameworks
+        "fastapi", "flask", "django", "starlette", "express", "koa", "nestjs",
+        "next.js", "nextjs", "next", "nuxt", "react", "vue", "svelte", "angular",
+        "rails", "sinatra", "spring", "spring boot", "gin", "fiber", "actix",
+        # http clients / servers
+        "requests", "httpx", "aiohttp", "urllib3", "axios", "fetch", "uvicorn",
+        "gunicorn", "hypercorn", "nginx", "caddy",
+        # ORMs / DB drivers
+        "sqlalchemy", "alembic", "prisma", "sequelize", "typeorm", "psycopg",
+        "psycopg2", "pymongo", "redis-py", "mongoose",
+        # build / bundler / lint / test tooling
+        "webpack", "vite", "rollup", "esbuild", "babel", "ruff", "black",
+        "eslint", "prettier", "mypy", "pytest", "jest", "vitest", "tox",
+        # generic stdlib-ish utilities
+        "pydantic", "numpy", "pandas", "lodash", "moment", "dayjs",
+    }
+)
+
+#: Substrings that signal a release *does* carry an AI / agent / LLM surface,
+#: so we keep it even if the base package is on the infra list (e.g. a FastAPI
+#: release that ships a first-class MCP endpoint).
+_AI_CAPABILITY_SIGNALS: tuple[str, ...] = (
+    "agent", "llm", "mcp", "model context protocol", "tool-calling",
+    "tool calling", "function calling", "rag", "embedding", "vector",
+    "prompt", "inference", "fine-tun", "claude", "gpt", "openai", "anthropic",
+)
+
+
+def _is_ai_native(verdict: dict[str, Any]) -> bool:
+    """True unless the verdict is plainly generic infrastructure.
+
+    Conservative by design: only drops a verdict when the tool_name matches a
+    known non-AI package AND nothing in the verdict's text/tags names an AI
+    capability. A false keep (noise slips through) is recoverable; a false
+    drop (a real AI tool vanishes) erodes the "never miss a pin" promise.
+    """
+    name = str(verdict.get("tool_name") or "").lower().strip()
+    # Take the leading token: "FastAPI 0.115.0" → "fastapi".
+    base = name.split()[0] if name else ""
+    # Strip a common org/ prefix: "tiangolo/fastapi" → "fastapi".
+    if "/" in base:
+        base = base.rsplit("/", 1)[-1]
+    if base not in _NON_AI_INFRA and name not in _NON_AI_INFRA:
+        return True
+    haystack = " ".join(
+        str(verdict.get(k) or "")
+        for k in ("what", "why_it_matters", "why_this_week", "category")
+    ).lower()
+    haystack += " " + " ".join(str(t).lower() for t in (verdict.get("tags") or []))
+    return any(sig in haystack for sig in _AI_CAPABILITY_SIGNALS)
+
+
+def drop_non_ai_native(verdicts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Filter generic-infrastructure verdicts out of the AI-tools feed."""
+    return [v for v in verdicts if _is_ai_native(v)]
+
+
 def _run_live_scan(stack_profile: dict[str, Any]) -> dict[str, Any]:
     scripts_dir = Path(__file__).resolve().parent.parent / "scripts"
     if str(scripts_dir) not in sys.path:
@@ -384,5 +449,5 @@ def _run_live_scan(stack_profile: dict[str, Any]) -> dict[str, Any]:
         "judge_summary": result.judge_summary,
         "judge_rating": result.judge_rating,
         "judge_used_fallback": result.judge_used_fallback,
-        "verdicts": result.verdicts,
+        "verdicts": drop_non_ai_native(result.verdicts),
     }
