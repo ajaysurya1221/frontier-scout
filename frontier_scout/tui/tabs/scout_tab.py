@@ -123,6 +123,9 @@ class ScoutTab(VerticalScroll):
         Binding("L", "lab_selected", "Lab (2× to spend)", show=True),
         Binding("e", "evaluate_selected", "Evaluate", show=True),
         Binding("D", "dossier_selected", "Dossier", show=True),
+        # v1.4.0 — close the loop: implement the tool in an isolated copy
+        # of the repo and run tests. 2× to spend (live codegen + tests).
+        Binding("i", "implement_selected", "Implement & Test (2× to spend)", show=True),
     ]
 
     #: Double-press window for the live-lab confirmation. Mirrors the
@@ -141,6 +144,8 @@ class ScoutTab(VerticalScroll):
         # second press within the confirmation window upgrades to a
         # real (live) lab run instead of just classifying.
         self._last_lab_press: float = 0.0
+        #: Same double-press confirmation for the live Implement & Test run.
+        self._last_implement_press: float = 0.0
 
     # ------------------------------------------------------------------
     # Compose / mount
@@ -168,6 +173,7 @@ class ScoutTab(VerticalScroll):
             yield Button("Lab  (L)", id="scout-lab")
             yield Button("Evaluate  (e)", id="scout-evaluate")
             yield Button("Dossier  (D)", id="scout-dossier")
+            yield Button("Implement  (i)", id="scout-implement")
             yield Button("Open URL", id="scout-open")
             yield Button("Dismiss", id="scout-dismiss")
         yield Static(
@@ -240,6 +246,10 @@ class ScoutTab(VerticalScroll):
     @on(Button.Pressed, "#scout-dossier")
     def _on_dossier_button(self) -> None:
         self.action_dossier_selected()
+
+    @on(Button.Pressed, "#scout-implement")
+    def _on_implement_button(self) -> None:
+        self.action_implement_selected()
 
     def _refresh_scope_buttons(self) -> None:
         ai = self.query_one("#scout-toggle-ai", Button)
@@ -846,6 +856,68 @@ class ScoutTab(VerticalScroll):
             f"{verb} {tool}: rc={rc} (receipt in ~/.frontier-scout/labs/)",
             tone,
         )
+
+    def action_implement_selected(self) -> None:
+        """i → dry-run Implement & Test. Second i within the window → live.
+
+        Live runs an LLM codegen pass + the repo's tests in an isolated git
+        worktree (never the working tree). The result lands in the activity
+        log and a receipt under ~/.frontier-scout/reports/implementations/.
+        """
+
+        import time
+
+        row = self._highlighted()
+        if not row or row["kind"] != "ai":
+            self.app_ref.log_event(
+                "Implement needs an AI-tool row highlighted.", tone="warn"
+            )
+            return
+        tool = row["raw"].get("tool_name", "")
+        if not tool:
+            self.app_ref.log_event("This row has no tool name to implement.", tone="warn")
+            return
+        now = time.monotonic()
+        live = (now - self._last_implement_press) < self._LAB_LIVE_CONFIRM_WINDOW_S
+        self._last_implement_press = 0.0 if live else now
+        if not live:
+            self.app_ref.log_event(
+                f"i → dry-run implement for {tool}. Press i again within "
+                f"{self._LAB_LIVE_CONFIRM_WINDOW_S:.0f}s to spend on a live "
+                "codegen + test run.",
+                tone="info",
+            )
+        self._implement_worker(tool=tool, live=live)
+
+    @work(thread=True, exclusive=True)
+    def _implement_worker(self, *, tool: str, live: bool) -> None:
+        try:
+            from pathlib import Path
+
+            from frontier_scout.implement import discard, run_implement
+
+            repo = Path(self.app_ref.diagnostics.repo)
+            result = run_implement(repo=repo, tool_name=tool, dry_run=not live)
+        except Exception as exc:  # noqa: BLE001
+            self.app_ref.call_from_thread(
+                self.app_ref.log_event,
+                f"Implement failed for {tool}: {exc}",
+                "error",
+            )
+            return
+        tone = "ok" if result.status in {"passed", "prepared"} else "warn"
+        self.app_ref.call_from_thread(
+            self.app_ref.log_event,
+            f"Implement {tool}: {result.status} — {result.summary} "
+            f"(receipt in ~/.frontier-scout/reports/implementations/)",
+            tone,
+        )
+        # Isolated workspace is discarded after reporting; the user keeps via
+        # the receipt + diff, then re-runs `frontier-scout implement --keep`.
+        try:
+            discard(result)
+        except Exception:  # noqa: BLE001
+            pass
 
     def action_evaluate_selected(self) -> None:
         """e → run the Adoption Firewall evaluation on the highlighted

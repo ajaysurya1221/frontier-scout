@@ -251,6 +251,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     trial_cmd.add_argument("--json", action="store_true", help="Print the trial payload as JSON.")
 
+    implement_cmd = sub.add_parser(
+        "implement",
+        help="Adopt a tool in an isolated copy of your repo, run tests, show the diff.",
+    )
+    implement_cmd.add_argument("tool", help="Tool/framework/version to adopt.")
+    implement_cmd.add_argument("--repo", default=".", help="Repository to modify in isolation.")
+    implement_cmd.add_argument(
+        "--instruction",
+        help="Override the default 'adopt <tool>' instruction with a precise task.",
+    )
+    implement_cmd.add_argument(
+        "--test-command",
+        help="Test command to run in the isolated copy (defaults to repo detection).",
+    )
+    implement_cmd.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Prepare a synthetic change without an LLM call or test run.",
+    )
+    implement_cmd.add_argument(
+        "--keep",
+        action="store_true",
+        help="On success, copy the changes into your working tree (no commit).",
+    )
+    implement_cmd.add_argument("--progress", action="store_true", help="Stream stage progress to stderr.")
+    implement_cmd.add_argument("--json", action="store_true", help="Print the result as JSON.")
+
     guard_cmd = sub.add_parser("guard", help="Run deterministic local adoption policy checks.")
     guard_cmd.add_argument("--repo", default=".", help="Repository to inspect for local policy.")
     guard_cmd.add_argument(
@@ -582,6 +609,45 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "lab":
         return run_lab(args.tool, args.url, dry_run=args.dry_run)
+    if args.command == "implement":
+        from .implement import discard, keep_changes, run_implement
+
+        reporter = None
+        if getattr(args, "progress", False):
+            from .progress import StderrReporter
+
+            reporter = StderrReporter()
+        result = run_implement(
+            repo=Path(args.repo),
+            tool_name=args.tool,
+            instruction=args.instruction,
+            dry_run=args.dry_run,
+            test_command=args.test_command,
+            reporter=reporter,
+        )
+        kept: list[str] = []
+        if args.keep and result.status == "passed":
+            kept = keep_changes(result)
+        elif not args.keep:
+            discard(result)
+        if args.json:
+            payload = result.to_dict()
+            payload["kept_files"] = kept
+            print(json.dumps(payload, indent=2))
+        else:
+            print(f"IMPLEMENT {result.tool_name}")
+            print(f"status: {result.status}")
+            print(f"summary: {result.summary}")
+            print(f"what you get: {result.what_you_get}")
+            print(f"test command: {result.test_command}")
+            print(f"files changed: {', '.join(result.files_changed) or 'none'}")
+            if result.error:
+                print(f"error: {result.error}")
+            if kept:
+                print(f"kept (copied into working tree): {', '.join(kept)}")
+            elif not args.keep and result.status == "passed":
+                print("changes discarded (pass --keep to copy them into your repo)")
+        return 0 if result.status in {"passed", "prepared"} else 1
     if args.command == "evaluate":
         stack = detect_stack(Path(args.repo))
         evaluation = evaluate_url(args.url, stack)
