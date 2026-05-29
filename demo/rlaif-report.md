@@ -4,9 +4,10 @@ _Reinforcement Learning via AI Feedback. Claude Opus audits each live scout for 
 
 - **Generated:** 2026-05-29 05:12 UTC
 - **Session:** `rlaif-v140-live`
-- **Cycles run:** 3
+- **Cycles in this report:** 3
 - **Budget cap:** $55.00
-- **Session spend:** $4.0601
+- **Cost of cycles in this report:** $1.1561
+- **Session ledger total (all reruns of this session id):** $4.0601
 - **Status:** ⏳ in progress / needs another pass
 
 

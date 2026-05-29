@@ -197,3 +197,82 @@ def test_codegen_error_returns_error_status(tmp_path, monkeypatch):
     )
     assert result.status == "error"
     assert "no tool call" in result.error
+
+
+def test_no_files_applied_fails_fast(tmp_path, monkeypatch):
+    """A change whose every path is rejected by the safety jail must NOT
+    report success with zero mutation — it must surface an error."""
+
+    repo = tmp_path / "proj4"
+    repo.mkdir()
+    (repo / "README.md").write_text("# p\n")
+    _git_init(repo)
+
+    # Every proposed path escapes the workspace → all rejected.
+    change = {
+        "summary": "Escapes only.",
+        "what_you_get": "nothing",
+        "files": [
+            {"path": "/etc/passwd", "action": "create", "contents": "x"},
+            {"path": "../../escape.py", "action": "create", "contents": "y"},
+        ],
+        "test_command": "true",
+    }
+    monkeypatch.setattr(implement, "_generate_change", lambda *a, **k: (change, 0.0))
+    result = run_implement(
+        repo=repo, tool_name="evil", provider=types.SimpleNamespace()
+    )
+    assert result.status == "error"
+    assert "no file" in (result.summary + result.error).lower()
+    # And the real tree is untouched.
+    assert not (repo / "escape.py").exists()
+
+
+def test_discard_only_removes_prefixed_temp_dir(tmp_path):
+    """discard() must never rmtree an arbitrary parent — only our own
+    prefixed temp dir. A malformed workspace path is a no-op."""
+
+    from frontier_scout.implement import _WORKSPACE_PREFIX, ImplementResult
+
+    # A workspace path NOT under our prefix must be left completely alone.
+    victim = tmp_path / "precious"
+    victim.mkdir()
+    (victim / "keepme.txt").write_text("do not delete")
+    bogus = ImplementResult(
+        tool_name="t",
+        status="error",
+        summary="x",
+        what_you_get="",
+        workspace=str(victim / "repo"),
+        is_worktree=False,
+        repo=str(tmp_path),
+    )
+    discard(bogus)
+    assert victim.exists()
+    assert (victim / "keepme.txt").exists()
+    assert _WORKSPACE_PREFIX  # sanity: constant is defined
+
+
+def test_keep_with_failed_status_still_discards(tmp_path, monkeypatch):
+    """CLI contract: --keep on a non-passed run must still tear down the
+    isolated workspace (no temp-dir leak)."""
+
+    repo = tmp_path / "proj5"
+    repo.mkdir()
+    (repo / "README.md").write_text("# p\n")
+    _git_init(repo)
+
+    change = {
+        "summary": "Failing change.",
+        "what_you_get": "nope",
+        "files": [
+            {"path": "test_x.py", "action": "create", "contents": "def test_x():\n    assert False\n"}
+        ],
+        "test_command": "python -m pytest -q test_x.py",
+    }
+    monkeypatch.setattr(implement, "_generate_change", lambda *a, **k: (change, 0.0))
+    result = run_implement(repo=repo, tool_name="bad", provider=types.SimpleNamespace())
+    assert result.status == "failed"
+    # Simulate the CLI's keep+failed branch: it falls through to discard().
+    discard(result)
+    assert not Path(result.workspace).parent.exists()

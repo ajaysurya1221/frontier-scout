@@ -207,6 +207,26 @@ def test_openai_handles_no_tool_call():
     assert resp.content[0].type == "text"
 
 
+def test_openai_malformed_tool_json_raises():
+    """A tool call with non-JSON arguments must fail fast, not degrade to {}.
+
+    Coercing to {} would silently produce zero scores / empty verdicts and
+    poison the whole scan. It must raise (and be retryable)."""
+
+    bad = _fake_openai_response("score_items", "{not valid json")
+    with pytest.raises(ProviderError):
+        OpenAIProvider._normalise(bad, "gpt-4o-mini")
+    # And the provider treats it as retryable so call_with_retry gets a shot.
+    p = OpenAIProvider(api_key="k")  # pragma: allowlist secret
+    assert p.is_retryable(ProviderError("boom")) is True
+
+
+def test_openai_empty_tool_args_raises():
+    bad = _fake_openai_response("score_items", "")
+    with pytest.raises(ProviderError):
+        OpenAIProvider._normalise(bad, "gpt-4o-mini")
+
+
 # ---------------------------------------------------------------------------
 # CLI backends
 # ---------------------------------------------------------------------------
@@ -294,7 +314,7 @@ def test_cli_provider_requires_tool(monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def test_call_with_retry_uses_provider_create_and_retry():
+def test_call_with_retry_uses_provider_create_and_retry(monkeypatch):
     from llm_client import call_with_retry
 
     class _FlakyProvider:
@@ -316,10 +336,10 @@ def test_call_with_retry_uses_provider_create_and_retry():
             return isinstance(exc, ValueError)
 
     prov = _FlakyProvider()
-    # Speed up backoff.
+    # Speed up backoff (restored automatically by monkeypatch).
     import llm_client
 
-    llm_client.BASE_DELAY = 0.0
+    monkeypatch.setattr(llm_client, "BASE_DELAY", 0.0)
     out = call_with_retry(prov, "unit", model="x", max_tokens=1, system="s", messages=[])
     assert prov.calls == 2
     assert isinstance(out, ProviderResponse)
@@ -362,5 +382,11 @@ def test_cost_tracker_known_and_unknown_models():
     assert _cost("gpt-4o", usage) == pytest.approx(12.50)
     # CLI backends are free
     assert _cost("claude-code-cli", usage) == 0.0
-    # unknown model → $0, never a KeyError
-    assert _cost("some-future-model", usage) == 0.0
+    # Dated suffix resolves to the base alias's price (prefix match).
+    assert _cost("claude-sonnet-4-6-20251001", usage) == _cost("claude-sonnet-4-6", usage)
+    # Unknown model → conservative (max known) pricing, NOT $0. Costing an
+    # unknown id at $0 would silently bypass the budget cap. It must be at
+    # least as expensive as the priciest known model so caps stay safe.
+    unknown = _cost("some-future-model", usage)
+    assert unknown > 0.0
+    assert unknown >= _cost("claude-opus-4-7", usage)

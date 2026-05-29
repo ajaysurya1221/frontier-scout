@@ -385,6 +385,21 @@ def main(argv: list[str] | None = None) -> int:
     # and surface it through FRONTIER_SCOUT_PROVIDER, which every subcommand's
     # resolve_provider() already reads. This keeps the flag uniform across
     # subcommands without threading it through each one.
+    valid_providers = ("anthropic", "openai", "claude-cli", "codex-cli")
+
+    def _set_provider(value: str | None) -> None:
+        if not value:
+            print("error: --provider requires a value", file=sys.stderr)
+            raise SystemExit(2)
+        if value not in valid_providers:
+            print(
+                f"error: invalid --provider {value!r} "
+                f"(choose from {', '.join(valid_providers)})",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        os.environ["FRONTIER_SCOUT_PROVIDER"] = value
+
     cleaned: list[str] = []
     skip_next = False
     for i, tok in enumerate(raw):
@@ -392,12 +407,11 @@ def main(argv: list[str] | None = None) -> int:
             skip_next = False
             continue
         if tok == "--provider":
-            if i + 1 < len(raw):
-                os.environ["FRONTIER_SCOUT_PROVIDER"] = raw[i + 1]
-                skip_next = True
+            _set_provider(raw[i + 1] if i + 1 < len(raw) else None)
+            skip_next = True
             continue
         if tok.startswith("--provider="):
-            os.environ["FRONTIER_SCOUT_PROVIDER"] = tok.split("=", 1)[1]
+            _set_provider(tok.split("=", 1)[1])
             continue
         cleaned.append(tok)
     raw = cleaned
@@ -671,9 +685,13 @@ def main(argv: list[str] | None = None) -> int:
             reporter=reporter,
         )
         kept: list[str] = []
+        # Always tear the isolated workspace down. The only path that retains
+        # files is keep+passed, and keep_changes() copies them out *then*
+        # discards. Any other combination (keep but failed/error/prepared, or
+        # no --keep at all) must still discard so temp dirs never leak.
         if args.keep and result.status == "passed":
             kept = keep_changes(result)
-        elif not args.keep:
+        else:
             discard(result)
         if args.json:
             payload = result.to_dict()

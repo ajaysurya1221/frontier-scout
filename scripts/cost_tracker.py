@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -70,13 +71,52 @@ PRICING = {
 }
 
 
+# Conservative fallback for a model id we don't have list prices for. We take
+# the *most expensive* rate across every known paid model so an unknown id can
+# never UNDER-count spend and silently slip past a budget cap. Over-counting is
+# the safe failure mode for a guard. CLI ($0) backends are explicit entries in
+# PRICING, so they never hit this fallback.
+def _conservative_rates() -> dict[str, float]:
+    paid = [p for p in PRICING.values() if any(v > 0 for v in p.values())]
+    keys = ("input", "cache_read", "cache_write", "output")
+    return {k: max(p.get(k, 0.0) for p in paid) for k in keys}
+
+
+_FALLBACK_RATES = _conservative_rates()
+_warned_models: set[str] = set()
+
+
+def _resolve_pricing(model: str) -> dict[str, float] | None:
+    """Look up a model's rate table, tolerating dated suffixes.
+
+    Providers may echo a dated id (``claude-sonnet-4-6-20251001``) for an alias
+    we price under its base name (``claude-sonnet-4-6``). Try an exact match
+    first, then the longest known key that is a prefix of ``model``.
+    """
+    exact = PRICING.get(model)
+    if exact is not None:
+        return exact
+    candidates = [k for k in PRICING if model.startswith(k)]
+    if candidates:
+        return PRICING[max(candidates, key=len)]
+    return None
+
+
 def _cost(model: str, usage) -> float:
-    # Defensive: an unknown model (e.g. a future OpenAI id) costs $0 in the
-    # ledger rather than crashing a live run mid-scan. Prices are added to
-    # PRICING as models are adopted.
-    p = PRICING.get(model)
+    # An unknown model (e.g. a future provider id) must NOT cost $0 — that would
+    # silently bypass the budget cap on the user's own key. Instead apply the
+    # most-expensive known rate and warn once, so caps trigger conservatively.
+    p = _resolve_pricing(model)
     if p is None:
-        return 0.0
+        if model not in _warned_models:
+            _warned_models.add(model)
+            print(
+                f"⚠️  cost_tracker: unknown model {model!r} — using conservative "
+                "(max known) pricing for budget safety. Add it to PRICING to "
+                "get exact cost.",
+                file=sys.stderr,
+            )
+        p = _FALLBACK_RATES
     input_tokens = getattr(usage, "input_tokens", 0)
     output_tokens = getattr(usage, "output_tokens", 0)
     cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0

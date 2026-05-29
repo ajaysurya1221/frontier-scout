@@ -596,7 +596,11 @@ def score_items(
         tool_choice={"type": "tool", "name": "score_items"},
         messages=[{"role": "user", "content": f"Score these {len(items)} items.\n\n{batch}"}],
     )
-    cost = log_call("scout-score", model_id, resp.usage)
+    # Bill against the model the API actually served (resp.model), not the
+    # requested alias — providers can resolve an alias to a dated id with a
+    # different price. Fall back to the requested id if the response omits it.
+    billed_model = getattr(resp, "model", None) or model_id
+    cost = log_call("scout-score", billed_model, resp.usage)
     print(
         f"  Score pass: {resp.usage.input_tokens} in + {resp.usage.output_tokens} out "
         f"(cache_read={getattr(resp.usage, 'cache_read_input_tokens', 0)}) = ${cost:.4f}"
@@ -695,7 +699,8 @@ def generate_verdicts(
             }
         ],
     )
-    cost = log_call("scout-verdict", model_id, resp.usage)
+    billed_model = getattr(resp, "model", None) or model_id
+    cost = log_call("scout-verdict", billed_model, resp.usage)
     print(
         f"  Verdict pass: {resp.usage.input_tokens} in + {resp.usage.output_tokens} out "
         f"(cache_read={getattr(resp.usage, 'cache_read_input_tokens', 0)}) = ${cost:.4f}"

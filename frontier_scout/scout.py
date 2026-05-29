@@ -423,6 +423,10 @@ def _is_ai_native(verdict: dict[str, Any]) -> bool:
         for k in ("what", "why_it_matters", "why_this_week", "category")
     ).lower()
     haystack += " " + " ".join(str(t).lower() for t in (verdict.get("tags") or []))
+    # Include the full tool name too: a signal can live only in the name
+    # ("FastAPI MCP endpoint", "langchain-postgres") even when the leading
+    # token matched a non-AI infra package. Dropping those is a false negative.
+    haystack += " " + name
     return any(sig in haystack for sig in _AI_CAPABILITY_SIGNALS)
 
 

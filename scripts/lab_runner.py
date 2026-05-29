@@ -649,7 +649,7 @@ def _classify(client, spec: dict) -> tuple[dict, float]:
         tool_choice={"type": "tool", "name": "classify_tool"},
         messages=[{"role": "user", "content": user_msg}],
     )
-    cost = log_call("lab-classify", model_id, resp.usage)
+    cost = log_call("lab-classify", getattr(resp, "model", None) or model_id, resp.usage)
     tool_use = next(b for b in resp.content if b.type == "tool_use")
     out = dict(tool_use.input)
     # Backward-safety: if the classifier somehow omits runtime, default to
@@ -812,7 +812,7 @@ def _generate_test(client, spec: dict, classification: dict) -> tuple[str, float
         tool_choice={"type": "tool", "name": "emit_test_script"},
         messages=[{"role": "user", "content": user_msg}],
     )
-    cost = log_call("lab-generate", model_id, resp.usage)
+    cost = log_call("lab-generate", getattr(resp, "model", None) or model_id, resp.usage)
     tool_use = next(b for b in resp.content if b.type == "tool_use")
     script = tool_use.input["script"]
     return script, cost
@@ -1215,7 +1215,7 @@ def _interpret(client, spec: dict, classification: dict, script: str, sandbox: d
         tool_choice={"type": "tool", "name": "emit_lab_insights"},
         messages=[{"role": "user", "content": user_msg}],
     )
-    cost = log_call("lab-interpret", model_id, resp.usage)
+    cost = log_call("lab-interpret", getattr(resp, "model", None) or model_id, resp.usage)
     tool_use = next(b for b in resp.content if b.type == "tool_use")
     return dict(tool_use.input), cost
 

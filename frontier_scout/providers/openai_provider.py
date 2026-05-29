@@ -19,7 +19,7 @@ import json
 import os
 from typing import Any
 
-from .base import ProviderResponse, TextBlock, ToolUseBlock, Usage
+from .base import ProviderError, ProviderResponse, TextBlock, ToolUseBlock, Usage
 
 _DEFAULT_FAST = "gpt-4o-mini"
 _DEFAULT_DEEP = "gpt-4o"
@@ -154,10 +154,20 @@ class OpenAIProvider:
         if tool_calls:
             call = tool_calls[0]
             fn = call.function
+            # Fail fast on malformed tool-call arguments. Coercing to {} here
+            # would silently degrade the whole pipeline to zero scores / empty
+            # verdicts instead of surfacing the bad response (and letting the
+            # retry wrapper try again).
+            if not fn.arguments:
+                raise ProviderError(
+                    f"OpenAI tool call {fn.name!r} returned empty arguments"
+                )
             try:
-                parsed = json.loads(fn.arguments) if fn.arguments else {}
-            except (json.JSONDecodeError, TypeError):
-                parsed = {}
+                parsed = json.loads(fn.arguments)
+            except (json.JSONDecodeError, TypeError) as exc:
+                raise ProviderError(
+                    f"OpenAI tool call {fn.name!r} returned non-JSON arguments: {exc}"
+                ) from exc
             content.append(
                 ToolUseBlock(name=fn.name, input=parsed, id=getattr(call, "id", "toolu"))
             )
@@ -174,6 +184,10 @@ class OpenAIProvider:
         )
 
     def is_retryable(self, exc: BaseException) -> bool:
+        # A malformed/empty tool-call response is often a transient model hiccup;
+        # give the retry wrapper a chance rather than failing the whole scan.
+        if isinstance(exc, ProviderError):
+            return True
         try:
             import openai
         except ImportError:

@@ -135,7 +135,7 @@ def critique(
         messages=[{"role": "user", "content": user_message}],
         extra_body={"output_config": {"effort": "high"}},
     )
-    cost += log_call("scout-judge", model_id, resp.usage)
+    cost += log_call("scout-judge", getattr(resp, "model", None) or model_id, resp.usage)
     cache_read = getattr(resp.usage, "cache_read_input_tokens", 0) or 0
     print(
         f"  Judge pass 1 (thinking): {resp.usage.input_tokens} in + "
@@ -160,7 +160,9 @@ def critique(
             tool_choice={"type": "tool", "name": "critique_verdicts"},
             messages=[{"role": "user", "content": user_message}],
         )
-        fallback_cost = log_call("scout-judge-forced", model_id, resp2.usage)
+        fallback_cost = log_call(
+            "scout-judge-forced", getattr(resp2, "model", None) or model_id, resp2.usage
+        )
         cost += fallback_cost
         print(
             f"  Judge pass 2 (forced): {resp2.usage.input_tokens} in + "

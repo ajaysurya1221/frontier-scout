@@ -192,9 +192,12 @@ def _is_git_repo(repo: Path) -> bool:
         return False
 
 
+_WORKSPACE_PREFIX = "frontier-scout-implement-"
+
+
 def _make_workspace(repo: Path) -> tuple[Path, bool]:
     """Create an isolated copy of the repo. Returns (path, is_worktree)."""
-    temp_dir = Path(tempfile.mkdtemp(prefix="frontier-scout-implement-"))
+    temp_dir = Path(tempfile.mkdtemp(prefix=_WORKSPACE_PREFIX))
     workspace = temp_dir / "repo"
     if _is_git_repo(repo):
         try:
@@ -234,6 +237,10 @@ def _hermetic_env(workspace: Path) -> dict[str, str]:
         "PIP_NO_INPUT": "1",
         "PIP_DISABLE_PIP_VERSION_CHECK": "1",
         "NO_UPDATE_NOTIFIER": "1",
+        # Keep the workspace test run hermetic: don't autoload third-party
+        # pytest plugins from the host environment, which can crash or alter a
+        # run we don't control.
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
     }
     # Preserve the active interpreter context so the repo's deps resolve, but
     # NOT the API keys or cloud creds.
@@ -473,7 +480,32 @@ def run_implement(
             cost_usd=cost,
         )
 
-    applied = _apply_files(workspace, change.get("files") or [])
+    proposed = change.get("files") or []
+    applied = _apply_files(workspace, proposed)
+    # Fail fast: a change that proposed files but landed none means every path
+    # was rejected by the safety jail (_safe_relpath / workspace containment).
+    # Reporting "prepared/passed" with zero mutation would be a silent lie, so
+    # tear down and surface an error instead.
+    if proposed and not applied:
+        failure = ImplementResult(
+            tool_name=tool_name,
+            status="error",
+            summary="No files could be applied.",
+            what_you_get="",
+            repo=str(repo),
+            workspace=str(workspace),
+            is_worktree=is_worktree,
+            error=(
+                "Every proposed file path was rejected by the workspace safety "
+                "checks (absolute paths, parent traversal, or symlink escapes "
+                "are refused). No change was staged."
+            ),
+            cost_usd=cost,
+        )
+        discard(failure)
+        # Workspace is gone now; don't leak the temp path back to the caller.
+        failure.workspace = ""
+        return failure
     diff = _git_diff(workspace, is_worktree)
     resolved_cmd = (test_command or change.get("test_command") or "").strip()
     if not resolved_cmd:
@@ -557,10 +589,16 @@ def keep_changes(result: ImplementResult) -> list[str]:
 
 
 def discard(result: ImplementResult) -> None:
-    """Tear down the isolated workspace (git worktree or temp copy)."""
-    workspace = Path(result.workspace)
-    if not workspace.exists():
+    """Tear down the isolated workspace (git worktree or temp copy).
+
+    Safety: we only ever ``rmtree`` a directory we created — the temp parent
+    carries our :data:`_WORKSPACE_PREFIX`. We never delete an arbitrary
+    parent, so a malformed ``result.workspace`` (or the real repo path) can
+    never trigger a destructive recursive delete.
+    """
+    if not result.workspace:
         return
+    workspace = Path(result.workspace)
     if result.is_worktree:
         try:
             subprocess.run(  # noqa: S603 — fixed args, no shell
@@ -572,12 +610,11 @@ def discard(result: ImplementResult) -> None:
             )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
-    # Remove the temp parent regardless (covers copy mode + leftover worktree).
+    # Remove the temp parent we created (covers copy mode + leftover worktree),
+    # but ONLY when it carries our prefix — never an arbitrary parent.
     parent = workspace.parent
-    if parent.exists() and parent.name.startswith("repo") is False:
+    if parent.exists() and parent.name.startswith(_WORKSPACE_PREFIX):
         shutil.rmtree(parent, ignore_errors=True)
-    elif workspace.exists():
-        shutil.rmtree(workspace, ignore_errors=True)
 
 
 # ── Persistence ──────────────────────────────────────────────────────────────

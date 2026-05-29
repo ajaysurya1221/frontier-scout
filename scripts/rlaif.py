@@ -284,8 +284,19 @@ def run_cycle(cycle_num: int, *, dry_run: bool) -> dict:
 
     stack_profile = None if dry_run else _stack_profile()
     scan = scout_mod.run_scan(stack_profile=stack_profile, dry_run=dry_run)
-    verdicts = list(scan.verdicts)
-    print(f"  Scan: {len(verdicts)} verdicts · ${scan.cost_usd:.4f} · {scan.duration_s}s")
+    # Audit the user-visible AI feed, not the raw legacy output. The shipped
+    # guardrail (frontier_scout.scout.drop_non_ai_native) is what removes
+    # FastAPI-style non-AI-native leaks before a verdict reaches the user, so
+    # the RLAIF loop must measure that same filtered feed for fidelity.
+    from frontier_scout.scout import drop_non_ai_native
+
+    raw_verdicts = list(scan.verdicts)
+    verdicts = drop_non_ai_native(raw_verdicts)
+    dropped = len(raw_verdicts) - len(verdicts)
+    drop_note = f" · {dropped} non-AI-native dropped" if dropped else ""
+    print(
+        f"  Scan: {len(verdicts)} verdicts{drop_note} · ${scan.cost_usd:.4f} · {scan.duration_s}s"
+    )
 
     if dry_run:
         audit = {
@@ -349,11 +360,22 @@ def write_report(cycles: list[dict], *, cap: float, spend: float, satisfied: boo
         "verdict quality. The loop is satisfied when two consecutive cycles "
         "surface zero scope false-positives._\n"
     )
+    # Two distinct numbers, kept distinct to avoid the "spend doesn't add up"
+    # confusion: `spend` is the full ledger total for this session id (it
+    # accumulates across every rerun that reused the id), while
+    # `displayed_cycles_cost` sums only the cycles printed in *this* report.
+    displayed_cycles_cost = sum(
+        float(c.get("scan_cost_usd") or 0.0) + float(c.get("audit_cost_usd") or 0.0)
+        for c in cycles
+    )
     lines.append(f"- **Generated:** {now}")
     lines.append(f"- **Session:** `{_SESSION}`")
-    lines.append(f"- **Cycles run:** {len(cycles)}")
+    lines.append(f"- **Cycles in this report:** {len(cycles)}")
     lines.append(f"- **Budget cap:** ${cap:.2f}")
-    lines.append(f"- **Session spend:** ${spend:.4f}")
+    lines.append(f"- **Cost of cycles in this report:** ${displayed_cycles_cost:.4f}")
+    lines.append(
+        f"- **Session ledger total (all reruns of this session id):** ${spend:.4f}"
+    )
     status = (
         "✅ SATISFIED — zero scope false-positives sustained"
         if satisfied
@@ -384,9 +406,11 @@ def write_report(cycles: list[dict], *, cap: float, spend: float, satisfied: boo
         if c["verdicts"]:
             lines.append("\n<details><summary>Verdicts surfaced this cycle</summary>\n")
             for v in c["verdicts"]:
+                what = v.get("what") or ""
+                shown = what[:120] + ("…" if len(what) > 120 else "")
                 lines.append(
                     f"- **{v.get('tool_name')}** ({v.get('verdict')}, {v.get('category')}) — "
-                    f"{(v.get('what') or '')[:120]}"
+                    f"{shown}"
                 )
             lines.append("\n</details>")
 
