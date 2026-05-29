@@ -1,0 +1,101 @@
+/* Briefing TUI (v1.5.0) — one stylesheet for the whole look.
+
+   The root of every screen is three rows: Header (1) · Body (1fr, scrolls) ·
+   Compass (1). Because Body always takes the remaining space and scrolls,
+   content can never clip at any width or height. Cards are width-capped and
+   centred so prose never sprawls on wide terminals and fills narrow ones. */
+
+Screen {
+    background: $surface;
+    color: $text;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+#header {
+    height: 1;
+    width: 100%;
+    background: $panel;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+/* ── Body — the only scrolling region ───────────────────────────────────── */
+#body {
+    height: 1fr;
+    width: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    align-horizontal: center;
+    padding: 1 1;
+}
+
+/* ── Compass — always-present one-line key hint ─────────────────────────── */
+#compass {
+    height: 1;
+    width: 100%;
+    background: $panel;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+/* ── Cards — width-capped, centred, never fixed-height ──────────────────── */
+.card {
+    width: 1fr;
+    max-width: 80;
+    height: auto;
+    padding: 1 2;
+}
+
+.ribbon-ok { color: $success; text-style: bold; }
+.ribbon-info { color: $primary; text-style: bold; }
+.ribbon-warn { color: $warning; text-style: bold; }
+.ribbon-muted { color: $text-muted; text-style: bold; }
+
+.title {
+    text-style: bold;
+    width: 1fr;
+    max-width: 80;
+    height: auto;
+    padding: 0 0 1 0;
+}
+
+.prose {
+    width: 1fr;
+    max-width: 80;
+    height: auto;
+}
+
+.dim { color: $text-muted; }
+
+/* ── Home / menu rows ───────────────────────────────────────────────────── */
+.menu-row {
+    width: 1fr;
+    max-width: 80;
+    height: auto;
+    padding: 0 0;
+}
+.menu-selected { color: $primary; text-style: bold; }
+
+/* ── Explore / settings input ───────────────────────────────────────────── */
+Input {
+    width: 1fr;
+    max-width: 80;
+}
+
+/* ── The graceful floor for tiny terminals ──────────────────────────────── */
+#too-small {
+    display: none;
+    width: 100%;
+    height: 100%;
+    content-align: center middle;
+    color: $warning;
+}
+
+Screen.tiny #header,
+Screen.tiny #body,
+Screen.tiny #compass {
+    display: none;
+}
+Screen.tiny #too-small {
+    display: block;
+}
