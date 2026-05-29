@@ -37,6 +37,9 @@ LEDGER = _ledger_path()
 
 
 # Per-MTok pricing. Cache reads ~10% of input; cache writes ~125%.
+# Anthropic verified 2026-05-20; OpenAI verified 2026-05-29 (list price).
+# CLI backends (claude-code-cli / codex-cli) are $0 marginal — the
+# subscription absorbs the tokens — so they map to all-zero entries.
 PRICING = {
     "claude-sonnet-4-6": {
         "input":       3.00,
@@ -50,20 +53,39 @@ PRICING = {
         "cache_write": 6.25,
         "output":     25.00,
     },
+    "gpt-4o": {
+        "input":       2.50,
+        "cache_read":  1.25,
+        "cache_write": 2.50,
+        "output":     10.00,
+    },
+    "gpt-4o-mini": {
+        "input":       0.15,
+        "cache_read":  0.075,
+        "cache_write": 0.15,
+        "output":      0.60,
+    },
+    "claude-code-cli": {"input": 0.0, "cache_read": 0.0, "cache_write": 0.0, "output": 0.0},
+    "codex-cli": {"input": 0.0, "cache_read": 0.0, "cache_write": 0.0, "output": 0.0},
 }
 
 
 def _cost(model: str, usage) -> float:
-    p = PRICING[model]
+    # Defensive: an unknown model (e.g. a future OpenAI id) costs $0 in the
+    # ledger rather than crashing a live run mid-scan. Prices are added to
+    # PRICING as models are adopted.
+    p = PRICING.get(model)
+    if p is None:
+        return 0.0
     input_tokens = getattr(usage, "input_tokens", 0)
     output_tokens = getattr(usage, "output_tokens", 0)
     cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
     cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
     return (
-        input_tokens * p["input"]
-        + cache_read * p["cache_read"]
-        + cache_write * p["cache_write"]
-        + output_tokens * p["output"]
+        input_tokens * p.get("input", 0.0)
+        + cache_read * p.get("cache_read", 0.0)
+        + cache_write * p.get("cache_write", 0.0)
+        + output_tokens * p.get("output", 0.0)
     ) / 1_000_000
 
 
