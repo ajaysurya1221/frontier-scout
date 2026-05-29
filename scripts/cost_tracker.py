@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,6 +38,9 @@ LEDGER = _ledger_path()
 
 
 # Per-MTok pricing. Cache reads ~10% of input; cache writes ~125%.
+# Anthropic verified 2026-05-20; OpenAI verified 2026-05-29 (list price).
+# CLI backends (claude-code-cli / codex-cli) are $0 marginal — the
+# subscription absorbs the tokens — so they map to all-zero entries.
 PRICING = {
     "claude-sonnet-4-6": {
         "input":       3.00,
@@ -50,20 +54,78 @@ PRICING = {
         "cache_write": 6.25,
         "output":     25.00,
     },
+    "gpt-4o": {
+        "input":       2.50,
+        "cache_read":  1.25,
+        "cache_write": 2.50,
+        "output":     10.00,
+    },
+    "gpt-4o-mini": {
+        "input":       0.15,
+        "cache_read":  0.075,
+        "cache_write": 0.15,
+        "output":      0.60,
+    },
+    "claude-code-cli": {"input": 0.0, "cache_read": 0.0, "cache_write": 0.0, "output": 0.0},
+    "codex-cli": {"input": 0.0, "cache_read": 0.0, "cache_write": 0.0, "output": 0.0},
 }
 
 
+# Conservative fallback for a model id we don't have list prices for. We take
+# the *most expensive* rate across every known paid model so an unknown id can
+# never UNDER-count spend and silently slip past a budget cap. Over-counting is
+# the safe failure mode for a guard. CLI ($0) backends are explicit entries in
+# PRICING, so they never hit this fallback.
+def _conservative_rates() -> dict[str, float]:
+    paid = [p for p in PRICING.values() if any(v > 0 for v in p.values())]
+    keys = ("input", "cache_read", "cache_write", "output")
+    return {k: max(p.get(k, 0.0) for p in paid) for k in keys}
+
+
+_FALLBACK_RATES = _conservative_rates()
+_warned_models: set[str] = set()
+
+
+def _resolve_pricing(model: str) -> dict[str, float] | None:
+    """Look up a model's rate table, tolerating dated suffixes.
+
+    Providers may echo a dated id (``claude-sonnet-4-6-20251001``) for an alias
+    we price under its base name (``claude-sonnet-4-6``). Try an exact match
+    first, then the longest known key that is a prefix of ``model``.
+    """
+    exact = PRICING.get(model)
+    if exact is not None:
+        return exact
+    candidates = [k for k in PRICING if model.startswith(k)]
+    if candidates:
+        return PRICING[max(candidates, key=len)]
+    return None
+
+
 def _cost(model: str, usage) -> float:
-    p = PRICING[model]
+    # An unknown model (e.g. a future provider id) must NOT cost $0 — that would
+    # silently bypass the budget cap on the user's own key. Instead apply the
+    # most-expensive known rate and warn once, so caps trigger conservatively.
+    p = _resolve_pricing(model)
+    if p is None:
+        if model not in _warned_models:
+            _warned_models.add(model)
+            print(
+                f"⚠️  cost_tracker: unknown model {model!r} — using conservative "
+                "(max known) pricing for budget safety. Add it to PRICING to "
+                "get exact cost.",
+                file=sys.stderr,
+            )
+        p = _FALLBACK_RATES
     input_tokens = getattr(usage, "input_tokens", 0)
     output_tokens = getattr(usage, "output_tokens", 0)
     cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
     cache_write = getattr(usage, "cache_creation_input_tokens", 0) or 0
     return (
-        input_tokens * p["input"]
-        + cache_read * p["cache_read"]
-        + cache_write * p["cache_write"]
-        + output_tokens * p["output"]
+        input_tokens * p.get("input", 0.0)
+        + cache_read * p.get("cache_read", 0.0)
+        + cache_write * p.get("cache_write", 0.0)
+        + output_tokens * p.get("output", 0.0)
     ) / 1_000_000
 
 

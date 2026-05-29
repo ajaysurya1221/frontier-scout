@@ -257,18 +257,11 @@ def _recommended_actions(repo: Path, providers: list[ProviderStatus]) -> list[Re
         description=evaluate_desc,
         requires_input=True,
     )
-    demo_report = RecommendedAction(
-        id="demo_report",
-        label="Generate demo report",
-        command="frontier-scout demo",
-        description="Render the offline radar demo without API keys.",
-    )
-
     if not has_ollama and not has_api_key:
-        return [demo_report, dry_scan, profile, deps_scan, evaluate_url]
+        return [dry_scan, profile, deps_scan, evaluate_url]
     if has_api_key:
-        return [dry_scan, evaluate_url, profile, deps_scan, demo_report]
-    return [dry_scan, profile, deps_scan, evaluate_url, demo_report]
+        return [dry_scan, evaluate_url, profile, deps_scan]
+    return [dry_scan, profile, deps_scan, evaluate_url]
 
 
 def _join_or(items: list[str], fallback: str) -> str:

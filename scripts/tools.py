@@ -42,6 +42,22 @@ SCORE_ITEMS_TOOL = {
         "    - Op-ed / commentary / opinion posts about AI ethics or industry "
         "takes with no specific tool / framework named (score ≤ 4).\n"
         "    - Re-announcements of tools already in the user's seen-tools set.\n"
+        "    - General-purpose infrastructure with NO AI / agent / LLM surface: "
+        "web frameworks (FastAPI, Flask, Django, Express, Next.js), HTTP "
+        "clients (requests, httpx, axios), ORMs / DB drivers (SQLAlchemy, "
+        "Prisma), build / bundler / lint tooling (webpack, vite, ruff, eslint), "
+        "and similar plumbing. Frontier Scout is an AI-ADOPTION RADAR — these "
+        "belong in the dependency scan, NOT the AI-tools feed. Score ≤ 4 even "
+        "when the framework appears in the user's stack profile. EXCEPTION: a "
+        "release that adds a FIRST-CLASS AI / agent / LLM capability (native "
+        "tool-calling, a built-in MCP endpoint, streaming LLM responses, an "
+        "agent runtime) is in-scope — score it on merit and tag it.\n"
+        "\n"
+        "AI-RADAR SCOPE: an item only deserves a score ≥ 6 if it is AI-NATIVE — "
+        "it is a skill, MCP server, agent framework, model release, or a "
+        "developer tool whose primary purpose is building / running / evaluating "
+        "AI or agentic systems. A generic library that merely happens to sit in "
+        "an AI project's dependency tree is not AI-native.\n"
         "\n"
         "Hygiene is not strategy. When in doubt about substance, score 5 and "
         "let it fall below the verdict threshold."
@@ -350,6 +366,19 @@ JUDGE_TOOL = {
                             "type": "string",
                             "enum": ["adopt", "trial", "assess", "hold"],
                             "description": "Required iff action=retier.",
+                        },
+                        "new_fit": {
+                            "type": "string",
+                            "enum": ["high", "medium", "low"],
+                            "description": (
+                                "Optional fit override. Set this (typically high→medium) "
+                                "when the draft over-claims fit — e.g. it treats a "
+                                "name-adjacent but DISTINCT package as adopted "
+                                "(pydantic in STACK_PROFILE does NOT justify pydantic-ai "
+                                "fit=high), or assumes daily use of a tool absent from "
+                                "STACK_PROFILE. Lower the fit to what the profile actually "
+                                "supports."
+                            ),
                         },
                         "severity": {
                             "type": "string",

@@ -58,10 +58,11 @@ import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
-import anthropic
 
 from cost_tracker import log_call
 from llm_client import call_with_retry
+
+from frontier_scout.providers import FAST, available_providers, resolve_provider
 
 
 def _fs_home() -> Path:
@@ -206,7 +207,7 @@ def run(tool: str, url: str, user: str = "", dry_run: bool | None = None) -> int
             _post_thread_if_possible(tool, refusal, dry_run=False)
             return 0
 
-    client = _anthropic_client() if not dry_run or os.environ.get("ANTHROPIC_API_KEY") else None
+    client = _provider() if (not dry_run or available_providers()) else None
 
     # 1. Resolve tool (deterministic — README + PyPI/HF metadata when reachable).
     tool_spec = _resolve_tool(tool, url)
@@ -612,7 +613,8 @@ _CLASSIFY_TOOL = {
 }
 
 
-def _classify(client: anthropic.Anthropic, spec: dict) -> tuple[dict, float]:
+def _classify(client, spec: dict) -> tuple[dict, float]:
+    model_id = client.model(FAST)
     user_msg = (
         f"Tool name: {spec['name']}\n"
         f"URL: {spec['url']}\n"
@@ -622,7 +624,7 @@ def _classify(client: anthropic.Anthropic, spec: dict) -> tuple[dict, float]:
     )
     resp = call_with_retry(
         client, "lab-classify",
-        model=MODEL,
+        model=model_id,
         max_tokens=MAX_TOKENS_PER_CALL,
         system=[{"type": "text", "text": (
             "You are Frontier Scout's lab classifier. Given a tool, decide its "
@@ -647,7 +649,7 @@ def _classify(client: anthropic.Anthropic, spec: dict) -> tuple[dict, float]:
         tool_choice={"type": "tool", "name": "classify_tool"},
         messages=[{"role": "user", "content": user_msg}],
     )
-    cost = log_call("lab-classify", MODEL, resp.usage)
+    cost = log_call("lab-classify", getattr(resp, "model", None) or model_id, resp.usage)
     tool_use = next(b for b in resp.content if b.type == "tool_use")
     out = dict(tool_use.input)
     # Backward-safety: if the classifier somehow omits runtime, default to
@@ -782,7 +784,8 @@ _GENERATOR_SYSTEM_BY_RUNTIME = {
 }
 
 
-def _generate_test(client: anthropic.Anthropic, spec: dict, classification: dict) -> tuple[str, float]:
+def _generate_test(client, spec: dict, classification: dict) -> tuple[str, float]:
+    model_id = client.model(FAST)
     runtime = classification.get("runtime", "python")
     system_prompt = _GENERATOR_SYSTEM_BY_RUNTIME.get(runtime, _GENERATOR_SYSTEM_PYTHON)
     hf_meta = spec.get("hf", {}) or {}
@@ -802,14 +805,14 @@ def _generate_test(client: anthropic.Anthropic, spec: dict, classification: dict
     )
     resp = call_with_retry(
         client, "lab-generate",
-        model=MODEL,
+        model=model_id,
         max_tokens=MAX_TOKENS_PER_CALL,
         system=[{"type": "text", "text": system_prompt}],
         tools=[_GENERATE_TEST_TOOL],
         tool_choice={"type": "tool", "name": "emit_test_script"},
         messages=[{"role": "user", "content": user_msg}],
     )
-    cost = log_call("lab-generate", MODEL, resp.usage)
+    cost = log_call("lab-generate", getattr(resp, "model", None) or model_id, resp.usage)
     tool_use = next(b for b in resp.content if b.type == "tool_use")
     script = tool_use.input["script"]
     return script, cost
@@ -1178,7 +1181,8 @@ _INTERPRET_TOOL = {
 }
 
 
-def _interpret(client: anthropic.Anthropic, spec: dict, classification: dict, script: str, sandbox: dict) -> tuple[dict, float]:
+def _interpret(client, spec: dict, classification: dict, script: str, sandbox: dict) -> tuple[dict, float]:
+    model_id = client.model(FAST)
     runtime = classification.get("runtime", "python")
     user_msg = (
         f"Tool: {spec['name']}\nCategory: {classification.get('category')}\n"
@@ -1194,7 +1198,7 @@ def _interpret(client: anthropic.Anthropic, spec: dict, classification: dict, sc
     )
     resp = call_with_retry(
         client, "lab-interpret",
-        model=MODEL,
+        model=model_id,
         max_tokens=MAX_TOKENS_PER_CALL,
         system=[{"type": "text", "text": (
             "You are Frontier Scout's lab interpreter. Given a sandbox run, "
@@ -1211,7 +1215,7 @@ def _interpret(client: anthropic.Anthropic, spec: dict, classification: dict, sc
         tool_choice={"type": "tool", "name": "emit_lab_insights"},
         messages=[{"role": "user", "content": user_msg}],
     )
-    cost = log_call("lab-interpret", MODEL, resp.usage)
+    cost = log_call("lab-interpret", getattr(resp, "model", None) or model_id, resp.usage)
     tool_use = next(b for b in resp.content if b.type == "tool_use")
     return dict(tool_use.input), cost
 
@@ -1359,8 +1363,9 @@ def _write_transcript(
 
 # ── Misc helpers ─────────────────────────────────────────────────────────────
 
-def _anthropic_client() -> anthropic.Anthropic:
-    return anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+def _provider():
+    """Resolve the active LLM backend for a lab run."""
+    return resolve_provider()
 
 
 if __name__ == "__main__":

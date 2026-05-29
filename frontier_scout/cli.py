@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -53,6 +54,24 @@ def build_parser() -> argparse.ArgumentParser:
         dest="top_setup",
         action="store_true",
         help="Alias for the `setup` subcommand. Equivalent to `frontier-scout setup`.",
+    )
+    # Top-level alias for the offline demo. Keeps the demo out of the TUI:
+    # `frontier-scout --demo` renders and serves the offline radar report.
+    parser.add_argument(
+        "--demo",
+        dest="top_demo",
+        action="store_true",
+        help="Alias for the `demo` subcommand. Render the offline radar demo (no API keys or network).",
+    )
+    # Pin the LLM backend for this invocation (sets FRONTIER_SCOUT_PROVIDER).
+    # Extracted from argv before parsing so it works in any position, e.g.
+    # `frontier-scout --provider openai scan` or `frontier-scout scan --provider openai`.
+    parser.add_argument(
+        "--provider",
+        choices=["anthropic", "openai", "claude-cli", "codex-cli"],
+        default=None,
+        help="Pin the LLM backend (anthropic, openai, claude-cli, codex-cli). "
+        "Overrides auto-detection; equivalent to FRONTIER_SCOUT_PROVIDER.",
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -251,6 +270,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     trial_cmd.add_argument("--json", action="store_true", help="Print the trial payload as JSON.")
 
+    implement_cmd = sub.add_parser(
+        "implement",
+        help="Adopt a tool in an isolated copy of your repo, run tests, show the diff.",
+    )
+    implement_cmd.add_argument("tool", help="Tool/framework/version to adopt.")
+    implement_cmd.add_argument("--repo", default=".", help="Repository to modify in isolation.")
+    implement_cmd.add_argument(
+        "--instruction",
+        help="Override the default 'adopt <tool>' instruction with a precise task.",
+    )
+    implement_cmd.add_argument(
+        "--test-command",
+        help="Test command to run in the isolated copy (defaults to repo detection).",
+    )
+    implement_cmd.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Prepare a synthetic change without an LLM call or test run.",
+    )
+    implement_cmd.add_argument(
+        "--keep",
+        action="store_true",
+        help="On success, copy the changes into your working tree (no commit).",
+    )
+    implement_cmd.add_argument("--progress", action="store_true", help="Stream stage progress to stderr.")
+    implement_cmd.add_argument("--json", action="store_true", help="Print the result as JSON.")
+
     guard_cmd = sub.add_parser("guard", help="Run deterministic local adoption policy checks.")
     guard_cmd.add_argument("--repo", default=".", help="Repository to inspect for local policy.")
     guard_cmd.add_argument(
@@ -328,14 +374,54 @@ def _run_tui_with_reconfigure_loop(
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
 
-    # Stream I — top-level ``--setup`` alias. Re-parse with the
-    # ``--setup`` flag stripped and the ``setup`` subcommand prepended,
-    # so all of ``setup``'s defaults and option parsing apply uniformly.
-    if getattr(args, "top_setup", False) and args.command is None:
-        clean = [a for a in (argv or []) if a != "--setup"]
-        args = parser.parse_args(["setup", *clean])
+    # Top-level aliases: ``frontier-scout --setup`` / ``--demo`` translate to
+    # their subcommand form *before* parsing, so each subcommand's own flags
+    # (e.g. ``--demo --no-serve`` or ``--setup --plain``) parse uniformly.
+    raw = list(argv) if argv is not None else sys.argv[1:]
+
+    # ``--provider`` pins the LLM backend for this invocation. We pull it out of
+    # argv before parsing (in any position, ``--provider X`` or ``--provider=X``)
+    # and surface it through FRONTIER_SCOUT_PROVIDER, which every subcommand's
+    # resolve_provider() already reads. This keeps the flag uniform across
+    # subcommands without threading it through each one.
+    valid_providers = ("anthropic", "openai", "claude-cli", "codex-cli")
+
+    def _set_provider(value: str | None) -> None:
+        if not value:
+            print("error: --provider requires a value", file=sys.stderr)
+            raise SystemExit(2)
+        if value not in valid_providers:
+            print(
+                f"error: invalid --provider {value!r} "
+                f"(choose from {', '.join(valid_providers)})",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        os.environ["FRONTIER_SCOUT_PROVIDER"] = value
+
+    cleaned: list[str] = []
+    skip_next = False
+    for i, tok in enumerate(raw):
+        if skip_next:
+            skip_next = False
+            continue
+        if tok == "--provider":
+            _set_provider(raw[i + 1] if i + 1 < len(raw) else None)
+            skip_next = True
+            continue
+        if tok.startswith("--provider="):
+            _set_provider(tok.split("=", 1)[1])
+            continue
+        cleaned.append(tok)
+    raw = cleaned
+
+    for alias, subcommand in (("--setup", "setup"), ("--demo", "demo")):
+        if alias in raw:
+            raw = [subcommand, *(a for a in raw if a != alias)]
+            break
+
+    args = parser.parse_args(raw)
 
     if args.command is None:
         if sys.stdin.isatty() and sys.stdout.isatty():
@@ -582,6 +668,49 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "lab":
         return run_lab(args.tool, args.url, dry_run=args.dry_run)
+    if args.command == "implement":
+        from .implement import discard, keep_changes, run_implement
+
+        reporter = None
+        if getattr(args, "progress", False):
+            from .progress import StderrReporter
+
+            reporter = StderrReporter()
+        result = run_implement(
+            repo=Path(args.repo),
+            tool_name=args.tool,
+            instruction=args.instruction,
+            dry_run=args.dry_run,
+            test_command=args.test_command,
+            reporter=reporter,
+        )
+        kept: list[str] = []
+        # Always tear the isolated workspace down. The only path that retains
+        # files is keep+passed, and keep_changes() copies them out *then*
+        # discards. Any other combination (keep but failed/error/prepared, or
+        # no --keep at all) must still discard so temp dirs never leak.
+        if args.keep and result.status == "passed":
+            kept = keep_changes(result)
+        else:
+            discard(result)
+        if args.json:
+            payload = result.to_dict()
+            payload["kept_files"] = kept
+            print(json.dumps(payload, indent=2))
+        else:
+            print(f"IMPLEMENT {result.tool_name}")
+            print(f"status: {result.status}")
+            print(f"summary: {result.summary}")
+            print(f"what you get: {result.what_you_get}")
+            print(f"test command: {result.test_command}")
+            print(f"files changed: {', '.join(result.files_changed) or 'none'}")
+            if result.error:
+                print(f"error: {result.error}")
+            if kept:
+                print(f"kept (copied into working tree): {', '.join(kept)}")
+            elif not args.keep and result.status == "passed":
+                print("changes discarded (pass --keep to copy them into your repo)")
+        return 0 if result.status in {"passed", "prepared"} else 1
     if args.command == "evaluate":
         stack = detect_stack(Path(args.repo))
         evaluation = evaluate_url(args.url, stack)

@@ -35,7 +35,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlparse
 
-import anthropic
 import feedparser
 import judge as judge_mod
 import quality_logger
@@ -46,10 +45,14 @@ from llm_client import call_with_retry
 from tools import SCORE_ITEMS_TOOL, VERDICT_TOOL
 from validators import validate_verdicts
 
+from frontier_scout.providers import FAST, resolve_provider
 from prompts import cached_system_blocks
 
 # ── Config ──────────────────────────────────────────────────────────────────
 
+# Historical default; the active model is whatever the resolved provider
+# maps the "fast" tier to (Anthropic → claude-sonnet-4-6, OpenAI → gpt-4o-mini,
+# CLI → the logged-in CLI's model).
 MODEL = "claude-sonnet-4-6"
 CUTOFF = datetime.now(UTC) - timedelta(days=7)
 
@@ -550,11 +553,15 @@ def filter_by_seen(
 # ── LLM passes ──────────────────────────────────────────────────────────────
 
 
-def _anthropic_client() -> anthropic.Anthropic:
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is required for live scans")
-    return anthropic.Anthropic(api_key=api_key)
+_PROVIDER = None
+
+
+def _provider():
+    """Resolve (once) the active LLM backend for this scan."""
+    global _PROVIDER
+    if _PROVIDER is None:
+        _PROVIDER = resolve_provider()
+    return _PROVIDER
 
 
 def score_items(
@@ -577,17 +584,23 @@ def score_items(
         for i, item in enumerate(items)
     )
 
+    provider = _provider()
+    model_id = provider.model(FAST)
     resp = call_with_retry(
-        _anthropic_client(),
+        provider,
         "scout-score",
-        model=MODEL,
+        model=model_id,
         max_tokens=16000,
         system=cached_system_blocks(stack_profile),
         tools=[SCORE_ITEMS_TOOL],
         tool_choice={"type": "tool", "name": "score_items"},
         messages=[{"role": "user", "content": f"Score these {len(items)} items.\n\n{batch}"}],
     )
-    cost = log_call("scout-score", MODEL, resp.usage)
+    # Bill against the model the API actually served (resp.model), not the
+    # requested alias — providers can resolve an alias to a dated id with a
+    # different price. Fall back to the requested id if the response omits it.
+    billed_model = getattr(resp, "model", None) or model_id
+    cost = log_call("scout-score", billed_model, resp.usage)
     print(
         f"  Score pass: {resp.usage.input_tokens} in + {resp.usage.output_tokens} out "
         f"(cache_read={getattr(resp.usage, 'cache_read_input_tokens', 0)}) = ${cost:.4f}"
@@ -664,10 +677,12 @@ def generate_verdicts(
     )
     today = datetime.now().strftime("%Y-%m-%d")
 
+    provider = _provider()
+    model_id = provider.model(FAST)
     resp = call_with_retry(
-        _anthropic_client(),
+        provider,
         "scout-verdict",
-        model=MODEL,
+        model=model_id,
         max_tokens=4000,
         system=cached_system_blocks(stack_profile),
         tools=[VERDICT_TOOL],
@@ -684,7 +699,8 @@ def generate_verdicts(
             }
         ],
     )
-    cost = log_call("scout-verdict", MODEL, resp.usage)
+    billed_model = getattr(resp, "model", None) or model_id
+    cost = log_call("scout-verdict", billed_model, resp.usage)
     print(
         f"  Verdict pass: {resp.usage.input_tokens} in + {resp.usage.output_tokens} out "
         f"(cache_read={getattr(resp.usage, 'cache_read_input_tokens', 0)}) = ${cost:.4f}"

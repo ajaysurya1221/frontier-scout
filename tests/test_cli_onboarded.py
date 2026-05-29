@@ -17,6 +17,7 @@ every time, and the bare ``frontier-scout`` ignored
 from __future__ import annotations
 
 import io
+import os
 
 import pytest
 
@@ -171,6 +172,44 @@ def test_top_level_setup_alias_routes_to_setup_subcommand(fresh_home, monkeypatc
     rc = cli.main(["--setup"])
     assert rc == 0
     assert "already onboarded" in capsys.readouterr().out.lower()
+
+
+# ---------------------------------------------------------------------------
+# ``--demo`` alias
+# ---------------------------------------------------------------------------
+
+
+def test_top_level_demo_alias_routes_to_demo_subcommand(fresh_home, tmp_path, capsys):
+    """``frontier-scout --demo`` should behave like ``frontier-scout demo``,
+    and accept the demo subcommand's own flags (``--no-serve``)."""
+
+    out_dir = tmp_path / "demo-out"
+    rc = cli.main(["--demo", "--no-serve", "--output-dir", str(out_dir)])
+    assert rc == 0
+    captured = capsys.readouterr().out.lower()
+    assert "html report" in captured
+    assert (out_dir / "briefing.html").exists()
+    assert (out_dir / "verdicts.json").exists()
+
+
+def test_provider_flag_sets_env_before_subcommand(fresh_home, tmp_path, monkeypatch):
+    """``--provider`` pins FRONTIER_SCOUT_PROVIDER in any position."""
+
+    monkeypatch.delenv("FRONTIER_SCOUT_PROVIDER", raising=False)
+    out_dir = tmp_path / "p1"
+    rc = cli.main(["--provider", "openai", "--demo", "--no-serve", "--output-dir", str(out_dir)])
+    assert rc == 0
+    assert os.environ["FRONTIER_SCOUT_PROVIDER"] == "openai"
+
+
+def test_provider_flag_equals_form_after_subcommand(fresh_home, tmp_path, monkeypatch):
+    """``--provider=X`` after the subcommand also works."""
+
+    monkeypatch.delenv("FRONTIER_SCOUT_PROVIDER", raising=False)
+    out_dir = tmp_path / "p2"
+    rc = cli.main(["demo", "--no-serve", "--output-dir", str(out_dir), "--provider=claude-cli"])
+    assert rc == 0
+    assert os.environ["FRONTIER_SCOUT_PROVIDER"] == "claude-cli"
 
 
 # ---------------------------------------------------------------------------

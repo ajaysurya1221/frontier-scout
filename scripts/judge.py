@@ -19,26 +19,27 @@ Flow:
 
 from __future__ import annotations
 
-import os
 from typing import Any
-
-import anthropic
 
 from cost_tracker import log_call
 from llm_client import call_with_retry
 from prompts import cached_judge_blocks
 from tools import JUDGE_TOOL
 
-CLIENT: anthropic.Anthropic | None = None
+from frontier_scout.providers import DEEP, resolve_provider
 
-def _client() -> anthropic.Anthropic:
-    global CLIENT
-    if CLIENT is None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise RuntimeError("ANTHROPIC_API_KEY is required for this run")
-        CLIENT = anthropic.Anthropic(api_key=api_key)
-    return CLIENT
+PROVIDER = None
+
+
+def _provider():
+    """Resolve (once) the active LLM backend for the judge pass."""
+    global PROVIDER
+    if PROVIDER is None:
+        PROVIDER = resolve_provider()
+    return PROVIDER
+
+
+# Historical default; active model is provider.model(DEEP).
 JUDGE_MODEL = "claude-opus-4-7"
 THINKING_BUDGET = 4000  # tokens
 
@@ -120,10 +121,12 @@ def critique(
     tool_use = None
     used_fallback = False
 
+    provider = _provider()
+    model_id = provider.model(DEEP)
     resp = call_with_retry(
-        _client(),
+        provider,
         "scout-judge",
-        model=JUDGE_MODEL,
+        model=model_id,
         max_tokens=8000,
         thinking={"type": "adaptive"},
         system=cached_judge_blocks(stack_profile),
@@ -132,7 +135,7 @@ def critique(
         messages=[{"role": "user", "content": user_message}],
         extra_body={"output_config": {"effort": "high"}},
     )
-    cost += log_call("scout-judge", JUDGE_MODEL, resp.usage)
+    cost += log_call("scout-judge", getattr(resp, "model", None) or model_id, resp.usage)
     cache_read = getattr(resp.usage, "cache_read_input_tokens", 0) or 0
     print(
         f"  Judge pass 1 (thinking): {resp.usage.input_tokens} in + "
@@ -148,16 +151,18 @@ def critique(
         print("  ⚠️  Judge attempt 1 emitted no tool call — retrying without thinking, forced tool_choice")
         used_fallback = True
         resp2 = call_with_retry(
-            _client(),
+            provider,
             "scout-judge-forced",
-            model=JUDGE_MODEL,
+            model=model_id,
             max_tokens=4000,
             system=cached_judge_blocks(stack_profile),
             tools=[JUDGE_TOOL],
             tool_choice={"type": "tool", "name": "critique_verdicts"},
             messages=[{"role": "user", "content": user_message}],
         )
-        fallback_cost = log_call("scout-judge-forced", JUDGE_MODEL, resp2.usage)
+        fallback_cost = log_call(
+            "scout-judge-forced", getattr(resp2, "model", None) or model_id, resp2.usage
+        )
         cost += fallback_cost
         print(
             f"  Judge pass 2 (forced): {resp2.usage.input_tokens} in + "
@@ -210,6 +215,11 @@ def apply_judge_decisions(
         out = dict(v)
         if action == "retier" and d.get("new_tier"):
             out["verdict"] = d["new_tier"]
+        # Honor a fit override regardless of action: the judge can keep the
+        # tier but still downgrade an ungrounded fit claim (e.g. pydantic in
+        # the stack does NOT justify pydantic-ai fit=high).
+        if d.get("new_fit"):
+            out["fit"] = d["new_fit"]
         out["severity"] = d.get("severity", "standard")
         out["readiness"] = int(d.get("readiness", 3))
         out["_judge_reason"] = d.get("reason", "")
