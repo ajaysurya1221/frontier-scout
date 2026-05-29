@@ -146,6 +146,25 @@ Configure once (LLM backend, automation vs ad-hoc):
 frontier-scout setup
 ```
 
+### Bring your own LLM — one is enough
+
+Frontier Scout needs **exactly one** LLM backend, and it works with whichever
+one you already have. The setup wizard detects what's available and picks the
+first present, in this order:
+
+| You have… | Set | Cost per scan |
+|---|---|---:|
+| An **Anthropic** API key | `ANTHROPIC_API_KEY` | ~$0.34 |
+| An **OpenAI** API key | `OPENAI_API_KEY` | ~$0.05 |
+| **Claude Code** installed | nothing — auto-detected | $0 marginal |
+| **Codex CLI** installed | nothing — auto-detected | $0 marginal |
+
+If you only have a Claude Code or Codex subscription and no API key, scouting
+still works at **zero marginal cost** — Frontier Scout shells out to the CLI you
+already pay for. Force a specific backend with `--provider anthropic|openai|claude-cli|codex-cli`
+or the `FRONTIER_SCOUT_PROVIDER` env var. No backend at all? `frontier-scout
+--demo` runs the whole pipeline offline against bundled fixtures.
+
 Then, inside any repo, open Mission Control:
 
 ```bash
@@ -174,11 +193,6 @@ content to an LLM. Limited terminals can use
 `frontier-scout setup --plain`; automation can use
 `frontier-scout setup --json`. The layout reflows for VS Code-style
 80×24 panels.
-
-On **first launch**, a one-time welcome overlay appears after the brand
-splash and walks you through the three core actions — Scout verdicts,
-trialling a tool, and running `guard` in CI. Press any key to enter
-Mission Control; the overlay never shows again.
 
 ### Develop locally
 
@@ -310,17 +324,29 @@ See [SECURITY.md](SECURITY.md) for the threat model.
 
 ## 💸 Cost
 
-The offline demo is free. A normal live weekly scan is designed to stay cheap:
+`frontier-scout --demo` is free — it never calls the network. A live weekly
+scan stays cheap, and the exact bill depends on which provider you point it at.
+The numbers below are **measured** from real scans of ~220 live items (the
+`scan` pipeline: a fast score pass, a fast verdict pass, and an optional
+Opus-class judge pass):
 
-| Component | Typical cost |
-|---|---:|
-| Sonnet score pass | ~$0.15 |
-| Sonnet verdict pass | ~$0.04 |
-| Optional Opus judge | ~$0.12 |
-| **Weekly scan** | **~$0.30** |
+| Provider (fast / deep model) | Score + verdict | + judge | **Weekly scan** |
+|---|---:|---:|---:|
+| **Anthropic** (Sonnet / Opus) | ~$0.22 | +$0.12 | **~$0.34** |
+| **OpenAI** (gpt-4o-mini / gpt-4o) | ~$0.01 | +$0.04 | **~$0.05** |
+| **Claude CLI** (`claude-code-cli`) | $0 | $0 | **$0 marginal** |
+| **Codex CLI** (`codex-cli`) | $0 | $0 | **$0 marginal** |
 
-Set `JUDGE_ENABLED=false` to skip the Opus judge when you want the cheapest
-possible run.
+- **Anthropic** gives the highest-quality verdicts (it's what the RLAIF loop
+  was tuned against); ~$0.34 with the judge on, ~$0.22 with it off.
+- **OpenAI** is ~7× cheaper because `gpt-4o-mini` carries the bulk passes;
+  quality is good, the judge does the heavy lifting.
+- **Claude CLI / Codex CLI** have **zero marginal cost** — they run through a
+  subscription you already pay for, so a scan adds nothing to your bill.
+
+Set `JUDGE_ENABLED=false` to skip the judge pass for the cheapest run on any
+provider. Every call is written to a local ledger (`costs.jsonl`); run
+`frontier-scout receipts` to see exactly what you spent.
 
 ---
 
@@ -346,10 +372,15 @@ possible run.
   automation mode with cron scheduling, notifications, diff view,
   Go/Rust/Ruby tree-sitter coverage, `frontier-scout doctor`,
   `clear-history` / `notifications` / `cron run` CLI siblings.
-- [ ] **v1.2** — Streaming subprocess output in Trials, multi-repo
-  workspace, PyPI auto-publish on tag.
-- [ ] **v1.3** — launchd / Windows Task Scheduler integrations,
-  live discovery feeds, scout card view.
+- [x] **v1.2.1** — Lab hermeticity (temp HOME + env scrub), repo-scoped
+  policy + reports, cron credential strategy, dependency-trial honesty.
+- [x] **v1.3.0** — Mission Control redesign: ▶ Scout now button, live
+  staged progress, glossary overlay, responsive layout, `--progress` CLI.
+- [x] **v1.4.0** — Universal LLM provider (Anthropic / OpenAI / Claude
+  CLI / Codex CLI), AI-radar scope guardrail, RLAIF fit-grounding loop,
+  Implement & Test, `frontier-scout --demo`, honest per-provider costs.
+- [ ] **v1.5** — Streaming subprocess output in Trials, multi-repo
+  workspace, launchd / Windows Task Scheduler integrations.
 
 See [ROADMAP.md](ROADMAP.md) for the longer view.
 

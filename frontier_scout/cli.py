@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -61,6 +62,16 @@ def build_parser() -> argparse.ArgumentParser:
         dest="top_demo",
         action="store_true",
         help="Alias for the `demo` subcommand. Render the offline radar demo (no API keys or network).",
+    )
+    # Pin the LLM backend for this invocation (sets FRONTIER_SCOUT_PROVIDER).
+    # Extracted from argv before parsing so it works in any position, e.g.
+    # `frontier-scout --provider openai scan` or `frontier-scout scan --provider openai`.
+    parser.add_argument(
+        "--provider",
+        choices=["anthropic", "openai", "claude-cli", "codex-cli"],
+        default=None,
+        help="Pin the LLM backend (anthropic, openai, claude-cli, codex-cli). "
+        "Overrides auto-detection; equivalent to FRONTIER_SCOUT_PROVIDER.",
     )
     sub = parser.add_subparsers(dest="command")
 
@@ -368,6 +379,29 @@ def main(argv: list[str] | None = None) -> int:
     # their subcommand form *before* parsing, so each subcommand's own flags
     # (e.g. ``--demo --no-serve`` or ``--setup --plain``) parse uniformly.
     raw = list(argv) if argv is not None else sys.argv[1:]
+
+    # ``--provider`` pins the LLM backend for this invocation. We pull it out of
+    # argv before parsing (in any position, ``--provider X`` or ``--provider=X``)
+    # and surface it through FRONTIER_SCOUT_PROVIDER, which every subcommand's
+    # resolve_provider() already reads. This keeps the flag uniform across
+    # subcommands without threading it through each one.
+    cleaned: list[str] = []
+    skip_next = False
+    for i, tok in enumerate(raw):
+        if skip_next:
+            skip_next = False
+            continue
+        if tok == "--provider":
+            if i + 1 < len(raw):
+                os.environ["FRONTIER_SCOUT_PROVIDER"] = raw[i + 1]
+                skip_next = True
+            continue
+        if tok.startswith("--provider="):
+            os.environ["FRONTIER_SCOUT_PROVIDER"] = tok.split("=", 1)[1]
+            continue
+        cleaned.append(tok)
+    raw = cleaned
+
     for alias, subcommand in (("--setup", "setup"), ("--demo", "demo")):
         if alias in raw:
             raw = [subcommand, *(a for a in raw if a != alias)]

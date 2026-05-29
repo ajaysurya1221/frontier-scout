@@ -4,6 +4,66 @@
 
 - No unreleased changes yet.
 
+## 1.4.0 - 2026-05-29
+
+### Universal provider + honest, grounded fit
+
+This release makes Frontier Scout work with **whatever one LLM you already
+have**, proves its core "custom-fit without missing a pin" promise against
+live feeds with an AI-judge reinforcement loop, and tells the truth about
+cost across providers.
+
+#### Stream 1 — Universal LLM provider abstraction (4 backends)
+
+- New `frontier_scout/providers/` package: a single `LLMProvider` interface
+  with backends for **Anthropic** (`ANTHROPIC_API_KEY`), **OpenAI**
+  (`OPENAI_API_KEY`), **Claude Code CLI**, and **Codex CLI**.
+  `resolve_provider()` auto-detects the first available in priority order;
+  one LLM is enough. CLI backends have **zero marginal cost**.
+- Tier-based model selection (`FAST` for score/verdict, `DEEP` for the judge)
+  so each backend uses its cheap model for bulk passes and its strong model
+  for judging.
+- New top-level `--provider anthropic|openai|claude-cli|codex-cli` flag
+  (and `FRONTIER_SCOUT_PROVIDER` env) pins a backend in any argv position.
+
+#### Stream 2 — AI-radar scope guardrail
+
+- Two-layer defense against the real bug a user hit (FastAPI and other generic
+  web frameworks leaking into the AI-tools feed): a tightened LLM rubric plus
+  a deterministic `drop_non_ai_native` backstop. A framework merely appearing
+  in your stack is no longer a reason to surface it — only a release adding a
+  first-class AI/agent/LLM capability qualifies.
+
+#### Stream 3 — RLAIF loop (Claude Opus as judge)
+
+- New `scripts/rlaif.py`: a budget-capped (`RLAIF_USD_CAP`, default $60)
+  reinforcement loop. Each cycle runs a live scout, has Opus audit every
+  verdict for scope false-positives and fit-grounding, prints running spend,
+  and hard-stops at the cap. Keys load from `.env.local` by presence only.
+- The judge decision schema gains a `new_fit` override so fit over-claims can
+  be corrected without retiering; the verdict generator learns that
+  name-adjacency is not adoption (`pydantic` ≠ `pydantic-ai`) and must disclose
+  non-detection explicitly. **Result: 0 scope false-positives across 10 live
+  cycles; audit rating "excellent".**
+
+#### Stream 4 — Implement & Test
+
+- Approve a compatible tool/version and Frontier Scout applies the change in
+  an isolated copy of your repo, runs your tests, and shows you the diff and
+  the test result before you commit anything.
+
+#### Stream 5 — `--demo` out of the TUI
+
+- The offline demo is now a plain `frontier-scout --demo` (alias of the `demo`
+  subcommand), removed from the TUI action list as unnecessary bloat. The TUI
+  stays focused on scouting, lab, evaluate, and dossier.
+
+#### Stream 6 — Honest cost docs + single-LLM UX
+
+- README cost table replaced with **measured** per-provider numbers (Anthropic
+  ~$0.34/scan, OpenAI ~$0.05/scan, CLI backends $0 marginal) and a
+  "bring your own LLM — one is enough" guide.
+
 ## 1.3.0 - 2026-05-28
 
 ### Mission Control redesign — the "I can actually use this" release
