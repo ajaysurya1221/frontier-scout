@@ -54,6 +54,14 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Alias for the `setup` subcommand. Equivalent to `frontier-scout setup`.",
     )
+    # Top-level alias for the offline demo. Keeps the demo out of the TUI:
+    # `frontier-scout --demo` renders and serves the offline radar report.
+    parser.add_argument(
+        "--demo",
+        dest="top_demo",
+        action="store_true",
+        help="Alias for the `demo` subcommand. Render the offline radar demo (no API keys or network).",
+    )
     sub = parser.add_subparsers(dest="command")
 
     init_cmd = sub.add_parser("init", help="Create the local Frontier Scout home and print detected stack signals.")
@@ -355,14 +363,17 @@ def _run_tui_with_reconfigure_loop(
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
 
-    # Stream I — top-level ``--setup`` alias. Re-parse with the
-    # ``--setup`` flag stripped and the ``setup`` subcommand prepended,
-    # so all of ``setup``'s defaults and option parsing apply uniformly.
-    if getattr(args, "top_setup", False) and args.command is None:
-        clean = [a for a in (argv or []) if a != "--setup"]
-        args = parser.parse_args(["setup", *clean])
+    # Top-level aliases: ``frontier-scout --setup`` / ``--demo`` translate to
+    # their subcommand form *before* parsing, so each subcommand's own flags
+    # (e.g. ``--demo --no-serve`` or ``--setup --plain``) parse uniformly.
+    raw = list(argv) if argv is not None else sys.argv[1:]
+    for alias, subcommand in (("--setup", "setup"), ("--demo", "demo")):
+        if alias in raw:
+            raw = [subcommand, *(a for a in raw if a != alias)]
+            break
+
+    args = parser.parse_args(raw)
 
     if args.command is None:
         if sys.stdin.isatty() and sys.stdout.isatty():

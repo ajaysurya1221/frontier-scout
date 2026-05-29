@@ -174,6 +174,24 @@ def test_top_level_setup_alias_routes_to_setup_subcommand(fresh_home, monkeypatc
 
 
 # ---------------------------------------------------------------------------
+# ``--demo`` alias
+# ---------------------------------------------------------------------------
+
+
+def test_top_level_demo_alias_routes_to_demo_subcommand(fresh_home, tmp_path, capsys):
+    """``frontier-scout --demo`` should behave like ``frontier-scout demo``,
+    and accept the demo subcommand's own flags (``--no-serve``)."""
+
+    out_dir = tmp_path / "demo-out"
+    rc = cli.main(["--demo", "--no-serve", "--output-dir", str(out_dir)])
+    assert rc == 0
+    captured = capsys.readouterr().out.lower()
+    assert "html report" in captured
+    assert (out_dir / "briefing.html").exists()
+    assert (out_dir / "verdicts.json").exists()
+
+
+# ---------------------------------------------------------------------------
 # Reconfigure exit code 42 — Stream N hook tested via CLI
 # ---------------------------------------------------------------------------
 

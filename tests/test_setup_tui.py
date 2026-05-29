@@ -254,14 +254,16 @@ def test_recommended_actions_reorder_when_no_providers(tmp_path):
     ]
     actions = _recommended_actions(tmp_path, no_providers)
     ids = [action.id for action in actions]
-    assert ids.index("demo_report") < ids.index("evaluate_url")
+    # The offline demo lives at `frontier-scout --demo`, not in the action list.
+    assert "demo_report" not in ids
+    assert ids[0] == "dry_scan"
 
     with_key = list(no_providers)
     with_key[5] = ProviderStatus(name="OpenAI API", kind="api-key", status="present", detail="set")
     actions_with_key = _recommended_actions(tmp_path, with_key)
     ids_with_key = [action.id for action in actions_with_key]
     assert ids_with_key[0] == "dry_scan"
-    assert ids_with_key.index("evaluate_url") < ids_with_key.index("demo_report")
+    assert ids_with_key.index("evaluate_url") < ids_with_key.index("deps_scan")
     assert "API key detected" in next(a.description for a in actions_with_key if a.id == "evaluate_url")
 
 
