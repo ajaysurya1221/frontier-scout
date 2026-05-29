@@ -30,9 +30,10 @@ def _app(tmp_path: Path, *, initial_tab: str = "scout"):
 # ---------------------------------------------------------------------------
 
 
-def test_scout_tab_auto_populates_and_focuses_first_row(tmp_path, monkeypatch):
-    """v1.2 bug fix: cursor auto-positions to row 0 so action buttons have a
-    target on first launch."""
+def test_scout_tab_populates_when_run_button_pressed(tmp_path, monkeypatch):
+    """v1.3.0 Stream C — the table is empty until ▶ Scout now is
+    pressed (no more auto-fire on mount). Cursor lands on row 0
+    after the worker completes."""
 
     async def run() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
@@ -40,21 +41,22 @@ def test_scout_tab_auto_populates_and_focuses_first_row(tmp_path, monkeypatch):
         async with app.run_test(size=(140, 36)) as pilot:
             from textual.widgets import DataTable
 
+            table = app.query_one("#scout-table", DataTable)
+            assert table.row_count == 0  # auto-fire is dead
+            await pilot.click("#scout-run")
             for _ in range(80):
                 await pilot.pause()
-                table = app.query_one("#scout-table", DataTable)
                 if table.row_count > 0:
                     break
             assert table.row_count >= 1
-            # The cursor must land on the first row so [Try] always has a target.
             assert table.cursor_row == 0
 
     asyncio.run(run())
 
 
-def test_scout_detail_panel_populates_on_load(tmp_path, monkeypatch):
-    """v1.2 bug fix: detail panel must render the first verdict's reasoning
-    automatically — no more 'Scouting…' stuck on screen."""
+def test_scout_detail_panel_populates_after_run(tmp_path, monkeypatch):
+    """v1.3.0 Stream C — detail panel renders the first verdict's
+    reasoning after the user explicitly runs a scout."""
 
     async def run() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
@@ -62,6 +64,7 @@ def test_scout_detail_panel_populates_on_load(tmp_path, monkeypatch):
         async with app.run_test(size=(140, 36)) as pilot:
             from textual.widgets import DataTable, Static
 
+            await pilot.click("#scout-run")
             for _ in range(80):
                 await pilot.pause()
                 table = app.query_one("#scout-table", DataTable)
@@ -69,9 +72,8 @@ def test_scout_detail_panel_populates_on_load(tmp_path, monkeypatch):
                     break
             await pilot.pause()
             detail = str(app.query_one("#scout-detail", Static).render())
-            # Reasoning sections must be present.
             assert "What" in detail or "Why" in detail
-            assert "Scouting" not in detail or "Why" in detail  # not stuck on the placeholder
+            assert "Scouting" not in detail or "Why" in detail
 
     asyncio.run(run())
 
@@ -83,6 +85,7 @@ def test_scout_dismiss_persists(tmp_path, monkeypatch):
         async with app.run_test(size=(140, 36)) as pilot:
             from textual.widgets import Button, DataTable
 
+            await pilot.click("#scout-run")
             for _ in range(80):
                 await pilot.pause()
                 if app.query_one("#scout-table", DataTable).row_count > 0:

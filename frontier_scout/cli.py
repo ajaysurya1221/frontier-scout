@@ -177,6 +177,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Opt into live/dynamic discovery sources where supported.",
     )
+    scan_cmd.add_argument(
+        "--progress",
+        action="store_true",
+        help="Stream staged progress to stderr (safe in pipelines / CI).",
+    )
 
     report_cmd = sub.add_parser("report", help="Render a static HTML report from a verdict JSON file or latest scan.")
     report_cmd.add_argument("--input", help="Path to verdict JSON. Defaults to latest SQLite scan, then demo fixture.")
@@ -534,12 +539,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Wrote verdict data: {paths['json']}")
         return 0
     if args.command == "scan":
+        from .progress import StderrReporter
+
+        reporter = StderrReporter() if getattr(args, "progress", False) else None
         payload = run_scan(
             repo=Path(args.repo),
             dry_run=args.dry_run,
             persist=not args.no_store,
             pack=args.pack,
             discover=args.discover,
+            reporter=reporter,
         )
         if args.json:
             print(json.dumps(payload, indent=2))

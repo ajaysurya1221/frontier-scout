@@ -21,18 +21,33 @@ from .store import (
 )
 
 
-def build_dossier(target: str, *, repo: Path | None = None) -> dict[str, Any]:
-    """Build and persist a local adoption dossier for a tool or URL."""
+def build_dossier(
+    target: str,
+    *,
+    repo: Path | None = None,
+    reporter: "ProgressReporter | None" = None,
+) -> dict[str, Any]:
+    """Build and persist a local adoption dossier for a tool or URL.
 
+    v1.3.0 — accepts an optional ``reporter`` (see
+    ``frontier_scout.progress``). ``None`` is a no-op.
+    """
+
+    from frontier_scout.progress import NullReporter
+
+    progress = reporter or NullReporter()
+    progress.stage("Gathering local signals", total_stages=3)
     repo_path = repo or Path.cwd()
     profile = build_scout_profile(repo_path)
     verdict = find_latest_verdict(target)
+    progress.stage("Evaluating capabilities", total_stages=3)
     evaluation = _evaluation_from_target(target, profile)
     if verdict:
         verdict = personalize_verdicts([verdict], profile.model_dump())[0]
     manifest = evaluation.permission_manifest
     policy = load_policy(repo_path)
     decision = evaluate_policy(evaluation, manifest, policy=policy)
+    progress.stage("Compiling brief", total_stages=3)
     tool_id = save_evaluation(evaluation)
     if manifest:
         save_permission_manifest(tool_id, manifest)

@@ -83,12 +83,25 @@ class SetupApp(App[None]):
     }
 
     #result-log:focus-within { border: round #24d6a8; }
+
+    /* v1.3.0 Stream B — per-tab subtitle. */
+    #tab-subtitle {
+        height: 1;
+        padding: 0 2;
+        background: #0d1622;
+        color: #d9f7ff;
+    }
     """
 
     BINDINGS: ClassVar = [
         Binding("q", "request_quit", "Quit"),
-        Binding("question_mark", "show_help", "Help", show=True),
-        Binding("?", "show_help", "Help"),
+        # v1.3.0 Stream B — ? opens the glossary (term reference); the
+        # keymap reference moves to H (still discoverable from the
+        # glossary footer). Old muscle memory hitting ? gets help with
+        # vocabulary first, which is what newcomers actually need.
+        Binding("question_mark", "show_glossary", "Glossary", show=True),
+        Binding("?", "show_glossary", "Glossary"),
+        Binding("H", "show_help", "Help", show=False),
         Binding("slash", "edit_repo", "Repo path"),
         Binding("/", "edit_repo", "Repo path"),
         Binding("ctrl+l", "clear_log", "Clear log", show=False),
@@ -121,17 +134,32 @@ class SetupApp(App[None]):
     # ------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
+        from frontier_scout.tui.glossary import TAB_SUBTITLES
+        from frontier_scout.tui.progress_view import ProgressStrip, StatusStrip
+
         yield Static(self._brand_bar_text(), id="brand-bar", markup=True)
         yield Static(
             "Local-first. No repo content sent to an LLM. No tools installed.",
             id="status-banner",
         )
         yield Static(self._analyse_bar_text(), id="analyse-bar", markup=True)
+        # v1.3.0 Stream B — per-tab subtitle, refreshed in on_tab_changed.
+        yield Static(
+            self._tab_subtitle(self._initial_tab, TAB_SUBTITLES),
+            id="tab-subtitle",
+            markup=True,
+        )
         with TabbedContent(initial=self._initial_tab):
             for spec in TAB_REGISTRY:
                 with TabPane(spec.title, id=spec.slug):
                     yield self._build_tab(spec.slug)
+        # v1.3.0 Stream B — sticky status row + progress bar.
+        yield StatusStrip()
+        yield ProgressStrip()
         yield RichLog(id="result-log", markup=True, auto_scroll=True, wrap=True)
+
+    def _tab_subtitle(self, slug: str, subtitles) -> str:
+        return subtitles.get(slug, "")
 
     def _build_tab(self, slug: str) -> Container:
         mapping = {"scout": ScoutTab, "settings": SettingsTab}
@@ -352,6 +380,33 @@ class SetupApp(App[None]):
 
     def action_show_help(self) -> None:
         self.push_screen(HelpScreen())
+
+    def action_show_glossary(self) -> None:
+        """v1.3.0 Stream B — bound to ?; explains every domain term."""
+
+        from frontier_scout.tui.glossary import GlossaryScreen
+
+        self.push_screen(GlossaryScreen())
+
+    def on_tabbed_content_tab_activated(
+        self, event: TabbedContent.TabActivated
+    ) -> None:
+        """v1.3.0 Stream B — refresh subtitle when the user switches tabs."""
+
+        from frontier_scout.tui.glossary import TAB_SUBTITLES
+
+        try:
+            subtitle_widget = self.query_one("#tab-subtitle", Static)
+        except Exception:  # noqa: BLE001 — pre-mount
+            return
+        slug = event.tab.id or ""
+        # Textual prefixes the tab id with "--content-tab-" depending on
+        # version; normalise to our tab slug.
+        for candidate in (slug, slug.removeprefix("--content-tab-")):
+            if candidate in TAB_SUBTITLES:
+                subtitle_widget.update(TAB_SUBTITLES[candidate])
+                return
+        subtitle_widget.update("")
 
     def action_clear_log(self) -> None:
         self.query_one("#result-log", RichLog).clear()

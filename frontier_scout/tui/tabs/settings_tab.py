@@ -60,6 +60,12 @@ class SettingsTab(VerticalScroll):
         border: round #24d6a8;
         color: #24d6a8;
     }
+
+    /* v1.3.0 Stream D — per-panel subtitle. */
+    SettingsTab .settings-subtitle {
+        color: #6e8aa1;
+        margin-bottom: 1;
+    }
     """
 
     def __init__(self, app_ref) -> None:  # type: ignore[no-untyped-def]
@@ -67,28 +73,62 @@ class SettingsTab(VerticalScroll):
         self.app_ref = app_ref
 
     def compose(self) -> ComposeResult:
+        # v1.3.0 Stream D — every panel ships with a one-line subtitle so
+        # newcomers know what the panel is for before they read the
+        # toggles. Subtitles render in muted grey directly under the
+        # title.
         with Vertical(classes="settings-section"):
             yield Label("Policy", classes="settings-title")
+            yield Static(
+                "[#6e8aa1]Local Adoption-Firewall rules. "
+                "Init writes a conservative default you can edit.[/]",
+                classes="settings-subtitle",
+                markup=True,
+            )
             yield Static(_safe(self._policy_text), id="policy-text", markup=True)
             with Horizontal():
                 yield Button("Init policy (home)", id="settings-policy-home")
                 yield Button("Init policy (repo)", id="settings-policy-repo")
         with Vertical(classes="settings-section"):
             yield Label("Environment", classes="settings-title")
+            yield Static(
+                "[#6e8aa1]Which API keys / tokens Frontier Scout can see. "
+                "Values are never read or shown — presence only.[/]",
+                classes="settings-subtitle",
+                markup=True,
+            )
             yield Static(_safe(self._env_text), id="settings-env-text", markup=True)
         with Vertical(classes="settings-section"):
             yield Label("Memory", classes="settings-title")
+            yield Static(
+                "[#6e8aa1]Stored scan history in ~/.frontier-scout/db.sqlite. "
+                "Clearing is safe — next launch re-runs a fresh dry-run.[/]",
+                classes="settings-subtitle",
+                markup=True,
+            )
             yield Static(_safe(self._memory_text), id="settings-memory-text", markup=True)
             with Horizontal():
                 yield Button("Clear for this repo", id="settings-memory-repo")
                 yield Button("Clear all repos", id="settings-memory-all")
         with Vertical(classes="settings-section"):
             yield Label("Automation", classes="settings-title")
+            yield Static(
+                "[#6e8aa1]Cron-driven scheduled scouts. Dry-run by "
+                "default; live runs only with an explicit opt-in.[/]",
+                classes="settings-subtitle",
+                markup=True,
+            )
             yield Static(_safe(self._automation_text), id="settings-automation-text", markup=True)
             with Horizontal():
                 yield Button("Open setup wizard", id="settings-wizard")
         with Vertical(classes="settings-section"):
             yield Label("System", classes="settings-title")
+            yield Static(
+                "[#6e8aa1]Version, paths, and the raw setup_state.json "
+                "blob. Reset removes UI preferences only.[/]",
+                classes="settings-subtitle",
+                markup=True,
+            )
             yield Static(_safe(self._system_text), id="settings-system-text", markup=True)
             with Horizontal():
                 yield Button("Reset setup state", id="settings-reset-state")

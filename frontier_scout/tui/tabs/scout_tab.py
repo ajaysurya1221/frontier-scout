@@ -147,26 +147,53 @@ class ScoutTab(VerticalScroll):
     # ------------------------------------------------------------------
 
     def compose(self) -> ComposeResult:
+        # v1.3.0 Stream C — explicit primary action button. No more
+        # auto-fire on mount; the user always knows they triggered it.
         with Horizontal(classes="scout-controls"):
+            yield Button(
+                "▶ Scout now  (s)",
+                id="scout-run",
+                variant="success",
+            )
             yield Button(self._scope_label("ai"), id="scout-toggle-ai", classes=self._scope_class("ai"))
             yield Button(self._scope_label("deps"), id="scout-toggle-deps", classes=self._scope_class("deps"))
             yield Static("", id="scout-status")
         yield Static("", id="scout-guard-banner", classes="hidden", markup=True)
         yield DataTable(id="scout-table", cursor_type="row", zebra_stripes=True)
+        # v1.3.0 Stream C — every action visible. Bindings stay for
+        # power users; buttons exist so newcomers can discover what's
+        # possible without reading docs.
         with Horizontal(classes="scout-controls"):
             yield Button("Try locally  (Enter)", id="scout-try")
+            yield Button("Lab  (L)", id="scout-lab")
+            yield Button("Evaluate  (e)", id="scout-evaluate")
+            yield Button("Dossier  (D)", id="scout-dossier")
             yield Button("Open URL", id="scout-open")
             yield Button("Dismiss", id="scout-dismiss")
         yield Static(
-            "[#6e8aa1]Scouting your repo…[/]",
+            (
+                "[#6e8aa1]Press [bold]▶ Scout now[/bold] above (or [bold]s[/bold]) "
+                "to look for AI tools and dependency upgrades that fit your repo. "
+                "Each row carries fit, risk, and concerns so you know why we flagged it. "
+                "Press [bold]?[/bold] for a glossary of every term.[/]"
+            ),
             id="scout-detail",
             markup=True,
         )
 
     def on_mount(self) -> None:
         table = self.query_one("#scout-table", DataTable)
-        table.add_columns("Verdict", "Tool / Package", "Fit", "Risk", "Category")
-        self._scout_worker()
+        # v1.3.0 Stream C — added Concerns column so concern chips are
+        # visible at a glance, not buried in the detail panel.
+        table.add_columns(
+            "Verdict", "Tool / Package", "Fit", "Risk", "Concerns", "Category"
+        )
+        # v1.3.0 Stream C — no auto-fire. User clicks ▶ Scout now or
+        # presses s. We DO NOT call .focus() here because focusing a
+        # widget inside a TabbedContent pane forcibly activates that
+        # pane, which breaks `--tab settings` on launch. Instead the
+        # button gets the success variant so it visually advertises
+        # as the primary action without dragging focus.
 
     # ------------------------------------------------------------------
     # Scope toggles
@@ -181,19 +208,38 @@ class ScoutTab(VerticalScroll):
         active = self._scope_ai if kind == "ai" else self._scope_deps
         return "scope-active" if active else ""
 
+    @on(Button.Pressed, "#scout-run")
+    def _on_run_button(self) -> None:
+        """v1.3.0 Stream C — primary action. Same path as `s`."""
+
+        self._scout_worker()
+
     @on(Button.Pressed, "#scout-toggle-ai")
     def _toggle_ai(self) -> None:
         self._scope_ai = not self._scope_ai
         self._persist_scope()
         self._refresh_scope_buttons()
-        self._scout_worker()
+        # v1.3.0 — toggles are now persistence-only; user re-runs with
+        # ▶ Scout now. Avoids surprise scouts on every click.
 
     @on(Button.Pressed, "#scout-toggle-deps")
     def _toggle_deps(self) -> None:
         self._scope_deps = not self._scope_deps
         self._persist_scope()
         self._refresh_scope_buttons()
-        self._scout_worker()
+        # See note above; toggle doesn't auto-rerun.
+
+    @on(Button.Pressed, "#scout-lab")
+    def _on_lab_button(self) -> None:
+        self.action_lab_selected()
+
+    @on(Button.Pressed, "#scout-evaluate")
+    def _on_evaluate_button(self) -> None:
+        self.action_evaluate_selected()
+
+    @on(Button.Pressed, "#scout-dossier")
+    def _on_dossier_button(self) -> None:
+        self.action_dossier_selected()
 
     def _refresh_scope_buttons(self) -> None:
         ai = self.query_one("#scout-toggle-ai", Button)
@@ -219,10 +265,41 @@ class ScoutTab(VerticalScroll):
     # Scout worker (AI + Deps + Guard in one go)
     # ------------------------------------------------------------------
 
+    def _build_progress_reporter(self):
+        """v1.3.0 Stream C — return a TuiProgressReporter wired to the
+        shell's StatusStrip + ProgressStrip, or NullReporter if either
+        sink isn't mounted (e.g. very early startup). The shell adds
+        these widgets in v1.3.0 Stream B."""
+
+        from frontier_scout.progress import NullReporter
+        from frontier_scout.tui.progress_view import (
+            ProgressStrip,
+            StatusStrip,
+            TuiProgressReporter,
+        )
+
+        try:
+            status = self.app_ref.query_one(StatusStrip)
+        except Exception:  # noqa: BLE001
+            status = None
+        try:
+            bar = self.app_ref.query_one(ProgressStrip)
+        except Exception:  # noqa: BLE001
+            bar = None
+        if status is None and bar is None:
+            return NullReporter()
+        return TuiProgressReporter(
+            app=self.app_ref,
+            status=status,
+            bar=bar,
+            log_event=self.app_ref.log_event,
+        )
+
     @work(thread=True, exclusive=True)
     def _scout_worker(self) -> None:
         from frontier_scout.scout import run_scan
 
+        progress = self._build_progress_reporter()
         repo = Path(self.app_ref.diagnostics.repo)
         rows: list[dict[str, Any]] = []
         errors: list[str] = []
@@ -237,6 +314,7 @@ class ScoutTab(VerticalScroll):
                     repo=repo,
                     dry_run=True,
                     persist=not universal,
+                    reporter=progress,
                 )
                 for v in payload.get("verdicts") or []:
                     rows.append(self._ai_verdict_to_row(v))
@@ -247,7 +325,7 @@ class ScoutTab(VerticalScroll):
             try:
                 from frontier_scout.dependencies import run_dependency_scan
 
-                payload = run_dependency_scan(repo, persist=False)
+                payload = run_dependency_scan(repo, persist=False, reporter=progress)
                 for f in payload.get("findings") or []:
                     row = self._dep_finding_to_row(f)
                     if row is not None:
@@ -259,9 +337,20 @@ class ScoutTab(VerticalScroll):
         try:
             from frontier_scout.guard import run_guard
 
-            guard_findings = run_guard(repo) or []
+            guard_findings = run_guard(repo, reporter=progress) or []
         except Exception:
             guard_findings = []
+
+        # v1.3.0 Stream C — explicit completion signal so the status
+        # strip resets to "Ready" instead of holding the last stage.
+        try:
+            progress.finish(
+                f"Scout complete · {len(rows)} finding(s) · "
+                f"{len(guard_findings)} guard alert(s)"
+            )
+        except AttributeError:
+            # NullReporter has no .finish; ignore.
+            pass
 
         self.app_ref.call_from_thread(self._apply_results, rows, guard_findings, errors)
 
@@ -291,6 +380,7 @@ class ScoutTab(VerticalScroll):
                     r["tool_name"],
                     r["fit"],
                     r["risk"],
+                    self._concerns_cell(r),
                     r["category"],
                 )
             # Auto-focus + auto-cursor — the v1.1 bug we are fixing.
@@ -310,15 +400,35 @@ class ScoutTab(VerticalScroll):
         table = self.query_one("#scout-table", DataTable)
         table.add_row(
             "[dim]—[/]",
-            "[dim]nothing found yet — toggle a scope above or press [s][/]",
+            "[dim]nothing found yet — press [bold]▶ Scout now[/] (or [bold]s[/]) above[/]",
+            "[dim]—[/]",
             "[dim]—[/]",
             "[dim]—[/]",
             "[dim]—[/]",
         )
         self.query_one("#scout-detail", Static).update(
-            "[#6e8aa1]Nothing to show. Enable a scope (AI tools / Dependencies) "
-            "above the table, or press [s] to rescout.[/]"
+            "[#6e8aa1]Nothing to show yet. Press [bold]▶ Scout now[/] (or [bold]s[/]) "
+            "to scan, or toggle a scope above. The button is focused — Enter triggers it.[/]"
         )
+
+    def _concerns_cell(self, row: dict[str, Any]) -> str:
+        """v1.3.0 Stream C — render the verdict's concerns as a small
+        coloured chip: ``● count`` where the dot colour matches the
+        highest-severity concern present. Empty list renders as a
+        muted dash so the column never looks broken."""
+
+        raw = row.get("raw") or {}
+        concerns = raw.get("concerns") or []
+        if not concerns:
+            return "[#6e8aa1]—[/]"
+        severities = {c.get("severity", "low") for c in concerns}
+        if "high" in severities:
+            colour = "#ff6b6b"
+        elif "medium" in severities:
+            colour = "#e3c26f"
+        else:
+            colour = "#7aa6ff"
+        return f"[{colour}]● {len(concerns)}[/]"
 
     def _render_guard_banner(self, findings: list) -> None:
         banner = self.query_one("#scout-guard-banner", Static)
@@ -625,6 +735,7 @@ class ScoutTab(VerticalScroll):
                 r["tool_name"],
                 r["fit"],
                 r["risk"],
+                self._concerns_cell(r),
                 r["category"],
             )
         if self._rows:

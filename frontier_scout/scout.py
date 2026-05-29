@@ -29,11 +29,27 @@ def run_scan(
     persist: bool = True,
     pack: str | None = None,
     discover: bool = False,
+    reporter: "ProgressReporter | None" = None,
 ) -> dict[str, Any]:
+    """Run an AI-tool scout against the given repo.
+
+    v1.3.0 — accepts an optional ``reporter`` that receives staged
+    progress events ("Detecting stack", "Querying judge",
+    "Personalising verdicts"). ``None`` is the default and a true
+    no-op; every existing caller is unaffected.
+    """
+
+    from frontier_scout.progress import NullReporter
+
+    progress = reporter or NullReporter()
+    # Detect + (Loading|Querying) + Personalising [+ Saving when persisting].
+    total = 3 + (1 if persist else 0)
+    progress.stage("Detecting stack", total_stages=total)
     repo = repo or Path.cwd()
     stack = detect_stack(repo)
     profile = build_scout_profile(repo)
     if dry_run:
+        progress.stage("Loading seeded verdicts", total_stages=total)
         payload = {
             "date": SAMPLE_FUNNEL.get("date", "2026-05-21"),
             "stack": stack,
@@ -48,15 +64,25 @@ def run_scan(
             "discover": discover,
             "verdicts": personalize_verdicts(_filter_by_pack(SAMPLE_VERDICTS, pack), profile.model_dump()),
         }
+        progress.stage("Personalising verdicts", total_stages=total)
+        # personalize_verdicts already ran in the dict literal above;
+        # the stage event marks "we're producing the final result".
     else:
+        progress.stage("Querying judge", total_stages=total)
         payload = _run_live_scan(stack)
         payload["stack"] = stack
         payload["profile"] = profile.model_dump()
         payload["pack"] = pack
         payload["discover"] = discover
+        progress.stage("Personalising verdicts", total_stages=total)
         payload["verdicts"] = personalize_verdicts(list(payload.get("verdicts") or []), profile.model_dump())
     if persist:
+        progress.stage("Saving scan", total_stages=total)
         save_scan(payload, repo=str(repo.resolve()))
+    progress.log(
+        f"Scout complete: {len(payload.get('verdicts') or [])} verdict(s)",
+        tone="ok",
+    )
     return payload
 
 

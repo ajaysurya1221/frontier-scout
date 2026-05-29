@@ -10,7 +10,12 @@ from .policy import PolicyFinding
 from .store import list_guard_records
 
 
-def run_guard(repo: Path | str | None = None, *, strict: bool = False) -> list[PolicyFinding]:
+def run_guard(
+    repo: Path | str | None = None,
+    *,
+    strict: bool = False,
+    reporter: "ProgressReporter | None" = None,
+) -> list[PolicyFinding]:
     """Return deterministic findings from the local evidence ledger.
 
     Note: the ``evaluations``/``trial_runs`` schema does not yet carry a
@@ -23,10 +28,19 @@ def run_guard(repo: Path | str | None = None, *, strict: bool = False) -> list[P
     ``strict`` upgrades every medium-severity finding to high so that CI
     treats them as failing. Previously this argument was silently
     ignored — fixes Codex review finding #2.
+
+    v1.3.0 — accepts an optional ``reporter`` (see
+    ``frontier_scout.progress``). ``None`` is a no-op.
     """
 
+    from frontier_scout.progress import NullReporter
+
+    progress = reporter or NullReporter()
+    progress.stage("Loading ledger", total_stages=2)
+    records = list_guard_records()
+    progress.stage("Applying policy", total_stages=2)
     findings: list[PolicyFinding] = []
-    for record in list_guard_records():
+    for record in records:
         dangerous = set(record.get("dangerous_flags") or [])
         if not dangerous:
             continue
@@ -45,6 +59,7 @@ def run_guard(repo: Path | str | None = None, *, strict: bool = False) -> list[P
                 tool_name=str(record.get("tool_name") or ""),
             )
         )
+    progress.log(f"Guard finished: {len(findings)} finding(s)", tone="ok")
     return findings
 
 
