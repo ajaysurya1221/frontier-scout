@@ -115,22 +115,39 @@ def run_dependency_scan(
     metadata: dict[str, Any] | None = None,
     max_items: int = 30,
     persist: bool = True,
+    reporter: "ProgressReporter | None" = None,
 ) -> dict[str, Any]:
-    """Scan pinned repo dependencies for meaningful upgrade findings."""
+    """Scan pinned repo dependencies for meaningful upgrade findings.
 
+    v1.3.0 — accepts an optional ``reporter`` (see
+    ``frontier_scout.progress``). ``None`` is a no-op.
+    """
+
+    from frontier_scout.progress import NullReporter
+
+    progress = reporter or NullReporter()
+    progress.stage("Reading manifests", total_stages=2)
     profile = build_scout_profile(repo)
+    deps = profile.dependencies[:max_items]
+    progress.stage("Classifying upgrades", total_stages=2)
     findings: list[DependencyFinding] = []
-    for dep in profile.dependencies[:max_items]:
+    total_deps = max(1, len(deps))
+    for index, dep in enumerate(deps, start=1):
         finding = _finding_for_dependency(profile.repo_id, profile.repo, dep, metadata=metadata)
         if finding is None:
             continue
         findings.append(finding)
         if persist:
             save_dependency_finding(finding)
+        progress.advance(index / total_deps, f"{index}/{total_deps} {dep.name}")
+    progress.log(
+        f"Dependency scan complete: {len(findings)} finding(s)",
+        tone="ok",
+    )
     return {
         "repo": profile.repo,
         "repo_id": profile.repo_id,
-        "dependencies_scanned": len(profile.dependencies[:max_items]),
+        "dependencies_scanned": len(deps),
         "findings": [finding.model_dump() for finding in findings],
     }
 

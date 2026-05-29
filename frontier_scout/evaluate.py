@@ -30,13 +30,21 @@ def evaluate_url(
     stack: dict | None = None,
     *,
     source_text: str | None = None,
+    reporter: "ProgressReporter | None" = None,
 ) -> Evaluation:
     """Evaluate a URL with deterministic heuristics.
 
     v0 intentionally avoids LLM calls here. Live scans still use the richer
     Scout funnel; this path is for fast local "should I try this?" decisions.
+
+    v1.3.0 — accepts an optional ``reporter`` (see
+    ``frontier_scout.progress``). ``None`` is a no-op.
     """
 
+    from frontier_scout.progress import NullReporter
+
+    progress = reporter or NullReporter()
+    progress.stage("Classifying capabilities", total_stages=1)
     tool_name = _tool_name_from_url(url)
     text = " ".join(part for part in (tool_name, url, source_text or "") if part)
     category = _category(tool_name, url, text)
@@ -55,6 +63,7 @@ def evaluate_url(
         evidence.append("local source text")
     if manifest.dangerous_flags:
         evidence.append("permission surface: " + ", ".join(manifest.dangerous_flags))
+    progress.log(f"Evaluated {tool_name}: fit={fit} risk={risk}", tone="info")
 
     return Evaluation(
         tool_name=tool_name,
