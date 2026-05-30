@@ -156,9 +156,12 @@ class FindingsScreen(BriefingScreen):
         finding = self._current()
         if finding and finding.url:
             import webbrowser
+            from urllib.parse import urlparse
 
             try:
-                webbrowser.open(finding.url)
+                # Only open http(s) links — never file://, javascript:, etc.
+                if urlparse(finding.url).scheme in {"http", "https"}:
+                    webbrowser.open(finding.url)
             except Exception:  # noqa: BLE001
                 pass
 

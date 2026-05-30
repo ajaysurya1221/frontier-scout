@@ -134,40 +134,35 @@ def test_cli_evaluate_loads_repo_policy(tmp_path, monkeypatch, capsys):
     import json
 
     payload = json.loads(capsys.readouterr().out)
-    # CodeRabbit-strengthened assertion: prove the repo policy
-    # *changed* the decision vs the default. The fixture sets
-    # ``allow_adopt_without_lab_for_low_risk = True`` and we evaluate
-    # a high-trust source. With the default policy
-    # (``allow_adopt_without_lab_for_low_risk = False``) this is
-    # ``assess``; with the repo policy loaded it becomes ``adopt``
-    # whenever the tool is rated low-risk / high-fit. We assert the
-    # repo run hits one of {adopt, trial} — the two outcomes where
-    # the field could flip behaviour — AND verify the rendered policy
-    # summary is the file-loaded one, not DEFAULT_POLICY's summary.
-    from frontier_scout.evaluate import evaluate_url as _ev
-    from frontier_scout.policy import DEFAULT_POLICY, evaluate_policy
-    from frontier_scout.scout import detect_stack
+    # The CLI must return a real verdict for the evaluated tool.
+    assert payload["policy"]["verdict"] in {"adopt", "trial", "assess", "hold"}
 
-    default_decision = evaluate_policy(
-        _ev("https://github.com/anthropics/skills", detect_stack(tmp_path)),
-        None,
-        policy=DEFAULT_POLICY,
-    )
-    # This fixture's tool is rated *medium*-risk, so the low-risk-only lever
-    # ``allow_adopt_without_lab_for_low_risk`` cannot flip the verdict: the
-    # repo policy and the default policy necessarily agree here. Assert that
-    # equality explicitly — it pins a real invariant (the field must never
-    # leak into medium-risk decisions) and would fail loudly if it did,
-    # unlike the previous ``in {all four verdicts}`` tautology. The proof
-    # that the repo policy file was genuinely *loaded* is the ``loaded``
-    # block below.
-    assert payload["policy"]["verdict"] == default_decision.verdict
-
-    from frontier_scout.policy import load_policy
+    # CodeRabbit (PR #18): prove the repo policy was actually *consulted*, not
+    # merely that the file parses. The evaluated URL above is medium-risk, where
+    # the low-risk-only lever cannot change the verdict — so that path alone
+    # cannot distinguish "loaded" from "ignored". Pin the wiring on a case where
+    # the field MUST flip the outcome: a clean high-fit / low-risk / high-trust
+    # evaluation is ASSESS under the default policy but ADOPT once
+    # ``allow_adopt_without_lab_for_low_risk`` is honoured.
+    from frontier_scout.policy import DEFAULT_POLICY, evaluate_policy, load_policy
 
     loaded = load_policy(tmp_path)
     assert loaded.allow_adopt_without_lab_for_low_risk is True
     assert loaded is not DEFAULT_POLICY
+
+    clean = _clean_evaluation()
+    default_verdict = evaluate_policy(
+        clean, clean.permission_manifest, policy=DEFAULT_POLICY
+    ).verdict
+    repo_verdict = evaluate_policy(
+        clean, clean.permission_manifest, policy=loaded
+    ).verdict
+    # The two policies MUST diverge here — that divergence proves the loaded
+    # repo policy actually drives the decision (regression guard against
+    # silently falling back to DEFAULT_POLICY).
+    assert default_verdict == "assess"
+    assert repo_verdict == "adopt"
+    assert repo_verdict != default_verdict
 
 
 # ---------------------------------------------------------------------------

@@ -84,7 +84,7 @@ Verified at 50×12, 72×20, 80×24, 120×40, 200×60 in tests.
 
 ## Screens
 
-```
+```text
 ┌ ◉ frontier · scout  ·  📁 genai-core ─────────────────────────┐  Header (1 row)
 │                                                               │
 │   What would you like to do?                                  │  Body (1fr, scrolls)
@@ -204,4 +204,3 @@ staying green.
 - Live-streaming activity log on the working screen (staged line is
   enough; revisit if users want detail).
 - Multi-repo workspace, saved filters, themes beyond the single default.
-```

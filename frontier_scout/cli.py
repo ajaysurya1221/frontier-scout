@@ -557,7 +557,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return _run_tui_with_reconfigure_loop(
             run_setup,
-            repo=Path(args.repo),
+            repo=Path(args.repo) if args.repo else Path("."),
             plain=args.plain,
             json_output=args.json,
             ollama_url=args.ollama_url,

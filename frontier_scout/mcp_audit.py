@@ -25,9 +25,9 @@ _PATTERNS: dict[str, re.Pattern[str]] = {
     "network": re.compile(r"\b(http|https|url|api|webhook|network|request|download|upload|fetch_url)\b", re.I),
     "browser": re.compile(r"\b(browser|playwright|chromium|page|click|navigate|screenshot|dom)\b", re.I),
     "shell": re.compile(
-        r"\b(shell|commands?|execut(e|es|ing|ion)|exec|subprocess|terminal|"
+        r"(?:\b(shell|commands?|execut(e|es|ing|ion)|exec|subprocess|terminal|"
         r"bash|zsh|powershell|runs?|running|spawn(s|ed|ing)?|"
-        r"invoke|invokes|system\(|os\.system)\b",
+        r"invoke|invokes|os\.system)\b|\bsystem\s*\()",
         re.I,
     ),
     "credential": re.compile(

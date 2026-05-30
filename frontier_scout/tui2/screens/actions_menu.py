@@ -61,10 +61,14 @@ class ActionsMenu(BriefingScreen):
             row.set_class(i == self._sel, "sel")
 
     def action_move(self, delta: int) -> None:
+        if not self._items:
+            return
         self._sel = (self._sel + delta) % len(self._items)
         self._refresh_rows()
 
     def action_choose(self) -> None:
+        if not self._items:
+            return
         key = self._items[self._sel][0]
         self.app.pop_screen()  # close the menu first
         if key == "implement":
@@ -77,8 +81,11 @@ class ActionsMenu(BriefingScreen):
             self.app.dismiss_finding(self._finding.tool_name)
         elif key == "open" and self._finding.url:
             import webbrowser
+            from urllib.parse import urlparse
 
             try:
-                webbrowser.open(self._finding.url)
+                # Only open http(s) links — never file://, javascript:, etc.
+                if urlparse(self._finding.url).scheme in {"http", "https"}:
+                    webbrowser.open(self._finding.url)
             except Exception:  # noqa: BLE001
                 pass
