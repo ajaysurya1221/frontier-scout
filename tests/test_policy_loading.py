@@ -117,9 +117,23 @@ def test_cli_evaluate_loads_repo_policy(tmp_path, monkeypatch, capsys):
     contains a custom policy, the JSON output reflects the custom policy
     decision."""
 
+    # CodeRabbit (PR #18): the CLI run itself must prove the repo policy was
+    # consulted. We pick a lever whose effect is observable in the CLI's own
+    # JSON for the URL the CLI actually evaluates. The evaluated tool carries a
+    # ``network`` capability flag, so under the DEFAULT policy
+    # (``require_trial_for_dangerous_capabilities = true``) it produces a
+    # ``capability.network`` finding and a TRIAL verdict. The repo policy below
+    # sets that flag to ``false`` — which the engine honours by dropping the
+    # finding and downgrading the verdict to ASSESS. If the CLI ignored the repo
+    # file (regressed to DEFAULT_POLICY), this run would say "trial" and the
+    # assertion would fail.
     fs_dir = tmp_path / ".frontier-scout"
     fs_dir.mkdir(parents=True)
-    (fs_dir / "policy.toml").write_text(_policy_toml(allow_low_risk_no_lab=True))
+    (fs_dir / "policy.toml").write_text(
+        "[policy]\n"
+        "require_trial_for_dangerous_capabilities = false\n"
+        "fail_unknown_capabilities = false\n"
+    )
     monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
 
     from frontier_scout.cli import main
@@ -134,35 +148,29 @@ def test_cli_evaluate_loads_repo_policy(tmp_path, monkeypatch, capsys):
     import json
 
     payload = json.loads(capsys.readouterr().out)
-    # The CLI must return a real verdict for the evaluated tool.
-    assert payload["policy"]["verdict"] in {"adopt", "trial", "assess", "hold"}
 
-    # CodeRabbit (PR #18): prove the repo policy was actually *consulted*, not
-    # merely that the file parses. The evaluated URL above is medium-risk, where
-    # the low-risk-only lever cannot change the verdict — so that path alone
-    # cannot distinguish "loaded" from "ignored". Pin the wiring on a case where
-    # the field MUST flip the outcome: a clean high-fit / low-risk / high-trust
-    # evaluation is ASSESS under the default policy but ADOPT once
-    # ``allow_adopt_without_lab_for_low_risk`` is honoured.
+    # Sanity: confirm DEFAULT_POLICY would have said "trial" for these inputs —
+    # so "assess" below can only come from the repo file being loaded.
+    from frontier_scout.evaluate import evaluate_url
+    from frontier_scout.mcp_audit import classify_mcp_capabilities
     from frontier_scout.policy import DEFAULT_POLICY, evaluate_policy, load_policy
+    from frontier_scout.scout import detect_stack
 
+    _ev = evaluate_url("https://github.com/anthropics/skills", detect_stack(tmp_path))
+    _manifest = _ev.permission_manifest or classify_mcp_capabilities(
+        "https://github.com/anthropics/skills", tool_name=_ev.tool_name
+    )
+    default_verdict = evaluate_policy(_ev, _manifest, policy=DEFAULT_POLICY).verdict
+    assert default_verdict == "trial"
+
+    # The CLI run, with the repo policy loaded, MUST diverge from the default.
+    assert payload["policy"]["verdict"] == "assess"
+    assert payload["policy"]["verdict"] != default_verdict
+
+    # And the loaded policy really is the repo file (not DEFAULT_POLICY).
     loaded = load_policy(tmp_path)
-    assert loaded.allow_adopt_without_lab_for_low_risk is True
+    assert loaded.require_trial_for_dangerous_capabilities is False
     assert loaded is not DEFAULT_POLICY
-
-    clean = _clean_evaluation()
-    default_verdict = evaluate_policy(
-        clean, clean.permission_manifest, policy=DEFAULT_POLICY
-    ).verdict
-    repo_verdict = evaluate_policy(
-        clean, clean.permission_manifest, policy=loaded
-    ).verdict
-    # The two policies MUST diverge here — that divergence proves the loaded
-    # repo policy actually drives the decision (regression guard against
-    # silently falling back to DEFAULT_POLICY).
-    assert default_verdict == "assess"
-    assert repo_verdict == "adopt"
-    assert repo_verdict != default_verdict
 
 
 # ---------------------------------------------------------------------------
