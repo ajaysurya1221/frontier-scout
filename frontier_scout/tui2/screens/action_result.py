@@ -18,6 +18,13 @@ from textual.widgets import Static
 from frontier_scout.tui2.screens.base import BriefingScreen
 
 _STATUS_TONE = {"passed": "ok", "failed": "warn", "prepared": "info", "error": "muted"}
+# Filled status pill: (foreground, background) per tone, matching the design.
+_PILL = {
+    "ok": ("#06231b", "#24d6a8"),
+    "info": ("#091a36", "#7aa6ff"),
+    "warn": ("#2b2208", "#e3c26f"),
+    "muted": ("#d9f7ff", "#25405c"),
+}
 
 
 class ActionResultScreen(BriefingScreen):
@@ -51,21 +58,26 @@ class ActionResultScreen(BriefingScreen):
     def _implement_body(self) -> Iterable[Widget]:
         r = self._payload
         tone = _STATUS_TONE.get(r.status, "muted")
-        yield Static(f"  {r.status.upper()}  ·  {r.tool_name}", classes=f"ribbon-{tone} card")
+        fg, bg = _PILL.get(tone, _PILL["muted"])
+        yield Static(f"[{fg} on {bg}] {r.status.upper()} [/]   [dim]{r.tool_name}[/dim]", classes="ribbon")
         if r.summary:
             yield Static(r.summary, classes="prose")
         if r.what_you_get:
-            yield Static(f"[b]What you get[/b]\n{r.what_you_get}", classes="prose")
+            yield Static("WHAT YOU GET", classes="block-h")
+            yield Static(r.what_you_get, classes="prose")
         if r.files_changed:
-            files = "\n".join(f"  • {f}" for f in r.files_changed)
-            yield Static(f"[b]Files changed[/b]\n{files}", classes="prose")
+            yield Static("FILES CHANGED", classes="block-h")
+            files = "\n".join(f"  [#24d6a8]•[/] {f}" for f in r.files_changed)
+            yield Static(files, classes="prose")
         if r.test_command:
-            verdict = "passed ✓" if r.status == "passed" else f"failed (exit {r.exit_code})"
-            yield Static(f"[b]Tests[/b]  {r.test_command} → {verdict}", classes="prose")
+            verdict = "[#24d6a8]passed ✓[/]" if r.status == "passed" else f"[#ff6b6b]failed (exit {r.exit_code})[/]"
+            yield Static("TESTS", classes="block-h")
+            yield Static(f"{r.test_command} → {verdict}", classes="prose")
         if r.error:
-            yield Static(f"[b]Error[/b]\n{r.error}", classes="prose")
+            yield Static("ERROR", classes="block-h")
+            yield Static(r.error, classes="prose")
         if r.diff:
-            yield Static("[b]Diff[/b]", classes="prose")
+            yield Static("DIFF", classes="block-h")
             yield Static(r.diff, classes="prose")
         if r.status == "passed":
             yield Static("[dim]⏎ keep these changes in your working tree[/dim]", classes="prose")

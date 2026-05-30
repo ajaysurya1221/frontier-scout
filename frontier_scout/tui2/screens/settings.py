@@ -36,28 +36,48 @@ class SettingsScreen(BriefingScreen):
     def compass_text(self) -> str:
         return "↑↓ move · ⏎ run · esc back"
 
+    # Locked guarantees that frontier-scout always enforces (read-only).
+    _SECURITY = (
+        "Repo source is never sent to an LLM — only filenames + import names leave.",
+        "Fetched release text is treated as untrusted data, never instructions.",
+        "Lab subprocesses run with a scrubbed env, timeouts, and size caps.",
+    )
+
     def body(self) -> Iterable[Widget]:
         yield Static("Settings", classes="title")
+
+        yield Static("PROVIDERS", classes="block-h")
         yield Static(self._providers_block(), classes="prose")
-        yield Static(self._version_block(), classes="prose dim")
-        yield Static("[b]Memory[/b]", classes="prose")
+
+        yield Static("SECURITY", classes="block-h")
+        for line in self._SECURITY:
+            yield Static(f"[#24d6a8]✓[/] {line}", classes="prose")
+
+        yield Static("MEMORY", classes="block-h")
         for i, (_key, label) in enumerate(self._ACTIONS):
-            yield Static(self._row(i, label), classes="menu-row", id=f"set-{i}")
+            yield Static(
+                self._row(i, label),
+                classes="menu-row" + (" sel" if i == self._sel else ""),
+                id=f"set-{i}",
+            )
         yield Static("", id="set-status", classes="prose dim")
+
+        yield Static("SYSTEM", classes="block-h")
+        yield Static(self._version_block(), classes="prose dim")
 
     def _providers_block(self) -> str:
         try:
             from frontier_scout.providers import PROVIDER_NAMES, available_providers
 
             avail = set(available_providers())
-            lines = ["[b]Providers[/b]"]
+            lines = []
             for name in PROVIDER_NAMES:
-                dot = "[green]●[/green]" if name in avail else "[dim]○[/dim]"
-                state = "available" if name in avail else "not configured"
+                dot = "[#24d6a8]●[/]" if name in avail else "[dim]○[/dim]"
+                state = "available" if name in avail else "[dim]not configured[/dim]"
                 lines.append(f"  {dot} {name} — {state}")
             return "\n".join(lines)
         except Exception:  # noqa: BLE001
-            return "[b]Providers[/b]\n  (unavailable)"
+            return "  (unavailable)"
 
     def _version_block(self) -> str:
         try:
@@ -70,12 +90,13 @@ class SettingsScreen(BriefingScreen):
 
     def _row(self, i: int, label: str) -> str:
         marker = "▸" if i == self._sel else " "
-        text = f"{marker} {label}"
-        return f"[b]{text}[/b]" if i == self._sel else text
+        return f"{marker} {label}"
 
     def _refresh_rows(self) -> None:
         for i, (_key, label) in enumerate(self._ACTIONS):
-            self.query_one(f"#set-{i}", Static).update(self._row(i, label))
+            row = self.query_one(f"#set-{i}", Static)
+            row.update(self._row(i, label))
+            row.set_class(i == self._sel, "sel")
 
     def action_move(self, delta: int) -> None:
         self._sel = (self._sel + delta) % len(self._ACTIONS)

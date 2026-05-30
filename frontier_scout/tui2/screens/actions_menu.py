@@ -44,16 +44,21 @@ class ActionsMenu(BriefingScreen):
         self._items = self._build_items()
         yield Static(f"Actions · {self._finding.tool_name}", classes="title")
         for i, (_key, label) in enumerate(self._items):
-            yield Static(self._row(i, label), classes="menu-row", id=f"act-{i}")
+            yield Static(
+                self._row(i, label),
+                classes="menu-row" + (" sel" if i == self._sel else ""),
+                id=f"act-{i}",
+            )
 
     def _row(self, i: int, label: str) -> str:
         marker = "▸" if i == self._sel else " "
-        text = f"{marker} {label}"
-        return f"[b]{text}[/b]" if i == self._sel else text
+        return f"{marker} {label}"
 
     def _refresh_rows(self) -> None:
         for i, (_key, label) in enumerate(self._items):
-            self.query_one(f"#act-{i}", Static).update(self._row(i, label))
+            row = self.query_one(f"#act-{i}", Static)
+            row.update(self._row(i, label))
+            row.set_class(i == self._sel, "sel")
 
     def action_move(self, delta: int) -> None:
         self._sel = (self._sel + delta) % len(self._items)

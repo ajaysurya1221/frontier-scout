@@ -31,8 +31,9 @@ class ErrorScreen(BriefingScreen):
         return "esc back · q quit"
 
     def body(self) -> Iterable[Widget]:
-        yield Static("  Something went wrong", classes="ribbon-warn card")
+        yield Static("[#2b2208 on #e3c26f] SOMETHING WENT WRONG [/]", classes="ribbon")
         yield Static(self._message or "Unknown error.", classes="prose")
         if self._suggestion:
-            yield Static(f"[b]Try this[/b]\n{self._suggestion}", classes="prose")
+            yield Static("TRY THIS", classes="block-h")
+            yield Static(self._suggestion, classes="next-step")
         yield Static("[dim]esc — go back[/dim]", classes="prose")

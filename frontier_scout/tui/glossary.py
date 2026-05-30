@@ -26,7 +26,6 @@ from textual.containers import Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
-
 #: ``slug -> (display_label, one-sentence definition)``. Slugs are
 #: stable handles other modules can reference; labels are what we
 #: show to the user.

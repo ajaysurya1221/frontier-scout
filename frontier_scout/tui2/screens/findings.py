@@ -19,44 +19,69 @@ from textual.widgets import Static
 from frontier_scout.tui2.screens.base import BriefingScreen
 from frontier_scout.tui2.state import Finding
 
-_SEV_MARK = {"high": "● high", "medium": "● med", "low": "● low"}
+# Filled verdict pill: (foreground, background) per ribbon tone, from the design.
+_PILL: dict[str, tuple[str, str]] = {
+    "ok": ("#06231b", "#24d6a8"),
+    "info": ("#091a36", "#7aa6ff"),
+    "warn": ("#2b2208", "#e3c26f"),
+    "muted": ("#d9f7ff", "#25405c"),
+}
+# Concern severity → colour.
+_SEV_COLOR = {"high": "#ff6b6b", "medium": "#e3c26f", "low": "#6e8aa1"}
+
+
+def _pill(finding: Finding) -> str:
+    fg, bg = _PILL.get(finding.ribbon_tone, _PILL["muted"])
+    return f"[{fg} on {bg}] {finding.ribbon} [/]"
 
 
 def card_widgets(finding: Finding, index: int, total: int, has_repo: bool) -> list[Widget]:
     """Pure: build the Static widgets for one briefing card."""
-    ribbon = f"  {finding.ribbon}"
     meta = []
     if finding.fit:
-        meta.append(f"fit {finding.fit}")
+        meta.append(f"fit [b]{finding.fit}[/b]")
     if finding.risk:
-        meta.append(f"risk {finding.risk}")
+        meta.append(f"risk [b]{finding.risk}[/b]")
     if finding.category:
         meta.append(finding.category)
-    ribbon_line = ribbon + ("   ·   " + "  ·  ".join(meta) if meta else "")
+    ribbon_line = _pill(finding)
+    if meta:
+        ribbon_line += "   [dim]" + "  ·  ".join(meta) + "[/dim]"
 
     widgets: list[Widget] = [
-        Static(ribbon_line, classes=f"ribbon-{finding.ribbon_tone} card"),
+        Static(ribbon_line, classes="ribbon"),
         Static(finding.tool_name, classes="title"),
     ]
     if finding.summary:
         widgets.append(Static(finding.summary, classes="prose"))
     if finding.why_fit:
-        widgets.append(Static(f"[b]Why it fits your repo[/b]\n{finding.why_fit}", classes="prose"))
+        widgets.append(Static("WHY IT FITS YOUR REPO", classes="block-h"))
+        bullets = "\n".join(f"[#24d6a8]›[/] {r.strip()}" for r in finding.why_fit.split(";") if r.strip())
+        widgets.append(Static(bullets, classes="prose"))
     if finding.concerns:
-        chips = "   ".join(
-            f"{_SEV_MARK.get(c.severity, '● ' + c.severity)} {c.label}" for c in finding.concerns
-        )
-        widgets.append(Static(f"[b]Concerns[/b]\n{chips}", classes="prose"))
+        widgets.append(Static("CONCERNS", classes="block-h"))
+        for c in finding.concerns:
+            color = _SEV_COLOR.get(c.severity, "#6e8aa1")
+            line = f"[{color}]●[/] [b]{c.label}[/b] [dim]{c.severity}[/dim]"
+            if c.evidence:
+                line += f"\n  [dim]{c.evidence}[/dim]"
+            widgets.append(Static(line, classes="prose"))
     else:
-        widgets.append(Static("[dim]No concerns flagged.[/dim]", classes="prose"))
+        widgets.append(Static("[dim]✓ No concerns flagged.[/dim]", classes="prose"))
     if finding.next_step:
-        widgets.append(Static(f"[b]Next safe step[/b]\n{finding.next_step}", classes="prose"))
+        widgets.append(Static("NEXT SAFE STEP", classes="block-h"))
+        widgets.append(Static(finding.next_step, classes="next-step"))
 
     primary = "Implement & test" if has_repo else "Tell me more"
-    widgets.append(Static(f"[dim]⏎ {primary}   ·   a more   ·   o open   ·   d dismiss[/dim]", classes="prose"))
+    widgets.append(
+        Static(
+            f"[dim]⏎ {primary}   ·   a more   ·   o open   ·   d dismiss[/dim]",
+            classes="prose",
+        )
+    )
 
-    dots = " ".join("●" if i == index else "○" for i in range(total))
-    widgets.append(Static(f"\n{dots}   ({index + 1}/{total})", classes="prose dim"))
+    dots = " ".join("[#24d6a8]●[/]" if i == index else "[dim]○[/dim]" for i in range(total))
+    widgets.append(Static(f"{dots}   [dim]({index + 1}/{total})[/dim]", classes="dots"))
     return widgets
 
 

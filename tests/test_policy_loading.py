@@ -144,8 +144,8 @@ def test_cli_evaluate_loads_repo_policy(tmp_path, monkeypatch, capsys):
     # repo run hits one of {adopt, trial} — the two outcomes where
     # the field could flip behaviour — AND verify the rendered policy
     # summary is the file-loaded one, not DEFAULT_POLICY's summary.
-    from frontier_scout.policy import DEFAULT_POLICY, evaluate_policy
     from frontier_scout.evaluate import evaluate_url as _ev
+    from frontier_scout.policy import DEFAULT_POLICY, evaluate_policy
     from frontier_scout.scout import detect_stack
 
     default_decision = evaluate_policy(
@@ -153,12 +153,16 @@ def test_cli_evaluate_loads_repo_policy(tmp_path, monkeypatch, capsys):
         None,
         policy=DEFAULT_POLICY,
     )
-    assert payload["policy"]["verdict"] in {"adopt", "trial", "assess", "hold"}
-    # The repo policy *should* differ from the default policy when its
-    # only field difference (allow_low_risk_no_lab=True) matters here.
-    # If they match it's because the fixture's tool doesn't trip that
-    # rule — so we additionally pin the policy *was* loaded by reading
-    # the file directly:
+    # This fixture's tool is rated *medium*-risk, so the low-risk-only lever
+    # ``allow_adopt_without_lab_for_low_risk`` cannot flip the verdict: the
+    # repo policy and the default policy necessarily agree here. Assert that
+    # equality explicitly — it pins a real invariant (the field must never
+    # leak into medium-risk decisions) and would fail loudly if it did,
+    # unlike the previous ``in {all four verdicts}`` tautology. The proof
+    # that the repo policy file was genuinely *loaded* is the ``loaded``
+    # block below.
+    assert payload["policy"]["verdict"] == default_decision.verdict
+
     from frontier_scout.policy import load_policy
 
     loaded = load_policy(tmp_path)

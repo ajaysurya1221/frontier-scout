@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .policy import PolicyFinding
 from .store import list_guard_records
+
+if TYPE_CHECKING:
+    from frontier_scout.progress import ProgressReporter
 
 
 def run_guard(
     repo: Path | str | None = None,
     *,
     strict: bool = False,
-    reporter: "ProgressReporter | None" = None,
+    reporter: ProgressReporter | None = None,
 ) -> list[PolicyFinding]:
     """Return deterministic findings from the local evidence ledger.
 
@@ -41,6 +44,21 @@ def run_guard(
     progress.stage("Applying policy", total_stages=2)
     findings: list[PolicyFinding] = []
     for record in records:
+        tool_name = str(record.get("tool_name") or "")
+        if record.get("manifest_missing"):
+            # No permission manifest stored for this tool: its capability
+            # surface was never captured. Fail CLOSED with a high finding
+            # rather than silently passing it (the pre-fix INNER JOIN dropped
+            # these rows entirely). Mirrors evaluate_policy's capability.missing.
+            findings.append(
+                PolicyFinding(
+                    severity="high",
+                    rule_id="capability.missing",
+                    message=f"{tool_name}: no permission manifest stored; capability surface unknown.",
+                    tool_name=tool_name,
+                )
+            )
+            continue
         dangerous = set(record.get("dangerous_flags") or [])
         if not dangerous:
             continue

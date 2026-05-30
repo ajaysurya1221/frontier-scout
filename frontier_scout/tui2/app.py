@@ -34,7 +34,9 @@ class BriefingApp(App):
         Binding("ctrl+c", "quit", "quit", show=False, priority=True),
     ]
 
-    def __init__(self, *, repo: Path | None = None, demo: bool = False) -> None:
+    def __init__(
+        self, *, repo: Path | None = None, demo: bool = False, splash: bool = False
+    ) -> None:
         super().__init__()
         repo = (repo or Path.cwd()).resolve()
         has_repo = _looks_like_repo(repo)
@@ -51,10 +53,28 @@ class BriefingApp(App):
             dismissed=dismissed,
         )
         self._demo = demo
+        self._splash = splash
         self._gen = 0
 
     def on_mount(self) -> None:
-        self.push_screen(HomeScreen())
+        if self._splash:
+            from frontier_scout.tui2.screens.splash import SplashScreen
+
+            self.push_screen(SplashScreen())
+        else:
+            self.push_screen(HomeScreen())
+
+    def provider_label(self) -> str:
+        """A short, friendly label for the active backend (for the home kicker)."""
+        if self._demo or not _has_provider():
+            return "offline demo"
+        try:
+            from frontier_scout.providers import available_providers
+
+            names = available_providers()
+            return names[0] if names else "offline demo"
+        except Exception:  # noqa: BLE001
+            return "offline demo"
 
     # ── Worker bridge ───────────────────────────────────────────────────────
 
@@ -275,6 +295,6 @@ def _explain_text(ev: Any) -> str:
 def run_briefing(*, repo: Path | None = None, demo: bool = False) -> int:
     """Run the Briefing TUI. Returns a process exit code."""
     os.environ.setdefault("TEXTUAL_ANIMATIONS", "none")
-    app = BriefingApp(repo=repo, demo=demo)
+    app = BriefingApp(repo=repo, demo=demo, splash=True)
     app.run()
     return 0

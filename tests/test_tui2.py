@@ -21,6 +21,7 @@ from frontier_scout.tui2.screens.explore import ExploreScreen
 from frontier_scout.tui2.screens.findings import FindingsScreen
 from frontier_scout.tui2.screens.home import HomeScreen
 from frontier_scout.tui2.screens.settings import SettingsScreen
+from frontier_scout.tui2.screens.splash import SplashScreen
 from frontier_scout.tui2.screens.working import WorkingScreen
 from frontier_scout.tui2.state import AppState, Concern, Finding
 
@@ -120,6 +121,33 @@ def test_all_static_screens_mount():
     _run(go())
 
 
+# ── 1b. Splash → Home (only on real launch; tests opt in via splash=True) ────
+
+
+def test_splash_shown_when_requested_then_opens_home():
+    async def go():
+        for size in SIZES:
+            app = BriefingApp(demo=True, splash=True)
+            async with app.run_test(size=size) as pilot:
+                assert isinstance(app.screen, SplashScreen)
+                # The splash body has content (radar + wordmark) at every size.
+                assert app.screen.query_one("#body").children
+                app.screen.action_begin()
+                await pilot.pause()
+                assert isinstance(app.screen, HomeScreen)
+
+    _run(go())
+
+
+def test_default_app_skips_splash():
+    async def go():
+        app = BriefingApp(demo=True)
+        async with app.run_test(size=(80, 24)):
+            assert isinstance(app.screen, HomeScreen)
+
+    _run(go())
+
+
 # ── 2. State machine transitions ─────────────────────────────────────────────
 
 
@@ -130,10 +158,11 @@ def test_home_scout_to_findings():
             app.start_scout()
             await pilot.pause()
             # Worker pushes WorkingScreen then (demo = seeded, fast) finishes.
-            for _ in range(50):
-                if isinstance(app.screen, FindingsScreen):
-                    break
-                await pilot.pause(0.05)
+            # Wait on the real condition (worker completion) rather than a
+            # fixed poll budget, then pump once so the posted terminal message
+            # routes to FindingsScreen. Deterministic under any CPU load.
+            await app.workers.wait_for_complete()
+            await pilot.pause()
             assert isinstance(app.screen, FindingsScreen)
             assert app.state.findings  # populated from the scan
 
@@ -164,10 +193,10 @@ def test_findings_primary_with_repo_goes_to_working_then_result():
             app.screen.action_primary()  # Implement & test (repo present)
             await pilot.pause()
             # Routes through WorkingScreen then lands on ActionResultScreen.
-            for _ in range(80):
-                if isinstance(app.screen, ActionResultScreen):
-                    break
-                await pilot.pause(0.05)
+            # Wait on worker completion (deterministic) instead of a fixed poll
+            # budget that can expire under full-suite CPU contention.
+            await app.workers.wait_for_complete()
+            await pilot.pause()
             assert isinstance(app.screen, ActionResultScreen)
 
     _run(go())
@@ -246,10 +275,10 @@ def test_worker_exception_lands_on_error_screen():
 
             app._launch("scout", "Boom…", boom)
             await pilot.pause()
-            for _ in range(40):
-                await pilot.pause(0.05)
-                if isinstance(app.screen, ErrorScreen):
-                    break
+            # Wait on the worker (which raises) deterministically, then pump
+            # once so WorkFailed routes to ErrorScreen.
+            await app.workers.wait_for_complete()
+            await pilot.pause()
             assert isinstance(app.screen, ErrorScreen)
             # App is still alive and usable.
             assert app.is_running
@@ -287,3 +316,39 @@ def test_finding_from_verdict_tolerates_missing_keys():
     assert f.verdict == "assess"
     assert f.concerns == ()
     assert f.top_severity == ""
+
+
+# ── 7. CLI routing: Briefing is the default; classic stays reachable ─────────
+
+
+def test_cli_routes_to_briefing_by_default(monkeypatch):
+    from frontier_scout import cli
+
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)
+    called: dict[str, object] = {}
+
+    def fake_run_briefing(**kwargs):
+        called["briefing"] = kwargs
+        return 0
+
+    import frontier_scout.tui2 as tui2
+
+    monkeypatch.setattr(tui2, "run_briefing", fake_run_briefing)
+    rc = cli.main([])
+    assert rc == 0
+    assert "briefing" in called
+
+
+def test_cli_ui_classic_routes_to_classic(monkeypatch):
+    from frontier_scout import cli
+
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(cli, "_run_tui_with_reconfigure_loop", lambda *a, **k: 0)
+    # is_onboarded lives in wizard.config; force True so no wizard launch.
+    import frontier_scout.wizard.config as wc
+
+    monkeypatch.setattr(wc, "is_onboarded", lambda: True)
+    rc = cli.main(["--ui", "classic"])
+    assert rc == 0

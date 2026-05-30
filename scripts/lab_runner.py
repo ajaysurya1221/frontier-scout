@@ -52,12 +52,10 @@ import re
 import subprocess
 import sys
 import tempfile
-import textwrap
-import urllib.request
 import urllib.error
-from datetime import datetime, timezone
+import urllib.request
+from datetime import UTC, datetime
 from pathlib import Path
-
 
 from cost_tracker import log_call
 from llm_client import call_with_retry
@@ -281,7 +279,11 @@ def run(tool: str, url: str, user: str = "", dry_run: bool | None = None) -> int
         return 0
 
     sandbox_result = _dispatch_subprocess(tool_spec, classification, test_script)
-    print(f"  Subprocess: runtime={classification.get('runtime')!r} exit={sandbox_result['exit_code']} duration={sandbox_result['duration_s']:.1f}s")
+    print(
+        f"  Subprocess: runtime={classification.get('runtime')!r} "
+        f"exit={sandbox_result['exit_code']} "
+        f"duration={sandbox_result['duration_s']:.1f}s"
+    )
 
     # 6. Interpret.
     insights, cost3 = _interpret(client, tool_spec, classification, test_script, sandbox_result)
@@ -331,7 +333,7 @@ def _today_lab_usage() -> tuple[int, float]:
     """Count today's lab runs and total USD across all `lab-*` cost entries."""
     if not COSTS_LEDGER.exists():
         return 0, 0.0
-    today_prefix = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_prefix = datetime.now(UTC).strftime("%Y-%m-%d")
     runs = set()
     total_usd = 0.0
     with COSTS_LEDGER.open() as f:
@@ -572,7 +574,10 @@ def _http_get_json(url: str, timeout: int = 6) -> dict | None:
 
 _CLASSIFY_TOOL = {
     "name": "classify_tool",
-    "description": "Classify the tool into one of the known categories and emit minimal install metadata, including which runtime can exercise it.",
+    "description": (
+        "Classify the tool into one of the known categories and emit minimal "
+        "install metadata, including which runtime can exercise it."
+    ),
     "input_schema": {
         "type": "object",
         "properties": {
@@ -606,7 +611,13 @@ _CLASSIFY_TOOL = {
                     "runtime=unknown: empty string."
                 ),
             },
-            "hint": {"type": "string", "description": "One-sentence note for the generator — what team usage would look most like this tool."},
+            "hint": {
+                "type": "string",
+                "description": (
+                    "One-sentence note for the generator — what team usage "
+                    "would look most like this tool."
+                ),
+            },
         },
         "required": ["category", "runtime", "package"],
     },
@@ -662,7 +673,10 @@ def _classify(client, spec: dict) -> tuple[dict, float]:
 
 _GENERATE_TEST_TOOL = {
     "name": "emit_test_script",
-    "description": "Emit a short test script that exercises the tool with synthetic stack-shaped inputs in the chosen runtime.",
+    "description": (
+        "Emit a short test script that exercises the tool with synthetic "
+        "stack-shaped inputs in the chosen runtime."
+    ),
     "input_schema": {
         "type": "object",
         "properties": {
@@ -672,7 +686,10 @@ _GENERATE_TEST_TOOL = {
             },
             "explanation": {
                 "type": "string",
-                "description": "1–2 sentences explaining what the script exercises and why this shape is team-relevant.",
+                "description": (
+                    "1–2 sentences explaining what the script exercises and "
+                    "why this shape is team-relevant."
+                ),
             },
         },
         "required": ["script", "explanation"],
@@ -1105,7 +1122,13 @@ def _run_subprocess_hf(spec: dict, classification: dict, script: str) -> dict:
                 cwd=str(tdp),
             )
         except subprocess.TimeoutExpired:
-            return _result(start, -1, "", f"pip install (huggingface_hub + transformers) timed out after {SUBPROCESS_TIMEOUT}s")
+            return _result(
+                start,
+                -1,
+                "",
+                f"pip install (huggingface_hub + transformers) timed out "
+                f"after {SUBPROCESS_TIMEOUT}s",
+            )
 
         if install_proc.returncode != 0:
             return _result(
@@ -1172,11 +1195,30 @@ _INTERPRET_TOOL = {
             "headline": {"type": "string", "description": "One sentence: would this be useful for team?"},
             "verdict_for_team": {"type": "string", "enum": ["worth_trial", "monitor", "skip"]},
             "what_worked": {"type": "string", "description": "1–2 sentences on what the script confirmed."},
-            "what_didnt": {"type": "string", "description": "1–2 sentences on what failed or was unclear (or 'nothing — clean run')."},
-            "next_step": {"type": "string", "description": "Concrete recommendation, e.g. 'lab <tool>' or 'add to tech-radar at TRIAL' or 'no further action'."},
+            "what_didnt": {
+                "type": "string",
+                "description": (
+                    "1–2 sentences on what failed or was unclear "
+                    "(or 'nothing — clean run')."
+                ),
+            },
+            "next_step": {
+                "type": "string",
+                "description": (
+                    "Concrete recommendation, e.g. 'lab <tool>' or "
+                    "'add to tech-radar at TRIAL' or 'no further action'."
+                ),
+            },
             "test_quality_self_rating": {"type": "string", "enum": ["high", "medium", "low"]},
         },
-        "required": ["headline", "verdict_for_team", "what_worked", "what_didnt", "next_step", "test_quality_self_rating"],
+        "required": [
+            "headline",
+            "verdict_for_team",
+            "what_worked",
+            "what_didnt",
+            "next_step",
+            "test_quality_self_rating",
+        ],
     },
 }
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sys
 import textwrap
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -388,7 +388,7 @@ class TestLabCapsReader:
         monkeypatch.setattr(lab_runner, "LAB_RUNS_PER_DAY", 3)
         monkeypatch.setattr(lab_runner, "LAB_DAILY_USD_CAP", 5.0)
 
-        today = datetime.now(timezone.utc).isoformat()
+        today = datetime.now(UTC).isoformat()
         lines = [
             {"ts": today, "component": "lab-classify", "cost_usd": 0.01, "run_id": "abc"},
             {"ts": today, "component": "lab-generate", "cost_usd": 0.02, "run_id": "abc"},
@@ -406,7 +406,7 @@ class TestLabCapsReader:
         monkeypatch.setattr(lab_runner, "LAB_RUNS_PER_DAY", 1)
         monkeypatch.setattr(lab_runner, "LAB_DAILY_USD_CAP", 100.0)
 
-        today = datetime.now(timezone.utc).isoformat()
+        today = datetime.now(UTC).isoformat()
         lines = [
             {"ts": today, "component": "lab-classify", "cost_usd": 0.01, "run_id": "first"},
         ]
@@ -424,7 +424,7 @@ class TestLabCapsReader:
         monkeypatch.setattr(lab_runner, "LAB_RUNS_PER_DAY", 100)
         monkeypatch.setattr(lab_runner, "LAB_DAILY_USD_CAP", 1.0)
 
-        today = datetime.now(timezone.utc).isoformat()
+        today = datetime.now(UTC).isoformat()
         lines = [
             {"ts": today, "component": "lab-classify", "cost_usd": 1.50, "run_id": "expensive"},
         ]
@@ -443,7 +443,7 @@ class TestLabCapsReader:
         monkeypatch.setattr(lab_runner, "LAB_RUNS_PER_DAY", 1)
         monkeypatch.setattr(lab_runner, "LAB_DAILY_USD_CAP", 1.0)
 
-        yesterday = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+        yesterday = (datetime.now(UTC) - timedelta(days=2)).isoformat()
         lines = [
             {"ts": yesterday, "component": "lab-classify", "cost_usd": 0.50, "run_id": "old1"},
             {"ts": yesterday, "component": "lab-generate", "cost_usd": 0.50, "run_id": "old1"},
@@ -462,7 +462,7 @@ class TestLabCapsReader:
         monkeypatch.setattr(lab_runner, "LAB_RUNS_PER_DAY", 1)
         monkeypatch.setattr(lab_runner, "LAB_DAILY_USD_CAP", 1.0)
 
-        today = datetime.now(timezone.utc).isoformat()
+        today = datetime.now(UTC).isoformat()
         lines = [
             {"ts": today, "component": "scout-score", "cost_usd": 5.0, "run_id": "s1"},
             {"ts": today, "component": "scout-verdict", "cost_usd": 10.0, "run_id": "s1"},

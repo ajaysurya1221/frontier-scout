@@ -87,7 +87,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Force the wizard even if other flags are present.",
     )
-    setup_cmd.add_argument("--repo", default=None, help="Repository to inspect for local setup signals (launches Mission Control).")
+    setup_cmd.add_argument(
+        "--repo",
+        default=None,
+        help="Repository to inspect for local setup signals (launches Mission Control).",
+    )
     setup_cmd.add_argument("--plain", action="store_true", help="Use stable plain-text setup output.")
     setup_cmd.add_argument("--json", action="store_true", help="Print setup diagnostics as JSON.")
     setup_cmd.add_argument(
@@ -400,6 +404,22 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(2)
         os.environ["FRONTIER_SCOUT_PROVIDER"] = value
 
+    # ``--ui {briefing,classic}`` selects the terminal UI. v1.5.0 ships the
+    # Briefing as default; ``classic`` reaches the previous Mission Control TUI
+    # for one release. Pulled from argv (any position) like ``--provider``, and
+    # also honoured via the ``FRONTIER_SCOUT_UI`` env var.
+    valid_uis = ("briefing", "classic")
+    ui_value: str | None = None
+
+    def _check_ui(value: str | None) -> str:
+        if not value or value not in valid_uis:
+            print(
+                f"error: invalid --ui {value!r} (choose from {', '.join(valid_uis)})",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        return value
+
     cleaned: list[str] = []
     skip_next = False
     for i, tok in enumerate(raw):
@@ -413,8 +433,19 @@ def main(argv: list[str] | None = None) -> int:
         if tok.startswith("--provider="):
             _set_provider(tok.split("=", 1)[1])
             continue
+        if tok == "--ui":
+            ui_value = _check_ui(raw[i + 1] if i + 1 < len(raw) else None)
+            skip_next = True
+            continue
+        if tok.startswith("--ui="):
+            ui_value = _check_ui(tok.split("=", 1)[1])
+            continue
         cleaned.append(tok)
     raw = cleaned
+
+    ui_choice = (ui_value or os.environ.get("FRONTIER_SCOUT_UI") or "briefing").strip().lower()
+    if ui_choice not in valid_uis:
+        ui_choice = "briefing"
 
     for alias, subcommand in (("--setup", "setup"), ("--demo", "demo")):
         if alias in raw:
@@ -425,6 +456,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command is None:
         if sys.stdin.isatty() and sys.stdout.isatty():
+            # v1.5.0 default: the Briefing TUI. Calm, wizard-style, one card at
+            # a time. The classic Mission Control TUI is one release away via
+            # ``--ui classic`` / ``FRONTIER_SCOUT_UI=classic``.
+            if ui_choice == "briefing":
+                from .tui2 import run_briefing
+
+                return run_briefing(repo=Path("."))
+
             from .tui.runner import run_setup
             from .wizard.config import is_onboarded
 

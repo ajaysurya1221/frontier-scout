@@ -1,21 +1,46 @@
 /* Briefing TUI (v1.5.0) — one stylesheet for the whole look.
 
+   Ported from the Claude Design handoff bundle ("Frontier Scout TUI"). The deep
+   navy field, mint accent, filled verdict pills, mint section headers, and the
+   bordered "next safe step" box all come from that spec.
+
    The root of every screen is three rows: Header (1) · Body (1fr, scrolls) ·
    Compass (1). Because Body always takes the remaining space and scrolls,
    content can never clip at any width or height. Cards are width-capped and
-   centred so prose never sprawls on wide terminals and fills narrow ones. */
+   centred so prose never sprawls on wide terminals and fills narrow ones.
+
+   Custom variables are prefixed `$fs-` so they never collide with Textual's
+   built-in theme variables (e.g. $panel, $border), which the framework uses in
+   its own system stylesheets. */
+
+/* ── Palette (from the design :root) ──────────────────────────────────────── */
+$fs-bg: #0b1117;
+$fs-panel: #0d1622;
+$fs-card: #0c1a27;
+$fs-border: #25405c;
+$fs-border-soft: #1a2c41;
+$fs-mint: #24d6a8;
+$fs-mint-dim: #1b9a7a;
+$fs-bright: #d9f7ff;
+$fs-fg: #a9bccd;
+$fs-muted: #6e8aa1;
+$fs-blue: #7aa6ff;
+$fs-gold: #e3c26f;
+$fs-red: #ff6b6b;
+$fs-sel-bg: #11241d;     /* mint at ~9% over the field */
+$fs-next-bg: #0e1f1a;    /* mint at ~5% over the field */
 
 Screen {
-    background: $surface;
-    color: $text;
+    background: $fs-bg;
+    color: $fs-fg;
 }
 
 /* ── Header ─────────────────────────────────────────────────────────────── */
 #header {
     height: 1;
     width: 100%;
-    background: $panel;
-    color: $text-muted;
+    background: $fs-panel;
+    color: $fs-muted;
     padding: 0 1;
 }
 
@@ -33,8 +58,8 @@ Screen {
 #compass {
     height: 1;
     width: 100%;
-    background: $panel;
-    color: $text-muted;
+    background: $fs-panel;
+    color: $fs-muted;
     padding: 0 1;
 }
 
@@ -43,16 +68,57 @@ Screen {
     width: 1fr;
     max-width: 80;
     height: auto;
-    padding: 1 2;
+    padding: 0 1;
 }
 
-.ribbon-ok { color: $success; text-style: bold; }
-.ribbon-info { color: $primary; text-style: bold; }
-.ribbon-warn { color: $warning; text-style: bold; }
-.ribbon-muted { color: $text-muted; text-style: bold; }
+/* ── Radar — centred, decorative ────────────────────────────────────────── */
+.radar {
+    width: auto;
+    height: auto;
+    content-align: center middle;
+    color: $fs-mint;
+    padding: 0 0 1 0;
+}
+
+/* ── Splash hero — centred wordmark + tagline ───────────────────────────── */
+.hero {
+    width: auto;
+    height: auto;
+    content-align: center middle;
+    text-align: center;
+    color: $fs-bright;
+    text-style: bold;
+}
+.hero-sub {
+    width: auto;
+    height: auto;
+    content-align: center middle;
+    text-align: center;
+    color: $fs-muted;
+    padding: 1 0 0 0;
+}
+
+/* ── Kicker (provider · ready) above the home hero ──────────────────────── */
+.kicker {
+    width: 1fr;
+    max-width: 80;
+    height: auto;
+    color: $fs-mint;
+    text-style: bold;
+    padding: 0 0 1 0;
+}
+
+/* ── Verdict-pill ribbon line + light-action result banners ─────────────── */
+.ribbon {
+    width: 1fr;
+    max-width: 80;
+    height: auto;
+    padding: 0 0 1 0;
+}
 
 .title {
     text-style: bold;
+    color: $fs-bright;
     width: 1fr;
     max-width: 80;
     height: auto;
@@ -63,23 +129,61 @@ Screen {
     width: 1fr;
     max-width: 80;
     height: auto;
+    padding: 0 0 1 0;
 }
 
-.dim { color: $text-muted; }
+/* Mint uppercase section header, the design's `.block-h` */
+.block-h {
+    color: $fs-mint;
+    text-style: bold;
+    width: 1fr;
+    max-width: 80;
+    height: auto;
+}
+
+/* The bordered "next safe step" callout (design `.next-step`) */
+.next-step {
+    width: 1fr;
+    max-width: 80;
+    height: auto;
+    background: $fs-next-bg;
+    border-left: thick $fs-mint;
+    padding: 0 1;
+    margin: 0 0 1 0;
+}
+
+.dim { color: $fs-muted; }
+
+.dots {
+    width: 1fr;
+    max-width: 80;
+    height: auto;
+    color: $fs-muted;
+    content-align: center middle;
+}
 
 /* ── Home / menu rows ───────────────────────────────────────────────────── */
 .menu-row {
     width: 1fr;
     max-width: 80;
     height: auto;
-    padding: 0 0;
+    padding: 0 1;
 }
-.menu-selected { color: $primary; text-style: bold; }
+.menu-row.sel {
+    background: $fs-sel-bg;
+    color: $fs-bright;
+    text-style: bold;
+}
 
 /* ── Explore / settings input ───────────────────────────────────────────── */
 Input {
     width: 1fr;
     max-width: 80;
+    border: round $fs-border-soft;
+    background: $fs-card;
+}
+Input:focus {
+    border: round $fs-mint;
 }
 
 /* ── The graceful floor for tiny terminals ──────────────────────────────── */
@@ -88,7 +192,7 @@ Input {
     width: 100%;
     height: 100%;
     content-align: center middle;
-    color: $warning;
+    color: $fs-gold;
 }
 
 Screen.tiny #header,

@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 # ── Taxonomy that matches how solo AI builders actually talk ────────────────
 
 CATEGORIES = """

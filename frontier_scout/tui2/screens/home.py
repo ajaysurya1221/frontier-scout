@@ -9,6 +9,7 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from frontier_scout.tui2.screens.base import BriefingScreen
+from frontier_scout.tui2.widgets import Radar
 
 # (key, label, hint) — order is the on-screen order.
 _ITEMS: tuple[tuple[str, str, str], ...] = (
@@ -39,23 +40,31 @@ class HomeScreen(BriefingScreen):
         return "↑↓ move · ⏎ choose · q quit"
 
     def body(self) -> Iterable[Widget]:
+        yield Static(f"[#24d6a8]{self._kicker()}[/]", classes="kicker", id="kicker")
+        yield Radar(rows=9, cols=21, classes="radar")
         yield Static("What would you like to do?", classes="title")
         for i, (_key, label, hint) in enumerate(_ITEMS):
-            yield Static(self._row(i, label, hint), classes="menu-row", id=f"item-{i}")
+            yield Static(
+                self._row(i, label, hint),
+                classes="menu-row" + (" sel" if i == self._sel else ""),
+                id=f"item-{i}",
+            )
+
+    def _kicker(self) -> str:
+        return f"◉ {self.app.provider_label()} · ready"
 
     def _row(self, i: int, label: str, hint: str) -> str:
         marker = "▸" if i == self._sel else " "
-        cls = "menu-selected" if i == self._sel else ""
         text = f"{marker} {label}"
         if hint:
             text = f"{text}".ljust(22) + f"[dim]{hint}[/dim]"
-        if cls:
-            text = f"[b]{text}[/b]"
         return text
 
     def _refresh_rows(self) -> None:
         for i, (_key, label, hint) in enumerate(_ITEMS):
-            self.query_one(f"#item-{i}", Static).update(self._row(i, label, hint))
+            row = self.query_one(f"#item-{i}", Static)
+            row.update(self._row(i, label, hint))
+            row.set_class(i == self._sel, "sel")
 
     def action_move(self, delta: int) -> None:
         self._sel = (self._sel + delta) % len(_ITEMS)

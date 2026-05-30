@@ -53,11 +53,18 @@ def load_policy(repo: Path | None = None) -> Policy:
     for path in candidates:
         if not path.exists() or tomllib is None:
             continue
-        data = tomllib.loads(path.read_text())
-        policy_data = dict(data.get("policy") or data)
-        if "packs" in data:
-            policy_data["packs"] = data["packs"]
-        return Policy(**policy_data)
+        try:
+            data = tomllib.loads(path.read_text())
+            policy_data = dict(data.get("policy") or data)
+            if "packs" in data:
+                policy_data["packs"] = data["packs"]
+            return Policy(**policy_data)
+        except (OSError, ValueError):
+            # Malformed/unreadable policy file (bad TOML, wrong field type,
+            # read error): honour the docstring and fall back to defaults
+            # rather than crashing guard/dossier/scout. TOMLDecodeError and
+            # pydantic ValidationError both subclass ValueError.
+            continue
     return DEFAULT_POLICY
 
 
@@ -130,8 +137,12 @@ def evaluate_policy(
 
     lab_passed = bool(lab_result) and (
         lab_result.get("status") == "passed"
-        or lab_result.get("exit_code") == 0
-        and lab_result.get("status") in {"passed", "completed"}
+        or (
+            lab_result.get("status") == "completed"
+            # exit_code absent on a finished trial means clean finish;
+            # default to 0 so precedence can't silently drop a passed lab.
+            and lab_result.get("exit_code", 0) == 0
+        )
     )
     lab_failed = bool(lab_result) and lab_result.get("exit_code") not in {None, 0}
     if lab_failed:

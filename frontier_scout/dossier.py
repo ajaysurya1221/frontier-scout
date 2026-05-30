@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .evaluate import Evaluation, evaluate_url
 from .policy import evaluate_policy, load_policy
@@ -20,12 +20,15 @@ from .store import (
     save_policy_findings,
 )
 
+if TYPE_CHECKING:
+    from frontier_scout.progress import ProgressReporter
+
 
 def build_dossier(
     target: str,
     *,
     repo: Path | None = None,
-    reporter: "ProgressReporter | None" = None,
+    reporter: ProgressReporter | None = None,
 ) -> dict[str, Any]:
     """Build and persist a local adoption dossier for a tool or URL.
 

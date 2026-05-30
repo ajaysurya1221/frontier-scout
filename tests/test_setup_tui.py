@@ -126,7 +126,9 @@ def test_no_args_interactive_dispatches_setup(monkeypatch):
     # exercises the "straight to TUI" path it always meant to cover.
     monkeypatch.setattr("frontier_scout.wizard.config.is_onboarded", lambda: True)
 
-    assert main([]) == 0
+    # v1.5.0 — the Briefing is the bare-run default; the classic run_setup
+    # dispatch this test pins is reached via ``--ui classic``.
+    assert main(["--ui", "classic"]) == 0
 
     assert called["repo"] == Path(".")
     assert called["plain"] is False
@@ -370,8 +372,9 @@ def test_splash_no_longer_mounted_in_v12(tmp_path, monkeypatch):
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
         diagnostics = setup_diagnostics(_seed_repo(tmp_path / "repo"), ollama_timeout_s=0.001)
 
-        from frontier_scout.tui.setup_app import SetupApp
         from textual.widgets import TabbedContent
+
+        from frontier_scout.tui.setup_app import SetupApp
 
         app = SetupApp(diagnostics, show_splash=True)
         async with app.run_test() as pilot:

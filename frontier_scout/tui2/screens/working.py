@@ -18,6 +18,7 @@ from textual.widgets import Static
 
 from frontier_scout.tui2.messages import Progress
 from frontier_scout.tui2.screens.base import BriefingScreen
+from frontier_scout.tui2.widgets import Radar
 
 _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
@@ -38,6 +39,7 @@ class WorkingScreen(BriefingScreen):
         return "esc to cancel"
 
     def body(self) -> Iterable[Widget]:
+        yield Radar(rows=13, cols=29, classes="radar")
         yield Static(self._title, classes="title")
         yield Static("Starting…", id="stages", classes="prose")
         yield Static("0s elapsed", id="elapsed", classes="prose dim")
