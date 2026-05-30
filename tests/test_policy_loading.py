@@ -149,18 +149,29 @@ def test_cli_evaluate_loads_repo_policy(tmp_path, monkeypatch, capsys):
 
     payload = json.loads(capsys.readouterr().out)
 
-    # Sanity: confirm DEFAULT_POLICY would have said "trial" for these inputs —
-    # so "assess" below can only come from the repo file being loaded.
-    from frontier_scout.evaluate import evaluate_url
-    from frontier_scout.mcp_audit import classify_mcp_capabilities
+    # Sanity baseline: DEFAULT_POLICY yields "trial" for a network-capable,
+    # medium-risk tool — the same capability surface the CLI classifies for this
+    # URL. Build that surface explicitly so the baseline does not depend on the
+    # capability regex incidentally matching the URL string (CodeRabbit nitpick);
+    # the CLI assertion below still exercises the real evaluate_url path end-to-end.
     from frontier_scout.policy import DEFAULT_POLICY, evaluate_policy, load_policy
-    from frontier_scout.scout import detect_stack
 
-    _ev = evaluate_url("https://github.com/anthropics/skills", detect_stack(tmp_path))
-    _manifest = _ev.permission_manifest or classify_mcp_capabilities(
-        "https://github.com/anthropics/skills", tool_name=_ev.tool_name
+    synthetic = Evaluation(
+        tool_name="anthropics/skills",
+        source_url="https://github.com/anthropics/skills",
+        category="dev_tool",
+        fit="high",
+        risk="medium",
+        source_trust="high",
+        permission_manifest=PermissionManifest(
+            tool_name="anthropics/skills",
+            dangerous_flags=["network"],
+            confidence="medium",
+        ),
     )
-    default_verdict = evaluate_policy(_ev, _manifest, policy=DEFAULT_POLICY).verdict
+    default_verdict = evaluate_policy(
+        synthetic, synthetic.permission_manifest, policy=DEFAULT_POLICY
+    ).verdict
     assert default_verdict == "trial"
 
     # The CLI run, with the repo policy loaded, MUST diverge from the default.
