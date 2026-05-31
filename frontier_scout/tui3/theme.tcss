@@ -105,3 +105,15 @@ Screen {
 /* buttons / chips */
 .chip { color: #a9bccd; }
 .chip.on { color: #24d6a8; text-style: bold; }
+
+/* ── Scout tab ──────────────────────────────────────────────────────────── */
+.scout-root { height: auto; }
+.scout-hero { height: auto; margin-bottom: 1; }
+.scout-scanbar { height: auto; margin-bottom: 1; }
+.scout-empty { height: auto; }
+.scout-split { layout: horizontal; height: auto; }
+.scout-list { height: auto; }
+.scout-list.side { width: 44%; padding-right: 1; }
+.scout-detail { height: auto; }
+.scout-detail.side { width: 1fr; border-left: tall #152232; padding-left: 1; }
+.scout-ask { height: auto; margin-top: 1; }

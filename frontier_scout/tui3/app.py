@@ -58,7 +58,12 @@ class MissionControlApp(App[int]):
         *[Binding(str(i + 1), f"goto_{t}", t, show=False) for i, (t, _, _) in enumerate(TABS)],
         Binding("j,down", "move(1)", "down", show=False),
         Binding("k,up", "move(-1)", "up", show=False),
+        Binding("right", "scope(1)", "scope", show=False),
+        Binding("left", "scope(-1)", "scope", show=False),
+        Binding("a", "ask", "ask", show=False),
     ]
+
+    SCOPES = ["all", "ai-devtools", "mcp", "deps"]
 
     def __init__(self, *, repo: Path | None = None, demo: bool = False) -> None:
         super().__init__()
@@ -68,6 +73,7 @@ class MissionControlApp(App[int]):
         self._bp_name = ""
         self._scanning = False
         self._size_override: tuple[int, int] | None = None
+        self._ask_i = 0
 
     # ── lifecycle ────────────────────────────────────────────────────────────
     def compose(self) -> ComposeResult:
@@ -287,6 +293,25 @@ class MissionControlApp(App[int]):
         if self.state.tab == "scout" and self.state.verdicts:
             self.state = self.state.move(delta)
             self._refresh_nav()
+            await self._render_pane()
+
+    async def action_scope(self, delta: int) -> None:
+        """Cycle the Scout scope chip (all / ai-devtools / mcp / deps)."""
+        if self.state.tab != "scout":
+            return
+        order = self.SCOPES
+        try:
+            i = order.index(self.state.scope)
+        except ValueError:
+            i = 0
+        self.state = self.state.with_(scope=order[(i + delta) % len(order)], sel=0)
+        await self._render_pane()
+        self._refresh_chrome()
+
+    async def action_ask(self) -> None:
+        """Cycle the offline Ask question for the selected verdict (never spends)."""
+        if self.state.tab == "scout" and self.state.verdicts:
+            self._ask_i += 1
             await self._render_pane()
 
     async def action_toggle_unicode(self) -> None:

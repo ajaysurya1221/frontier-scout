@@ -17,7 +17,7 @@ from textual.containers import Vertical
 from textual.widgets import Static
 
 from frontier_scout.tui3 import data
-from frontier_scout.tui3.kit import glyphs, verdict_label
+from frontier_scout.tui3.kit import glyphs
 
 
 def build_pane(app: Any, tab: str) -> Vertical:
@@ -35,22 +35,9 @@ def _head(app: Any, title: str, sub: str) -> Static:
 
 
 def _scout(app: Any) -> Vertical:
-    gl = glyphs(app.state.unicode)
-    box = Vertical()
-    box.compose_add_child(_head(app, "Scout", f"{len(app.state.verdicts)} verdicts · {app.state.repo_name}"))
-    if not app.state.verdicts:
-        box.compose_add_child(_S(
-            app,
-            f"\n[#6e8aa1]No scan yet. Press [#24d6a8 b]s[/] to run a scout"
-            f"{' (demo)' if app.state.demo else ''}.[/]"))
-        return box
-    for i, v in enumerate(app.state.verdicts):
-        on = i == app.state.sel
-        tag = f"[#24d6a8]{verdict_label(v.verdict)}[/]"
-        marker = gl["tri"] if on else " "
-        line = f"{marker} {tag}  [#d9f7ff]{v.tool_name}[/]  [#6e8aa1]{v.category}[/]"
-        box.compose_add_child(_S(app, line, classes="row-sel" if on else ""))
-    return box
+    from frontier_scout.tui3.scout_view import build_scout
+
+    return build_scout(app)
 
 
 def _schedule(app: Any) -> Vertical:
