@@ -18,12 +18,11 @@ from typing import Any, ClassVar
 from textual import on, work
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.widgets import Button, DataTable, Static
 
 from frontier_scout.profile import stack_from_profile
 from frontier_scout.store import read_setup_state, write_setup_state
-
 
 _VERDICT_COLORS = {
     "ADOPT": "#24d6a8",

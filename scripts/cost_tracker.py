@@ -22,7 +22,7 @@ import json
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -138,7 +138,7 @@ def log_call(component: str, model: str, usage, run_id: str | None = None) -> fl
     """
     cost = _cost(model, usage)
     record = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "component": component,
         "model": model,
         "input_tokens": getattr(usage, "input_tokens", 0),
@@ -158,7 +158,7 @@ def month_to_date_total() -> float:
     """Sum all ``cost_usd`` entries in the current calendar month (UTC)."""
     if not LEDGER.exists():
         return 0.0
-    today = datetime.now(timezone.utc)
+    today = datetime.now(UTC)
     prefix = today.strftime("%Y-%m")
     total = 0.0
     with LEDGER.open() as f:

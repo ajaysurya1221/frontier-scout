@@ -27,11 +27,9 @@ status row safe on a VS Code 80×24 panel.
 from __future__ import annotations
 
 from itertools import cycle
-from typing import ClassVar
 
 from textual.reactive import reactive
 from textual.widgets import ProgressBar, Static
-
 
 _SPINNER_FRAMES = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 

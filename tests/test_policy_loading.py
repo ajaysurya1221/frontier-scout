@@ -117,9 +117,23 @@ def test_cli_evaluate_loads_repo_policy(tmp_path, monkeypatch, capsys):
     contains a custom policy, the JSON output reflects the custom policy
     decision."""
 
+    # CodeRabbit (PR #18): the CLI run itself must prove the repo policy was
+    # consulted. We pick a lever whose effect is observable in the CLI's own
+    # JSON for the URL the CLI actually evaluates. The evaluated tool carries a
+    # ``network`` capability flag, so under the DEFAULT policy
+    # (``require_trial_for_dangerous_capabilities = true``) it produces a
+    # ``capability.network`` finding and a TRIAL verdict. The repo policy below
+    # sets that flag to ``false`` — which the engine honours by dropping the
+    # finding and downgrading the verdict to ASSESS. If the CLI ignored the repo
+    # file (regressed to DEFAULT_POLICY), this run would say "trial" and the
+    # assertion would fail.
     fs_dir = tmp_path / ".frontier-scout"
     fs_dir.mkdir(parents=True)
-    (fs_dir / "policy.toml").write_text(_policy_toml(allow_low_risk_no_lab=True))
+    (fs_dir / "policy.toml").write_text(
+        "[policy]\n"
+        "require_trial_for_dangerous_capabilities = false\n"
+        "fail_unknown_capabilities = false\n"
+    )
     monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
 
     from frontier_scout.cli import main
@@ -134,35 +148,39 @@ def test_cli_evaluate_loads_repo_policy(tmp_path, monkeypatch, capsys):
     import json
 
     payload = json.loads(capsys.readouterr().out)
-    # CodeRabbit-strengthened assertion: prove the repo policy
-    # *changed* the decision vs the default. The fixture sets
-    # ``allow_adopt_without_lab_for_low_risk = True`` and we evaluate
-    # a high-trust source. With the default policy
-    # (``allow_adopt_without_lab_for_low_risk = False``) this is
-    # ``assess``; with the repo policy loaded it becomes ``adopt``
-    # whenever the tool is rated low-risk / high-fit. We assert the
-    # repo run hits one of {adopt, trial} — the two outcomes where
-    # the field could flip behaviour — AND verify the rendered policy
-    # summary is the file-loaded one, not DEFAULT_POLICY's summary.
-    from frontier_scout.policy import DEFAULT_POLICY, evaluate_policy
-    from frontier_scout.evaluate import evaluate_url as _ev
-    from frontier_scout.scout import detect_stack
 
-    default_decision = evaluate_policy(
-        _ev("https://github.com/anthropics/skills", detect_stack(tmp_path)),
-        None,
-        policy=DEFAULT_POLICY,
+    # Sanity baseline: DEFAULT_POLICY yields "trial" for a network-capable,
+    # medium-risk tool — the same capability surface the CLI classifies for this
+    # URL. Build that surface explicitly so the baseline does not depend on the
+    # capability regex incidentally matching the URL string (CodeRabbit nitpick);
+    # the CLI assertion below still exercises the real evaluate_url path end-to-end.
+    from frontier_scout.policy import DEFAULT_POLICY, evaluate_policy, load_policy
+
+    synthetic = Evaluation(
+        tool_name="anthropics/skills",
+        source_url="https://github.com/anthropics/skills",
+        category="dev_tool",
+        fit="high",
+        risk="medium",
+        source_trust="high",
+        permission_manifest=PermissionManifest(
+            tool_name="anthropics/skills",
+            dangerous_flags=["network"],
+            confidence="medium",
+        ),
     )
-    assert payload["policy"]["verdict"] in {"adopt", "trial", "assess", "hold"}
-    # The repo policy *should* differ from the default policy when its
-    # only field difference (allow_low_risk_no_lab=True) matters here.
-    # If they match it's because the fixture's tool doesn't trip that
-    # rule — so we additionally pin the policy *was* loaded by reading
-    # the file directly:
-    from frontier_scout.policy import load_policy
+    default_verdict = evaluate_policy(
+        synthetic, synthetic.permission_manifest, policy=DEFAULT_POLICY
+    ).verdict
+    assert default_verdict == "trial"
 
+    # The CLI run, with the repo policy loaded, MUST diverge from the default.
+    assert payload["policy"]["verdict"] == "assess"
+    assert payload["policy"]["verdict"] != default_verdict
+
+    # And the loaded policy really is the repo file (not DEFAULT_POLICY).
     loaded = load_policy(tmp_path)
-    assert loaded.allow_adopt_without_lab_for_low_risk is True
+    assert loaded.require_trial_for_dangerous_capabilities is False
     assert loaded is not DEFAULT_POLICY
 
 

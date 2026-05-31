@@ -66,7 +66,9 @@ def test_bare_run_skips_wizard_for_onboarded_user(fresh_home, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
 
-    rc = cli.main([])
+    # v1.5.0 makes the Briefing the bare-run default; the wizard +
+    # run_setup onboarding contract this test pins lives on the classic UI.
+    rc = cli.main(["--ui", "classic"])
     assert rc == 0
     assert record["wizard_called"] is False
     assert record["tui_called"] is True
@@ -89,7 +91,9 @@ def test_bare_run_invokes_wizard_for_first_time_user(fresh_home, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
 
-    cli.main([])
+    # First-run wizard onboarding is a classic-UI contract (the Briefing,
+    # the v1.5.0 default, is self-contained).
+    cli.main(["--ui", "classic"])
     assert record["wizard_called"] is True
     assert record["tui_called"] is True
 
@@ -239,6 +243,7 @@ def test_reconfigure_exit_code_relaunches_wizard(fresh_home, monkeypatch):
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
 
-    rc = cli.main([])
+    # The reconfigure (exit-42) relaunch loop wraps the classic UI.
+    rc = cli.main(["--ui", "classic"])
     assert rc == 0
     assert calls == ["tui", "wizard", "tui"]

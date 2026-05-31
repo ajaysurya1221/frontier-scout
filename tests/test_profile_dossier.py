@@ -75,7 +75,12 @@ def test_dossier_includes_gap_analysis_and_receipt(tmp_path, monkeypatch):
     payload = build_dossier("https://github.com/modelcontextprotocol/servers", repo=repo)
 
     assert payload["tool_name"] == "modelcontextprotocol/servers"
-    assert payload["verdict"] in {"trial", "assess", "hold", "adopt"}
+    # The MCP servers repo has a permission surface that requires a stored
+    # sandbox receipt, so with no trial on record the deterministic verdict is
+    # "trial" (not the weaker "in {all four verdicts}" tautology, which could
+    # never fail). If the policy engine ever silently downgrades this to
+    # adopt/assess/hold, this assertion catches it.
+    assert payload["verdict"] == "trial"
     assert any("trial receipt" in gap for gap in payload["unknowns"])
     assert Path(payload["receipt_path"]).exists()
     assert "Permission map" in Path(payload["receipt_path"]).read_text()

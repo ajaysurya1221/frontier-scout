@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
-from pathlib import Path
 
 from frontier_scout.wizard.config import is_onboarded, load_config
 from frontier_scout.wizard.headless import run_headless

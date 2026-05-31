@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 from frontier_scout.scheduling import (
-    Schedule,
     add_schedule,
     crontab_line,
     install_cron_runner,
@@ -17,7 +15,6 @@ from frontier_scout.scheduling import (
     record_run,
     remove_schedule,
     save_schedules,
-    schedules_path,
 )
 
 
@@ -75,7 +72,7 @@ def test_is_due_never_run(tmp_path, monkeypatch):
 def test_is_due_recent_run(tmp_path, monkeypatch):
     monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
     sched = add_schedule(tmp_path, cron_expr="@daily")
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     # Record a run that happened seconds ago; @daily fires at midnight so it
     # should NOT be due again until tomorrow's midnight.
     record_run(sched, result_dir=tmp_path, verdict_count=0, now=now)

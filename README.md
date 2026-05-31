@@ -88,13 +88,23 @@ The TUI is the front door. Inside any repo:
 frontier-scout
 ```
 
-That lands you on Mission Control — two tabs only: **Scout** (the
-product) and **Settings**. The Scout tab shows one unified list of
-findings (AI tools + dependency upgrades), each row with full
-reasoning: *what* it is, *why* we suggest it, *why it fits your repo*,
-*risk reasoning*, and the *next safe step*. Press Enter to write a
-dry-run receipt. Run `frontier-scout setup` from anywhere to configure
-your LLM backend or schedule recurring scouts.
+As of **v1.5.0** that lands you on **the Briefing** — a calm,
+wizard-style scout that hands you one card at a time. A home menu
+(*Scout my repo · Explore a tool · Settings · Quit*) leads into focused
+flows; staged progress while it works (never a frozen "loading
+forever"); then a card carousel where each finding shows *what* it is,
+*why it fits your repo*, its concerns, risk, and the *next safe step*.
+An always-present one-line **compass** at the bottom tells you exactly
+what you can do right now. `←/→` flip cards, `Enter` runs the primary
+action (Implement & test in a repo, Tell me more without one), `a` opens
+more actions, `Esc` always goes back. It is flawless at any terminal
+size — a cramped VS Code panel and a full-screen window are both
+first-class.
+
+Prefer the previous tabbed Mission Control TUI? It stays reachable for
+one release via `--ui classic` (or `FRONTIER_SCOUT_UI=classic`). Run
+`frontier-scout setup` from anywhere to configure your LLM backend or
+schedule recurring scouts.
 
 Every other CLI command (`evaluate`, `trial`, `guard`, `report`,
 `packs`, `deps`, `incident`, `dossier`) still works for scripting and

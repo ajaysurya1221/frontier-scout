@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
 from .mcp_audit import PermissionManifest, classify_mcp_capabilities
+
+if TYPE_CHECKING:
+    from frontier_scout.progress import ProgressReporter
 
 
 class Evaluation(BaseModel):
@@ -30,7 +34,7 @@ def evaluate_url(
     stack: dict | None = None,
     *,
     source_text: str | None = None,
-    reporter: "ProgressReporter | None" = None,
+    reporter: ProgressReporter | None = None,
 ) -> Evaluation:
     """Evaluate a URL with deterministic heuristics.
 
@@ -121,9 +125,15 @@ def _source_trust(url: str) -> str:
 
 
 def _fit(category: str, text: str, stack: dict) -> str:
-    stack_blob = " ".join(str(v).lower() for values in stack.values() for v in (values if isinstance(values, list) else [values]))
+    stack_blob = " ".join(
+        str(v).lower()
+        for values in stack.values()
+        for v in (values if isinstance(values, list) else [values])
+    )
     low = text.lower()
-    if category in {"mcp_server", "skill"} and any(x in stack_blob for x in ("agent", "mcp", "agents.md", "claude", "codex", "cursor")):
+    if category in {"mcp_server", "skill"} and any(
+        x in stack_blob for x in ("agent", "mcp", "agents.md", "claude", "codex", "cursor")
+    ):
         return "high"
     if category == "model_drop" and any(x in stack_blob for x in ("ollama", "vllm", "huggingface")):
         return "high"
@@ -135,7 +145,11 @@ def _fit(category: str, text: str, stack: dict) -> str:
 
 
 def _risk(category: str, source_trust: str, manifest: PermissionManifest) -> str:
-    if "unknown" in manifest.dangerous_flags or "credential" in manifest.dangerous_flags or "shell" in manifest.dangerous_flags:
+    if (
+        "unknown" in manifest.dangerous_flags
+        or "credential" in manifest.dangerous_flags
+        or "shell" in manifest.dangerous_flags
+    ):
         return "high"
     if manifest.dangerous_flags or category in {"mcp_server", "agent_framework", "model_drop"}:
         return "medium"

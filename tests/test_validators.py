@@ -9,14 +9,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
 import pytest
-
 from validators import (  # noqa: E402
-    ALLOWED_DOMAINS,
-    Verdict,
     domain_allowed,
     validate_verdicts,
 )
-
 
 # ── Helper for synthesizing valid verdicts ───────────────────────────────────
 

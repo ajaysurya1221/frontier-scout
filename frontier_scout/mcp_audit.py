@@ -7,7 +7,6 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-
 CapabilityStatus = Literal["likely", "possible", "unlikely", "unknown"]
 Confidence = Literal["high", "medium", "low"]
 
@@ -16,11 +15,27 @@ DANGEROUS_KEYS = {"write", "network", "browser", "shell", "credential", "unknown
 
 _PATTERNS: dict[str, re.Pattern[str]] = {
     "read": re.compile(r"\b(read|list|get|fetch|search|query|inspect|schema|resource)\b", re.I),
-    "write": re.compile(r"\b(write|modify|update|delete|create|insert|patch|commit|push|send)\b", re.I),
+    "write": re.compile(
+        r"\b(writ(e|es|ing|ten)|modif(y|ies|ied|ying)|updat(e|es|ed|ing)|"
+        r"delet(e|es|ed|ing)|creat(e|es|ed|ing)|insert(s|ed|ing)?|"
+        r"patch(es|ed|ing)?|commit(s|ted|ting)?|push(es|ed|ing)?|"
+        r"send(s|ing)?|overwrit(e|es|ing|ten)|remov(e|es|ed|ing))\b",
+        re.I,
+    ),
     "network": re.compile(r"\b(http|https|url|api|webhook|network|request|download|upload|fetch_url)\b", re.I),
     "browser": re.compile(r"\b(browser|playwright|chromium|page|click|navigate|screenshot|dom)\b", re.I),
-    "shell": re.compile(r"\b(shell|command|execute|exec|subprocess|terminal|bash|zsh|powershell)\b", re.I),
-    "credential": re.compile(r"\b(token|secret|credential|api[_ -]?key|oauth|login|auth|password)\b", re.I),
+    "shell": re.compile(
+        r"(?:\b(shell|commands?|execut(e|es|ing|ion)|exec|subprocess|terminal|"
+        r"bash|zsh|powershell|runs?|running|spawn(s|ed|ing)?|"
+        r"invoke|invokes|os\.system)\b|\bsystem\s*\()",
+        re.I,
+    ),
+    "credential": re.compile(
+        r"\b(tokens?|secrets?|credentials?|api[_ -]?keys?|oauth|logins?|"
+        r"authentication|authorization|authenticate|authorize|auth|"
+        r"passwords?)\b",
+        re.I,
+    ),
 }
 
 

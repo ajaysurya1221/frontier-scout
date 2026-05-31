@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import sys
 
 from frontier_scout.doctor import render_json, render_text, run_doctor
 

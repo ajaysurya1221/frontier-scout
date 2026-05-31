@@ -24,7 +24,6 @@ def test_each_settings_panel_has_a_subtitle(tmp_path, monkeypatch):
     async def run() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
         diagnostics = setup_diagnostics(_seed(tmp_path / "repo"), ollama_timeout_s=0.001)
-        from textual.widgets import Static
 
         from frontier_scout.tui.setup_app import SetupApp
 
