@@ -63,6 +63,8 @@ class MissionControlApp(App[int]):
         Binding("right", "scope(1)", "scope", show=False),
         Binding("left", "scope(-1)", "scope", show=False),
         Binding("a", "ask", "ask", show=False),
+        Binding("D", "dossier", "dossier", show=False),
+        Binding("i", "implement", "implement&test", show=False),
     ]
 
     SCOPES = ["all", "ai-devtools", "mcp", "deps"]
@@ -322,6 +324,73 @@ class MissionControlApp(App[int]):
             self._ask_i += 1
             await self._render_pane()
 
+    # ── Guard-railed Scout actions (D = dossier · i = implement & test) ───────
+    async def action_dossier(self) -> None:
+        """Build an adoption dossier for the selected verdict — FREE, read-only.
+
+        No gate: the dossier never spends and never mutates the working tree.
+        It calls ``build_scout_profile`` (~300ms), so it runs on a worker and
+        the result lands in a ResultScreen.
+        """
+        if self.state.tab != "scout" or self.state.current is None:
+            return
+        verdict = self.state.current
+
+        def _run() -> None:
+            try:
+                payload = data.dossier(verdict, self.state.repo)
+                self.post_message(WorkDone("dossier", payload))
+            except Exception as exc:  # noqa: BLE001
+                self.post_message(WorkFailed("dossier", str(exc)))
+
+        self.run_worker(_run, thread=True, exclusive=False, group="dossier")
+
+    async def action_implement(self) -> None:
+        """Implement & test the selected verdict — behind a COST gate.
+
+        Demo mode runs the backend with ``dry_run=True`` (zero spend, no
+        mutation — the synthetic path short-circuits before any provider or
+        file write). Live mode spends only AFTER the explicit gate confirm.
+        """
+        if self.state.tab != "scout" or self.state.current is None:
+            return
+        from frontier_scout.tui3.overlays import ConfirmScreen
+
+        verdict = self.state.current
+        tool = verdict.tool_name
+        demo = self.state.demo
+        if demo:
+            lines = [
+                f"[#a9bccd]Stage a minimal, tested adoption of {tool} in an "
+                "isolated worktree.[/]",
+                "[#24d6a8]Demo mode: dry-run, no API spend.[/]",
+            ]
+        else:
+            lines = [
+                f"[#a9bccd]Stage a minimal, tested adoption of {tool} in an "
+                "isolated worktree.[/]",
+                f"[#e3c26f]This calls {self.state.provider} and may cost "
+                "~$0.30+. Files are written in an isolated worktree and only "
+                "kept if tests pass.[/]",
+            ]
+
+        def _on_confirm() -> None:
+            self._implement_worker(verdict, dry_run=demo)
+
+        self.push_screen(
+            ConfirmScreen(f"Implement & test {tool}", lines, _on_confirm)
+        )
+
+    def _implement_worker(self, verdict: Any, *, dry_run: bool) -> None:
+        def _run() -> None:
+            try:
+                payload = data.implement(verdict, self.state.repo, dry_run=dry_run)
+                self.post_message(WorkDone("implement", payload))
+            except Exception as exc:  # noqa: BLE001
+                self.post_message(WorkFailed("implement", str(exc)))
+
+        self.run_worker(_run, thread=True, exclusive=False, group="implement")
+
     async def action_toggle_unicode(self) -> None:
         self.state = self.state.with_(unicode=not self.state.unicode)
         await self._render()
@@ -354,6 +423,10 @@ class MissionControlApp(App[int]):
             self.call_later(self.action_scout_now)
         elif val == "refresh":
             self.call_later(self.action_refresh)
+        elif val == "dossier":
+            self.call_later(self.action_dossier)
+        elif val == "implement":
+            self.call_later(self.action_implement)
         elif val == "unicode":
             self.call_later(self.action_toggle_unicode)
         elif val == "color":
@@ -444,11 +517,103 @@ class MissionControlApp(App[int]):
             self.state = self.state.with_(settings_cache=message.payload)
             if self.state.tab == "settings":
                 await self._render_pane()
+        elif message.kind == "dossier":
+            from frontier_scout.tui3.overlays import ResultScreen
+
+            title, lines = _dossier_result_lines(message.payload)
+            self.push_screen(ResultScreen(title, lines))
+        elif message.kind == "implement":
+            from frontier_scout.tui3.overlays import ResultScreen
+
+            title, lines = _implement_result_lines(message.payload)
+            self.push_screen(ResultScreen(title, lines))
         self._refresh_chrome()
 
     def on_work_failed(self, message: WorkFailed) -> None:
         self._scanning = False
-        self._set("#mc-compass", f"[#ff6b6b]scan failed: {message.error}[/]")
+        self._set("#mc-compass", f"[#ff6b6b]{message.kind} failed: {message.error}[/]")
+
+
+def _dossier_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
+    """Format a projected dossier dict into ResultScreen title + markup lines."""
+    p = payload or {}
+    tool = p.get("tool_name") or "tool"
+    title = f"Dossier · {tool}"
+    if not p:
+        return title, ["[#ff6b6b]Could not build a dossier for this item.[/]"]
+    lines: list[str] = []
+    verdict = str(p.get("verdict") or "").upper()
+    if verdict:
+        lines.append(f"[#6e8aa1]verdict[/] [#d9f7ff b]{verdict}[/]")
+    lines.append(
+        f"[#6e8aa1]fit[/] {p.get('fit') or '−'}   "
+        f"[#6e8aa1]risk[/] {p.get('risk') or '−'}   "
+        f"[#6e8aa1]source trust[/] {p.get('source_trust') or '−'}"
+    )
+    if p.get("policy"):
+        lines.append(f"[#6e8aa1]policy[/] [#a9bccd]{p['policy']}[/]")
+    if p.get("why"):
+        lines.append("")
+        lines.append(f"[#a9bccd]{p['why']}[/]")
+    if p.get("fit_reasons"):
+        lines.append("")
+        lines.append("[#6e8aa1]why it fits[/]")
+        for r in p["fit_reasons"]:
+            lines.append(f"  [#24d6a8]·[/] [#a9bccd]{r}[/]")
+    if p.get("gaps"):
+        lines.append("")
+        lines.append("[#6e8aa1]unknowns / gaps[/]")
+        for gap in p["gaps"]:
+            lines.append(f"  [#e3c26f]·[/] [#a9bccd]{gap}[/]")
+    if p.get("next_step"):
+        lines.append("")
+        lines.append(f"[#6e8aa1]next safe step[/]  [#a9bccd]{p['next_step']}[/]")
+    if p.get("receipt_path"):
+        lines.append("")
+        lines.append(f"[#6e8aa1]saved[/] [#5cc8ff]{p['receipt_path']}[/]")
+    return title, lines
+
+
+def _implement_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
+    """Format a projected implement dict into ResultScreen title + markup lines."""
+    p = payload or {}
+    status = str(p.get("status") or "error")
+    color = {"passed": "#24d6a8", "dry_run": "#5cc8ff", "prepared": "#5cc8ff",
+             "failed": "#e3c26f", "error": "#ff6b6b"}.get(status, "#a9bccd")
+    title = "Implement & test"
+    lines: list[str] = [f"[#6e8aa1]status[/] [{color} b]{status.upper()}[/]"]
+    if p.get("summary"):
+        lines.append(f"[#a9bccd]{p['summary']}[/]")
+    if p.get("what_you_get"):
+        lines.append("")
+        lines.append(f"[#6e8aa1]what you get[/] [#a9bccd]{p['what_you_get']}[/]")
+    if p.get("error"):
+        lines.append("")
+        lines.append(f"[#ff6b6b]{p['error']}[/]")
+    files = p.get("files") or []
+    if files:
+        lines.append("")
+        lines.append(f"[#6e8aa1]files ({len(files)})[/]")
+        for f in files[:20]:
+            lines.append(f"  [#5cc8ff]{f}[/]")
+    diff = str(p.get("diff") or "")
+    if diff:
+        lines.append("")
+        lines.append("[#6e8aa1]diff[/]")
+        for ln in diff.splitlines()[:60]:
+            lines.append(f"[#6e8aa1]{_escape_markup(ln)}[/]")
+    out = str(p.get("test_output") or "")
+    if out:
+        lines.append("")
+        lines.append("[#6e8aa1]test output[/]")
+        for ln in out.splitlines()[:40]:
+            lines.append(f"[#6e8aa1]{_escape_markup(ln)}[/]")
+    return title, lines
+
+
+def _escape_markup(text: str) -> str:
+    """Neutralise Rich markup brackets so diff/test text renders literally."""
+    return text.replace("[", "\\[")
 
 
 def _vis_len(markup: str) -> int:

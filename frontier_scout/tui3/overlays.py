@@ -8,7 +8,7 @@ land in a later increment.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -23,6 +23,8 @@ KEYS = [
     ("j / k  ↑ ↓", "move selection"),
     ("s", "run scout now"),
     ("g", "guard"),
+    ("D", "dossier"),
+    ("i", "implement & test"),
     ("n", "notifications"),
     ("u", "unicode ↔ ascii"),
     ("c", "color ↔ mono"),
@@ -54,6 +56,11 @@ class _Modal(ModalScreen):
         with VerticalScroll(classes="panel"):
             yield from self.body()
 
+    def _static(self, markup: str) -> Static:
+        """A Static painted for the app's color mode, if the app exposes _paint."""
+        paint = getattr(self.app, "_paint", None)
+        return Static(paint(markup) if callable(paint) else markup)
+
     def action_dismiss(self) -> None:
         self.app.pop_screen()
 
@@ -67,6 +74,76 @@ class HelpScreen(_Modal):
         for term, desc in GLOSSARY:
             yield Static(f"[#d9f7ff]{term}[/]  [#6e8aa1]{desc}[/]")
         yield Static("\n[#6e8aa1]esc to close[/]")
+
+
+class ConfirmScreen(_Modal):
+    """A confirm/cost gate: explain, then require an explicit keypress to act.
+
+    The gate is the spend boundary — ``on_confirm`` is only invoked when the
+    user presses the confirm key. Escape/q cancel without calling it.
+
+    Bindings are collected by Textual at class-definition time, so the confirm
+    key is bound at the class level (``y``, the default). A non-default
+    ``confirm_key`` still works via the ``on_key`` fallback below; the footer
+    always shows the configured key.
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "cancel", show=False),
+        Binding("q", "dismiss", "cancel", show=False),
+        Binding("y", "confirm", "confirm", show=False),
+    ]
+
+    def __init__(
+        self,
+        title: str,
+        lines: list[str],
+        on_confirm: Callable[[], None],
+        *,
+        confirm_key: str = "y",
+        confirm_label: str = "confirm",
+    ) -> None:
+        super().__init__()
+        self._title = title
+        self._lines = lines
+        self._on_confirm = on_confirm
+        self._confirm_key = confirm_key
+        self._confirm_label = confirm_label
+
+    def body(self) -> Iterable[Static]:
+        yield self._static(f"[#24d6a8 b]{self._title}[/]")
+        for line in self._lines:
+            yield self._static(line)
+        yield self._static(
+            f"\n[#24d6a8 b]{self._confirm_key}[/] {self._confirm_label}"
+            f"   [#6e8aa1]esc cancel[/]"
+        )
+
+    def on_key(self, event) -> None:  # noqa: ANN001 — Textual Key event
+        """Honour a non-default confirm key (the class binding covers ``y``)."""
+        if self._confirm_key != "y" and event.key == self._confirm_key:
+            event.stop()
+            self.action_confirm()
+
+    def action_confirm(self) -> None:
+        # Pop first so the gate is gone before the (slow) worker is kicked.
+        self.app.pop_screen()
+        self._on_confirm()
+
+
+class ResultScreen(_Modal):
+    """A scrollable viewer for an action result (dossier / implement)."""
+
+    def __init__(self, title: str, lines: list[str]) -> None:
+        super().__init__()
+        self._title = title
+        self._lines = lines
+
+    def body(self) -> Iterable[Static]:
+        yield self._static(f"[#24d6a8 b]{self._title}[/]")
+        for line in self._lines:
+            yield self._static(line)
+        yield self._static("\n[#6e8aa1]esc to close[/]")
 
 
 class NotificationsScreen(_Modal):
@@ -88,6 +165,7 @@ PALETTE = [
     ("Go to Packs", "tab:packs"), ("Go to Deps", "tab:deps"),
     ("Go to Reports", "tab:reports"), ("Go to Settings", "tab:settings"),
     ("Run scout now", "act:scout"), ("Refresh this tab", "act:refresh"),
+    ("Build dossier", "act:dossier"), ("Implement & test", "act:implement"),
     ("Toggle unicode/ascii", "act:unicode"), ("Toggle color/mono", "act:color"),
     ("Help & glossary", "act:help"), ("Notifications", "act:notifications"),
 ]

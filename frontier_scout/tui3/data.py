@@ -320,6 +320,79 @@ def repo_profile(repo: str) -> dict[str, Any]:
         return {}
 
 
+# ── Guard-railed Scout actions (run on a worker, never on the render path) ───
+def _target_for(v: Verdict) -> str:
+    """The dossier/implement target: prefer the source URL, else the tool name."""
+    return str(_g(v, "source_url", "")) or str(_g(v, "tool_name", "")) or "tool"
+
+
+def dossier(verdict: Verdict, repo: str) -> dict[str, Any]:
+    """Build an adoption dossier (FREE — no spend, no network, no LLM).
+
+    Runs ``dossier.build_dossier`` on the caller's worker thread (it calls
+    ``build_scout_profile`` and is too slow for the render path). Returns a
+    projected, render-ready dict of str/list values. Defensive — never raises;
+    returns ``{}`` on any failure.
+    """
+    try:
+        from frontier_scout.dossier import build_dossier
+
+        target = _target_for(verdict)
+        payload = build_dossier(target, repo=Path(repo)) or {}
+        prof = payload.get("repo_profile") or {}
+        return {
+            "tool_name": str(_g(payload, "tool_name", _g(verdict, "tool_name", ""))),
+            "verdict": str(_g(payload, "verdict", _g(verdict, "verdict", ""))),
+            "fit": str(_g(payload, "fit", _g(verdict, "fit", ""))),
+            "risk": str(_g(payload, "risk", _g(verdict, "risk", ""))),
+            "source_trust": str(_g(payload, "source_trust", "")),
+            "policy": str(_g(payload, "policy_summary", "")),
+            "why": str(_g(payload, "why_trending", "")),
+            "fit_reasons": [str(x) for x in (_g(payload, "fit_reasons", ()) or ())],
+            "gaps": [str(x) for x in (_g(payload, "unknowns", ()) or ())],
+            "alternatives": [str(x) for x in (_g(payload, "alternatives", ()) or ())],
+            "next_step": str(_g(payload, "next_safe_step", "")),
+            "profile_languages": [str(x) for x in (_g(prof, "languages", ()) or ())],
+            "receipt_path": str(_g(payload, "receipt_path", "")),
+        }
+    except Exception:  # noqa: BLE001 — actions must never crash the UI
+        return {}
+
+
+def implement(verdict: Verdict, repo: str, *, dry_run: bool) -> dict[str, Any]:
+    """Implement & test the selected tool in an isolated worktree.
+
+    ``dry_run=True`` is a true no-spend / no-mutation path: the backend returns
+    a synthetic "prepared" result BEFORE creating a provider or writing into the
+    real working tree (the change is staged in an isolated copy and discarded).
+    Runs on the caller's worker thread. Returns a projected dict; defensive —
+    never raises; returns an ``error`` dict on failure.
+    """
+    try:
+        from frontier_scout.implement import run_implement
+
+        result = run_implement(
+            repo=Path(repo),
+            tool_name=str(_g(verdict, "tool_name", "tool")),
+            dry_run=dry_run,
+        )
+        d = result.to_dict() if hasattr(result, "to_dict") else {}
+        return {
+            "status": str(_g(d, "status", _g(result, "status", "error"))),
+            "summary": str(_g(d, "summary", "")),
+            "what_you_get": str(_g(d, "what_you_get", "")),
+            "files": [str(x) for x in (_g(d, "files_changed", ()) or ())],
+            "diff": str(_g(d, "diff", "")),
+            "test_output": str(_g(d, "test_output", "")),
+            "test_command": str(_g(d, "test_command", "")),
+            "cost_usd": float(_g(d, "cost_usd", 0.0) or 0.0),
+            "error": str(_g(d, "error", "")),
+        }
+    except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
+        return {"status": "error", "summary": "", "files": [], "diff": "",
+                "test_output": "", "error": str(exc)}
+
+
 # ── Offline Ask (deterministic; never calls a provider — decision D3) ────────
 def ask_offline(v: Verdict, question: str, repo_name: str) -> str:
     parts = [f"{v.tool_name} is an {v.verdict.upper()} for {repo_name} — fit {v.fit}, risk {v.risk}."]
