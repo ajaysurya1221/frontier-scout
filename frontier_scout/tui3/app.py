@@ -373,9 +373,10 @@ class MissionControlApp(App[int]):
         self._scout_worker(dry_run)
 
     def _scout_worker(self, dry_run: bool) -> None:
-        from textual import work
-
-        @work(thread=True, exclusive=True, group="scout")
+        # NOTE: call run_worker() directly rather than the @work decorator.
+        # @work assumes the wrapped callable is a method (self = args[0]); on a
+        # zero-arg nested function it raises IndexError. run_worker(thread=True)
+        # has the same off-thread semantics without that assumption.
         def _run() -> None:
             reporter = TuiReporter(self, "scout")
             try:
@@ -385,7 +386,7 @@ class MissionControlApp(App[int]):
             except Exception as exc:  # noqa: BLE001
                 self.post_message(WorkFailed("scout", str(exc)))
 
-        _run()
+        self.run_worker(_run, thread=True, exclusive=True, group="scout")
 
     def on_progress(self, message: Progress) -> None:
         self._set("#mc-compass", f"[#24d6a8]scanning…[/] [#6e8aa1]{message.text}[/]")
