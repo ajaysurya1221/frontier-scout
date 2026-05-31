@@ -1,9 +1,9 @@
 """Mission Control (tui3) — modal overlays.
 
 Esc-dismissable modal screens over the dimmed dashboard. This increment ships
-Help (keymap + glossary) and Notifications (real, via the data adapter); the
-command palette, dossier, diff/result and schedule editor land in a later
-increment.
+Help (keymap + glossary), Notifications (real, via the data adapter) and the
+command palette (pure navigation); the dossier, diff/result and schedule editor
+land in a later increment.
 """
 
 from __future__ import annotations
@@ -79,3 +79,39 @@ class NotificationsScreen(_Modal):
             dot = "[#24d6a8]●[/]" if not n["read"] else "[#6e8aa1]○[/]"
             yield Static(f"{dot} [#a9bccd]{n['text']}[/]  [#6e8aa1]{n['repo']} · {n['when']}[/]")
         yield Static("\n[#6e8aa1]esc to close[/]")
+
+
+# label, action-id (matches an app action_* or a tab id)
+PALETTE = [
+    ("Go to Scout", "tab:scout"), ("Go to Schedule", "tab:schedule"),
+    ("Go to Receipts", "tab:receipts"), ("Go to Guard", "tab:guard"),
+    ("Go to Packs", "tab:packs"), ("Go to Deps", "tab:deps"),
+    ("Go to Reports", "tab:reports"), ("Go to Settings", "tab:settings"),
+    ("Run scout now", "act:scout"), ("Refresh this tab", "act:refresh"),
+    ("Toggle unicode/ascii", "act:unicode"), ("Toggle color/mono", "act:color"),
+    ("Help & glossary", "act:help"), ("Notifications", "act:notifications"),
+]
+
+
+class CommandPalette(_Modal):
+    """Fuzzy-free command palette: pick a destination or action by number/enter."""
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "close", show=False),
+        *[Binding(str(d), f"pick({d})", show=False) for d in range(1, 10)],
+    ]
+
+    def body(self) -> Iterable[Static]:
+        yield Static("[#24d6a8 b]COMMAND PALETTE[/]  [#6e8aa1](esc to close)[/]")
+        for i, (label, _aid) in enumerate(PALETTE, start=1):
+            key = f"[#24d6a8 b]{i:>2}[/]" if i < 10 else "[#6e8aa1]  [/]"
+            yield Static(f"{key} [#a9bccd]{label}[/]")
+
+    def action_pick(self, n: int) -> None:
+        if 1 <= n <= len(PALETTE):
+            _label, aid = PALETTE[n - 1]
+            self.app.pop_screen()
+            self.app.run_palette_action(aid)
+
+    def _bindings(self):  # not used directly; see app-level palette dispatch
+        return PALETTE

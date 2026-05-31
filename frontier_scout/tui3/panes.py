@@ -138,19 +138,57 @@ def _settings(app: Any) -> Vertical:
     gl = glyphs(app.state.unicode)
     box = Vertical()
     box.compose_add_child(_head(app, "Settings", "Providers · policy · profile · doctor"))
+
+    # Providers — cheap env/which checks, safe inline.
     box.compose_add_child(_S(app, "\n[#24d6a8 b]Providers[/]"))
     for p in data.providers():
         dot = f"[#24d6a8]{gl['dot']}[/]" if p["present"] else f"[#6e8aa1]{gl['ring']}[/]"
         box.compose_add_child(_S(app, f"{dot} [#d9f7ff]{p['name']}[/]  [#6e8aa1]{p['badge']} · {p['cost']}[/]"))
+
+    cache = app.state.settings_cache
+    if cache is None:
+        box.compose_add_child(_S(
+            app, "\n[#6e8aa1]Press [#24d6a8 b]r[/] to load policy, repo profile, and doctor.[/]"))
+        return box
+
+    # Policy (read-only display; edit via the CLI).
+    pol = cache.get("policy", {})
+    box.compose_add_child(_S(app, "\n[#24d6a8 b]Policy[/]  [#6e8aa1](read-only)[/]"))
+    if pol.get("exists"):
+        strict = "[#24d6a8]on[/]" if pol.get("strict") else "[#6e8aa1]off[/]"
+        box.compose_add_child(_S(
+            app, f"  [#6e8aa1]strict[/] {strict}  [#6e8aa1]max risk[/] [#a9bccd]{pol.get('max_risk','medium')}[/]"))
+        allowed = ", ".join(pol.get("allowed_verdicts", []) or []) or "—"
+        blocked = ", ".join(pol.get("blocked_capabilities", []) or []) or "—"
+        box.compose_add_child(_S(app, f"  [#6e8aa1]allow[/] [#a9bccd]{allowed}[/]"))
+        box.compose_add_child(_S(app, f"  [#6e8aa1]block[/] [#a9bccd]{blocked}[/]"))
+    else:
+        box.compose_add_child(_S(app, "  [#6e8aa1]no policy file — defaults in effect[/]"))
+
+    # Repo profile (read-only).
+    prof = cache.get("profile", {})
+    box.compose_add_child(_S(app, "\n[#24d6a8 b]Repo profile[/]"))
+    for label, key in (("languages", "languages"), ("frameworks", "frameworks"),
+                       ("managers", "managers"), ("agent configs", "agent_configs")):
+        vals = ", ".join(prof.get(key, []) or []) or "—"
+        box.compose_add_child(_S(app, f"  [#6e8aa1]{label}[/] [#a9bccd]{vals}[/]"))
+    risks = prof.get("risk_flags", []) or []
+    if risks:
+        box.compose_add_child(_S(app, f"  [#e3c26f]risk flags[/] [#a9bccd]{', '.join(risks)}[/]"))
+
+    # Doctor.
     box.compose_add_child(_S(app, "\n[#24d6a8 b]Doctor[/]"))
     marks = {
         "ok": f"[#24d6a8]{gl['check']}[/]",
         "warn": f"[#e3c26f]{gl['diamond']}[/]",
         "fail": f"[#ff6b6b]{gl['cross']}[/]",
     }
-    for c in data.doctor():
-        mk = marks.get(c["status"], "·")
-        box.compose_add_child(_S(app, f"{mk} [#a9bccd]{c['name']}[/]  [#6e8aa1]{c['detail']}[/]"))
+    for c in cache.get("doctor", []):
+        mk = marks.get(c.get("status", "ok"), "·")
+        box.compose_add_child(_S(app, f"{mk} [#a9bccd]{c.get('name','')}[/]  [#6e8aa1]{c.get('detail','')}[/]"))
+
+    box.compose_add_child(_S(
+        app, "\n[#6e8aa1]edit policy / rebuild profile / reconfigure: use the CLI (frontier-scout setup).[/]"))
     return box
 
 

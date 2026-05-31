@@ -56,6 +56,7 @@ class MissionControlApp(App[int]):
         Binding("s", "scout_now", "scout", show=False),
         Binding("g", "guard_shortcut", "guard", show=False),
         Binding("r", "refresh", "refresh", show=False),
+        Binding("p", "palette", "palette", show=False),
         *[Binding(str(i + 1), f"goto_{t}", t, show=False) for i, (t, _, _) in enumerate(TABS)],
         Binding("j,down", "move(1)", "down", show=False),
         Binding("k,up", "move(-1)", "up", show=False),
@@ -282,6 +283,8 @@ class MissionControlApp(App[int]):
                 self._refresh_worker("guard")
             elif tab == "deps" and self.state.deps_cache is None:
                 self._refresh_worker("deps")
+            elif tab == "settings" and self.state.settings_cache is None:
+                self._refresh_worker("settings")
             self._refresh_chrome()
 
     async def action_goto_scout(self) -> None: await self._goto("scout")
@@ -338,6 +341,28 @@ class MissionControlApp(App[int]):
 
         self.push_screen(NotificationsScreen())
 
+    def action_palette(self) -> None:
+        from frontier_scout.tui3.overlays import CommandPalette
+
+        self.push_screen(CommandPalette())
+
+    def run_palette_action(self, aid: str) -> None:
+        kind, _, val = aid.partition(":")
+        if kind == "tab":
+            self.call_later(self._goto, val)
+        elif val == "scout":
+            self.call_later(self.action_scout_now)
+        elif val == "refresh":
+            self.call_later(self.action_refresh)
+        elif val == "unicode":
+            self.call_later(self.action_toggle_unicode)
+        elif val == "color":
+            self.call_later(self.action_toggle_color)
+        elif val == "help":
+            self.action_help()
+        elif val == "notifications":
+            self.action_notifications()
+
     async def action_scout_now(self) -> None:
         await self._goto("scout")
         self.run_scout(dry_run=self.state.demo)
@@ -348,7 +373,7 @@ class MissionControlApp(App[int]):
         if tab == "scout":
             self.run_scout(dry_run=self.state.demo)
             return
-        if tab in ("guard", "deps"):
+        if tab in ("guard", "deps", "settings"):
             self._refresh_worker(tab)
 
     def _refresh_worker(self, kind: str) -> None:
@@ -356,8 +381,14 @@ class MissionControlApp(App[int]):
             try:
                 if kind == "guard":
                     payload = data.guard(self.state.repo, strict=False)
-                else:  # deps
+                elif kind == "deps":
                     payload = data.dependencies(self.state.repo)
+                else:  # settings
+                    payload = {
+                        "policy": data.policy(self.state.repo),
+                        "profile": data.repo_profile(self.state.repo),
+                        "doctor": data.doctor(),
+                    }
                 self.post_message(WorkDone(kind, payload))
             except Exception as exc:  # noqa: BLE001
                 self.post_message(WorkFailed(kind, str(exc)))
@@ -408,6 +439,10 @@ class MissionControlApp(App[int]):
         elif message.kind == "deps":
             self.state = self.state.with_(deps_cache=message.payload)
             if self.state.tab == "deps":
+                await self._render_pane()
+        elif message.kind == "settings":
+            self.state = self.state.with_(settings_cache=message.payload)
+            if self.state.tab == "settings":
                 await self._render_pane()
         self._refresh_chrome()
 
