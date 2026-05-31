@@ -123,6 +123,9 @@ class AppState:
     color: bool = True
     demo: bool = False
     unread: int = 0
+    # capability-tab caches (None = not loaded yet; populated by a worker, never on render)
+    guard_cache: dict[str, Any] | None = None
+    deps_cache: tuple[dict[str, Any], ...] | None = None
 
     def with_(self, **kw: Any) -> AppState:
         return replace(self, **kw)

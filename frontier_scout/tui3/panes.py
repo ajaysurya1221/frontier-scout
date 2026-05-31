@@ -71,9 +71,13 @@ def _receipts(app: Any) -> Vertical:
 
 def _guard(app: Any) -> Vertical:
     gl = glyphs(app.state.unicode)
-    gd = data.guard(app.state.repo, strict=False)
+    gd = app.state.guard_cache
     box = Vertical()
     box.compose_add_child(_head(app, "Guard", "Adoption Firewall · deterministic policy"))
+    if gd is None:
+        box.compose_add_child(_S(
+            app, "\n[#6e8aa1]No guard run yet. Press [#24d6a8 b]r[/] to run the adoption firewall.[/]"))
+        return box
     if gd["fail"]:
         mark = f"[#ff6b6b]{gl['cross']} exit 1[/]"
     else:
@@ -99,11 +103,16 @@ def _packs(app: Any) -> Vertical:
 
 
 def _deps(app: Any) -> Vertical:
-    rows = data.dependencies(app.state.repo)
+    rows = app.state.deps_cache
     box = Vertical()
     box.compose_add_child(_head(app, "Dependencies", "Upgrades for packages you import"))
-    if not rows:
-        box.compose_add_child(_S(app, "\n[#6e8aa1]No dependency findings — run a deps scan.[/]"))
+    if rows is None:
+        box.compose_add_child(_S(
+            app, "\n[#6e8aa1]No dependency scan yet. Press [#24d6a8 b]r[/] to scan your manifests.[/]"))
+        return box
+    if rows == ():
+        box.compose_add_child(_S(app, "\n[#6e8aa1]No dependency findings.[/]"))
+        return box
     for d in rows:
         box.compose_add_child(_S(
             app,

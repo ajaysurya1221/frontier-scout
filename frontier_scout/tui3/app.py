@@ -55,6 +55,7 @@ class MissionControlApp(App[int]):
         Binding("c", "toggle_color", "color/mono", show=False),
         Binding("s", "scout_now", "scout", show=False),
         Binding("g", "guard_shortcut", "guard", show=False),
+        Binding("r", "refresh", "refresh", show=False),
         *[Binding(str(i + 1), f"goto_{t}", t, show=False) for i, (t, _, _) in enumerate(TABS)],
         Binding("j,down", "move(1)", "down", show=False),
         Binding("k,up", "move(-1)", "up", show=False),
@@ -277,6 +278,10 @@ class MissionControlApp(App[int]):
             self.state = self.state.with_(tab=tab, sel=0)
             self._refresh_nav()
             await self._render_pane()
+            if tab == "guard" and self.state.guard_cache is None:
+                self._refresh_worker("guard")
+            elif tab == "deps" and self.state.deps_cache is None:
+                self._refresh_worker("deps")
             self._refresh_chrome()
 
     async def action_goto_scout(self) -> None: await self._goto("scout")
@@ -337,6 +342,28 @@ class MissionControlApp(App[int]):
         await self._goto("scout")
         self.run_scout(dry_run=self.state.demo)
 
+    async def action_refresh(self) -> None:
+        """Refresh the active capability tab via a worker (off the render path)."""
+        tab = self.state.tab
+        if tab == "scout":
+            self.run_scout(dry_run=self.state.demo)
+            return
+        if tab in ("guard", "deps"):
+            self._refresh_worker(tab)
+
+    def _refresh_worker(self, kind: str) -> None:
+        def _run() -> None:
+            try:
+                if kind == "guard":
+                    payload = data.guard(self.state.repo, strict=False)
+                else:  # deps
+                    payload = data.dependencies(self.state.repo)
+                self.post_message(WorkDone(kind, payload))
+            except Exception as exc:  # noqa: BLE001
+                self.post_message(WorkFailed(kind, str(exc)))
+
+        self.run_worker(_run, thread=True, exclusive=False, group=f"cap-{kind}")
+
     # ── worker bridge ────────────────────────────────────────────────────────
     def run_scout(self, *, dry_run: bool) -> None:
         if self._scanning:
@@ -372,6 +399,14 @@ class MissionControlApp(App[int]):
                 languages=r["languages"] or self.state.languages, sel=0)
             self._refresh_nav()
             if self.state.tab == "scout":
+                await self._render_pane()
+        elif message.kind == "guard":
+            self.state = self.state.with_(guard_cache=message.payload)
+            if self.state.tab == "guard":
+                await self._render_pane()
+        elif message.kind == "deps":
+            self.state = self.state.with_(deps_cache=message.payload)
+            if self.state.tab == "deps":
                 await self._render_pane()
         self._refresh_chrome()
 
