@@ -463,7 +463,10 @@ def main(argv: list[str] | None = None) -> int:
             if ui_choice == "mission":
                 from .tui3 import run_mission_control
 
-                return run_mission_control(repo=Path("."))
+                # Wrap in the reconfigure loop so the Settings "Reconfigure"
+                # action (Mission Control exits with code 42) relaunches the
+                # setup wizard, mirroring the classic/setup launch sites.
+                return _run_tui_with_reconfigure_loop(run_mission_control, repo=Path("."))
             if ui_choice == "briefing":
                 from .tui2 import run_briefing
 
@@ -575,7 +578,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "open":
         from .tui3 import run_mission_control
 
-        return run_mission_control(repo=Path(args.repo))
+        # Wrap so the Settings "Reconfigure" exit-42 relaunches the wizard.
+        return _run_tui_with_reconfigure_loop(run_mission_control, repo=Path(args.repo))
     if args.command == "cron":
         if args.cron_command == "run":
             from .scheduling import run_due

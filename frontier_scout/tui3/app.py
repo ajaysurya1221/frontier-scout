@@ -65,6 +65,10 @@ class MissionControlApp(App[int]):
         Binding("a", "ask", "ask", show=False),
         Binding("D", "dossier", "dossier", show=False),
         Binding("i", "implement", "implement&test", show=False),
+        Binding("e", "evaluate", "evaluate", show=False),
+        Binding("L", "lab", "lab", show=False),
+        Binding("X", "clear_history", "clear history", show=False),
+        Binding("R", "reconfigure", "reconfigure", show=False),
     ]
 
     SCOPES = ["all", "ai-devtools", "mcp", "deps"]
@@ -391,6 +395,121 @@ class MissionControlApp(App[int]):
 
         self.run_worker(_run, thread=True, exclusive=False, group="implement")
 
+    # ── Guard-railed actions: evaluate / lab (Scout) ──────────────────────────
+    async def action_evaluate(self) -> None:
+        """Full (judged) evaluation of the selected verdict — behind a COST gate.
+
+        ``evaluate_url`` resolves a provider judge and SPENDS real money with no
+        dry-run. The worker is kicked only AFTER the explicit gate confirm.
+        """
+        if self.state.tab != "scout" or self.state.current is None:
+            return
+        verdict = self.state.current
+        if not verdict.source_url:
+            return
+        from frontier_scout.tui3.overlays import ConfirmScreen
+
+        lines = [
+            f"[#e3c26f]Calls {self.state.provider} (judge) — costs money. "
+            "No dry-run.[/]"
+        ]
+
+        def _on_confirm() -> None:
+            self._evaluate_worker(verdict)
+
+        self.push_screen(
+            ConfirmScreen(f"Evaluate {verdict.tool_name}", lines, _on_confirm,
+                          confirm_label="evaluate")
+        )
+
+    def _evaluate_worker(self, verdict: Any) -> None:
+        def _run() -> None:
+            try:
+                payload = data.evaluate(verdict, self.state.repo)
+                self.post_message(WorkDone("evaluate", payload))
+            except Exception as exc:  # noqa: BLE001
+                self.post_message(WorkFailed("evaluate", str(exc)))
+
+        self.run_worker(_run, thread=True, exclusive=False, group="evaluate")
+
+    async def action_lab(self) -> None:
+        """Sandbox trial of the selected verdict's tool — behind a gate.
+
+        Free of API spend, but installs the package from PyPI into a temp
+        sandbox and runs a probe. The worker is kicked only AFTER the confirm.
+        """
+        if self.state.tab != "scout" or self.state.current is None:
+            return
+        verdict = self.state.current
+        from frontier_scout.tui3.overlays import ConfirmScreen
+
+        lines = [
+            f"[#e3c26f]Installs {verdict.tool_name} into a temp sandbox "
+            "(PyPI download) and runs a probe. No API spend.[/]"
+        ]
+
+        def _on_confirm() -> None:
+            self._lab_worker(verdict)
+
+        self.push_screen(
+            ConfirmScreen(f"Lab {verdict.tool_name}", lines, _on_confirm,
+                          confirm_label="lab")
+        )
+
+    def _lab_worker(self, verdict: Any) -> None:
+        def _run() -> None:
+            try:
+                payload = data.lab(verdict, self.state.repo)
+                self.post_message(WorkDone("lab", payload))
+            except Exception as exc:  # noqa: BLE001
+                self.post_message(WorkFailed("lab", str(exc)))
+
+        self.run_worker(_run, thread=True, exclusive=False, group="lab")
+
+    # ── Guard-railed actions: clear history / reconfigure (Settings) ──────────
+    async def action_clear_history(self) -> None:
+        """Permanently delete saved scans for this repo — typed-confirm gate."""
+        if self.state.tab != "settings":
+            return
+        from frontier_scout.tui3.overlays import TypedConfirmScreen
+
+        def _on_confirm() -> None:
+            self._clear_history_worker()
+
+        self.push_screen(
+            TypedConfirmScreen(
+                "Clear scan history",
+                ["[#ff6b6b]Permanently deletes saved scans for this repo.[/]"],
+                token="clear",
+                on_confirm=_on_confirm,
+            )
+        )
+
+    def _clear_history_worker(self) -> None:
+        def _run() -> None:
+            try:
+                deleted = data.clear_history(self.state.repo)
+                self.post_message(WorkDone("clear", deleted))
+            except Exception as exc:  # noqa: BLE001
+                self.post_message(WorkFailed("clear", str(exc)))
+
+        self.run_worker(_run, thread=True, exclusive=False, group="clear")
+
+    async def action_reconfigure(self) -> None:
+        """Relaunch the setup wizard (Mission Control exits with code 42)."""
+        if self.state.tab != "settings":
+            return
+        from frontier_scout.tui3.overlays import ConfirmScreen
+
+        self.push_screen(
+            ConfirmScreen(
+                "Reconfigure",
+                ["Relaunch the setup wizard. Mission Control will exit and reopen."],
+                lambda: self.exit(42),
+                confirm_label="relaunch",
+            )
+        )
+
     async def action_toggle_unicode(self) -> None:
         self.state = self.state.with_(unicode=not self.state.unicode)
         await self._render()
@@ -427,6 +546,14 @@ class MissionControlApp(App[int]):
             self.call_later(self.action_dossier)
         elif val == "implement":
             self.call_later(self.action_implement)
+        elif val == "evaluate":
+            self.call_later(self.action_evaluate)
+        elif val == "lab":
+            self.call_later(self.action_lab)
+        elif val == "clear":
+            self.call_later(self.action_clear_history)
+        elif val == "reconfigure":
+            self.call_later(self.action_reconfigure)
         elif val == "unicode":
             self.call_later(self.action_toggle_unicode)
         elif val == "color":
@@ -527,6 +654,24 @@ class MissionControlApp(App[int]):
 
             title, lines = _implement_result_lines(message.payload)
             self.push_screen(ResultScreen(title, lines))
+        elif message.kind == "evaluate":
+            from frontier_scout.tui3.overlays import ResultScreen
+
+            title, lines = _evaluate_result_lines(message.payload)
+            self.push_screen(ResultScreen(title, lines))
+        elif message.kind == "lab":
+            from frontier_scout.tui3.overlays import ResultScreen
+
+            title, lines = _lab_result_lines(message.payload)
+            self.push_screen(ResultScreen(title, lines))
+        elif message.kind == "clear":
+            from frontier_scout.tui3.overlays import ResultScreen
+
+            n = int(message.payload or 0)
+            self.push_screen(ResultScreen("Clear history", [f"Cleared {n} scan(s)."]))
+            self._refresh_nav()
+            if self.state.tab == "scout":
+                await self._render_pane()
         self._refresh_chrome()
 
     def on_work_failed(self, message: WorkFailed) -> None:
@@ -608,6 +753,59 @@ def _implement_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
         lines.append("[#6e8aa1]test output[/]")
         for ln in out.splitlines()[:40]:
             lines.append(f"[#6e8aa1]{_escape_markup(ln)}[/]")
+    return title, lines
+
+
+def _evaluate_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
+    """Format a projected evaluation dict into ResultScreen title + markup lines."""
+    p = payload or {}
+    tool = p.get("tool_name") or "tool"
+    title = f"Evaluation · {tool}"
+    if not p.get("ok"):
+        err = p.get("error")
+        lines = ["[#ff6b6b]Evaluation failed.[/]"]
+        if err:
+            lines.append(f"[#6e8aa1]{_escape_markup(str(err))}[/]")
+        return title, lines
+    lines: list[str] = [
+        f"[#6e8aa1]fit[/] {p.get('fit') or '−'}   "
+        f"[#6e8aa1]risk[/] {p.get('risk') or '−'}   "
+        f"[#6e8aa1]source trust[/] {p.get('source_trust') or '−'}"
+    ]
+    if p.get("category"):
+        lines.append(f"[#6e8aa1]category[/] [#a9bccd]{p['category']}[/]")
+    if p.get("summary"):
+        lines.append("")
+        lines.append(f"[#a9bccd]{p['summary']}[/]")
+    evidence = p.get("evidence") or []
+    if evidence:
+        lines.append("")
+        lines.append("[#6e8aa1]evidence[/]")
+        for e in evidence[:10]:
+            lines.append(f"  [#24d6a8]·[/] [#a9bccd]{_escape_markup(str(e))}[/]")
+    return title, lines
+
+
+def _lab_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
+    """Format a projected lab/trial dict into ResultScreen title + markup lines."""
+    p = payload or {}
+    tool = p.get("tool_name") or "tool"
+    title = f"Lab · {tool}"
+    if not p.get("ok"):
+        err = p.get("error")
+        lines = ["[#ff6b6b]Trial failed.[/]"]
+        if err:
+            lines.append(f"[#6e8aa1]{_escape_markup(str(err))}[/]")
+        return title, lines
+    status = str(p.get("status") or "")
+    color = {"passed": "#24d6a8", "skipped": "#5cc8ff", "failed": "#e3c26f",
+             "error": "#ff6b6b"}.get(status, "#a9bccd")
+    lines: list[str] = [f"[#6e8aa1]status[/] [{color} b]{status.upper() or '−'}[/]"]
+    if p.get("runtime"):
+        lines.append(f"[#6e8aa1]runtime[/] [#a9bccd]{p['runtime']}[/]")
+    if p.get("detail"):
+        lines.append("")
+        lines.append(f"[#a9bccd]{p['detail']}[/]")
     return title, lines
 
 

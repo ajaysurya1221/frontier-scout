@@ -14,7 +14,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Static
+from textual.widgets import Input, Static
 
 from frontier_scout.tui3 import data
 
@@ -25,6 +25,8 @@ KEYS = [
     ("g", "guard"),
     ("D", "dossier"),
     ("i", "implement & test"),
+    ("e", "evaluate"),
+    ("L", "lab"),
     ("n", "notifications"),
     ("u", "unicode ↔ ascii"),
     ("c", "color ↔ mono"),
@@ -131,6 +133,71 @@ class ConfirmScreen(_Modal):
         self._on_confirm()
 
 
+class TypedConfirmScreen(_Modal):
+    """A destructive gate: the user must type an exact ``token`` to confirm.
+
+    Mirrors ``ConfirmScreen`` but the spend/destructive boundary is the typed
+    token. ``on_confirm`` fires ONLY when the submitted text matches ``token``
+    exactly (after stripping). A mismatch shows an error and clears the input;
+    it never fires the callback. Escape always cancels — even while the Input
+    is focused (the ``on_key`` fallback below guarantees it).
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "cancel", show=False),
+    ]
+
+    def __init__(
+        self,
+        title: str,
+        lines: list[str],
+        *,
+        token: str,
+        on_confirm: Callable[[], None],
+    ) -> None:
+        super().__init__()
+        self._title = title
+        self._lines = lines
+        self._token = token
+        self._on_confirm = on_confirm
+
+    def body(self) -> Iterable[Static]:
+        yield self._static(f"[#24d6a8 b]{self._title}[/]")
+        for line in self._lines:
+            yield self._static(line)
+        yield Input(placeholder=f"type '{self._token}' to confirm", id="typed-confirm-input")
+        yield Static("", id="typed-confirm-error")
+        yield self._static("\n[#6e8aa1]enter confirm · esc cancel[/]")
+
+    def on_mount(self) -> None:
+        # Focus the input so the user can type immediately.
+        try:
+            self.query_one("#typed-confirm-input", Input).focus()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.value.strip() == self._token:
+            cb = self._on_confirm
+            self.app.pop_screen()
+            cb()
+            return
+        # Mismatch: surface an error, clear the field, do NOT fire the callback.
+        try:
+            self.query_one("#typed-confirm-error", Static).update(
+                "[#ff6b6b]does not match — cancelled or retry[/]"
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        event.input.value = ""
+
+    def on_key(self, event) -> None:  # noqa: ANN001 — Textual Key event
+        """Ensure escape cancels even when the Input has focus."""
+        if event.key == "escape":
+            event.stop()
+            self.action_dismiss()
+
+
 class ResultScreen(_Modal):
     """A scrollable viewer for an action result (dossier / implement)."""
 
@@ -166,6 +233,8 @@ PALETTE = [
     ("Go to Reports", "tab:reports"), ("Go to Settings", "tab:settings"),
     ("Run scout now", "act:scout"), ("Refresh this tab", "act:refresh"),
     ("Build dossier", "act:dossier"), ("Implement & test", "act:implement"),
+    ("Evaluate (costs)", "act:evaluate"), ("Lab (sandbox)", "act:lab"),
+    ("Clear history", "act:clear"), ("Reconfigure", "act:reconfigure"),
     ("Toggle unicode/ascii", "act:unicode"), ("Toggle color/mono", "act:color"),
     ("Help & glossary", "act:help"), ("Notifications", "act:notifications"),
 ]

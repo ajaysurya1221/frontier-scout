@@ -405,3 +405,88 @@ def ask_offline(v: Verdict, question: str, repo_name: str) -> str:
         parts.append(f"Next: {v.next_safe_step}")
     parts.append("(offline answer — connect a provider for a live, tailored reply.)")
     return " ".join(p for p in parts if p)
+
+
+# ── Guard-railed actions behind explicit gates (worker-only) ─────────────────
+# These touch the real backends. The UI only calls them from a threaded worker
+# AFTER the user has cleared the relevant gate. Each is defensive (mirrors the
+# ``dossier``/``implement`` try/except style) so a backend hiccup degrades to a
+# render-ready dict rather than crashing the worker.
+def evaluate(verdict: Verdict, repo: str) -> dict[str, Any]:
+    """Run a full (judged) evaluation of a verdict's source URL.
+
+    SPENDS real money (``evaluate_url`` resolves a provider judge). Worker-only,
+    post cost-gate. ``repo`` is accepted for API symmetry; ``evaluate_url`` has
+    no repo parameter, so it is not forwarded. Returns a projection of the
+    resulting ``Evaluation`` to plain str/list values; never raises.
+    """
+    try:
+        from frontier_scout import evaluate as _eval
+
+        v = _eval.evaluate_url(str(_g(verdict, "source_url", "")))
+        fit = str(_g(v, "fit", ""))
+        risk = str(_g(v, "risk", ""))
+        trust = str(_g(v, "source_trust", ""))
+        tool = str(_g(v, "tool_name", _g(verdict, "tool_name", "")))
+        summary = (
+            f"{tool}: fit {fit or '−'}, risk {risk or '−'}, source trust {trust or '−'}."
+        )
+        return {
+            "ok": True,
+            "tool_name": tool,
+            "source_url": str(_g(v, "source_url", _g(verdict, "source_url", ""))),
+            "category": str(_g(v, "category", "")),
+            "fit": fit,
+            "risk": risk,
+            "source_trust": trust,
+            "score": _g(v, "score", None),
+            "summary": summary,
+            "evidence": [str(x) for x in (_g(v, "evidence", ()) or ())],
+        }
+    except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
+        return {"ok": False, "tool_name": str(_g(verdict, "tool_name", "")),
+                "summary": "evaluation failed", "error": str(exc)}
+
+
+def lab(verdict: Verdict, repo: str) -> dict[str, Any]:
+    """Run a sandbox trial of a verdict's tool (PyPI install + probe).
+
+    Free of API spend but downloads + installs the package into a temp sandbox.
+    ``persist`` is NOT a parameter of ``run_trial`` in this build; the trial
+    always writes a receipt. We pass ``dry_run=False`` to actually run the lab.
+    Worker-only, post-gate. Returns a projection of the result dict; never
+    raises.
+    """
+    try:
+        from frontier_scout import trials
+
+        r = trials.run_trial(
+            str(_g(verdict, "tool_name", "tool")),
+            url=str(_g(verdict, "source_url", "")) or None,
+            repo=Path(repo),
+        )
+        d = r if isinstance(r, dict) else {}
+        return {
+            "ok": True,
+            "tool_name": str(_g(verdict, "tool_name", "")),
+            "status": str(_g(d, "status", "")),
+            "runtime": str(_g(d, "runtime", _g(d, "duration_s", ""))),
+            "detail": str(_g(d, "summary", "")),
+            "exit_code": _g(d, "exit_code", None),
+        }
+    except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
+        return {"ok": False, "tool_name": str(_g(verdict, "tool_name", "")),
+                "status": "error", "detail": "trial failed", "error": str(exc)}
+
+
+def clear_history(repo: str) -> int:
+    """Delete persisted scans for ``repo``. DESTRUCTIVE. Returns deleted count.
+
+    Worker-only, post typed-confirm gate. Defensive — returns 0 on failure.
+    """
+    try:
+        from frontier_scout import store
+
+        return int(store.clear_scans_for_repo(repo))
+    except Exception:  # noqa: BLE001 — actions must never crash the UI
+        return 0
