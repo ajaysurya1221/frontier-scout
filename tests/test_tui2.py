@@ -318,10 +318,29 @@ def test_finding_from_verdict_tolerates_missing_keys():
     assert f.top_severity == ""
 
 
-# ── 7. CLI routing: Briefing is the default; classic stays reachable ─────────
+# ── 7. CLI routing: Mission Control is the default; briefing/classic reachable ─
 
 
-def test_cli_routes_to_briefing_by_default(monkeypatch):
+def test_cli_routes_to_mission_by_default(monkeypatch):
+    from frontier_scout import cli
+
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli.sys.stdout, "isatty", lambda: True)
+    called: dict[str, object] = {}
+
+    def fake_run_mission_control(**kwargs):
+        called["mission"] = kwargs
+        return 0
+
+    import frontier_scout.tui3 as tui3
+
+    monkeypatch.setattr(tui3, "run_mission_control", fake_run_mission_control)
+    rc = cli.main([])
+    assert rc == 0
+    assert "mission" in called
+
+
+def test_cli_ui_briefing_routes_to_briefing(monkeypatch):
     from frontier_scout import cli
 
     monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
@@ -335,7 +354,7 @@ def test_cli_routes_to_briefing_by_default(monkeypatch):
     import frontier_scout.tui2 as tui2
 
     monkeypatch.setattr(tui2, "run_briefing", fake_run_briefing)
-    rc = cli.main([])
+    rc = cli.main(["--ui", "briefing"])
     assert rc == 0
     assert "briefing" in called
 

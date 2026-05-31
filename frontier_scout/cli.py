@@ -404,11 +404,12 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(2)
         os.environ["FRONTIER_SCOUT_PROVIDER"] = value
 
-    # ``--ui {briefing,classic}`` selects the terminal UI. v1.5.0 ships the
-    # Briefing as default; ``classic`` reaches the previous Mission Control TUI
-    # for one release. Pulled from argv (any position) like ``--provider``, and
-    # also honoured via the ``FRONTIER_SCOUT_UI`` env var.
-    valid_uis = ("briefing", "classic")
+    # ``--ui {mission,briefing,classic}`` selects the terminal UI. v1.5.0 ships
+    # Mission Control (tui3, dense tabbed dashboard) as default; ``briefing``
+    # reaches the calm Briefing (tui2); ``classic`` the previous setup TUI.
+    # Pulled from argv (any position) like ``--provider``, and also honoured via
+    # the ``FRONTIER_SCOUT_UI`` env var.
+    valid_uis = ("mission", "briefing", "classic")
     ui_value: str | None = None
 
     def _check_ui(value: str | None) -> str:
@@ -443,9 +444,9 @@ def main(argv: list[str] | None = None) -> int:
         cleaned.append(tok)
     raw = cleaned
 
-    ui_choice = (ui_value or os.environ.get("FRONTIER_SCOUT_UI") or "briefing").strip().lower()
+    ui_choice = (ui_value or os.environ.get("FRONTIER_SCOUT_UI") or "mission").strip().lower()
     if ui_choice not in valid_uis:
-        ui_choice = "briefing"
+        ui_choice = "mission"
 
     for alias, subcommand in (("--setup", "setup"), ("--demo", "demo")):
         if alias in raw:
@@ -456,9 +457,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command is None:
         if sys.stdin.isatty() and sys.stdout.isatty():
-            # v1.5.0 default: the Briefing TUI. Calm, wizard-style, one card at
-            # a time. The classic Mission Control TUI is one release away via
-            # ``--ui classic`` / ``FRONTIER_SCOUT_UI=classic``.
+            # v1.5.0 default: Mission Control (tui3), the dense tabbed dashboard.
+            # ``--ui briefing`` → the calm Briefing (tui2); ``--ui classic`` →
+            # the previous setup TUI. Also honoured via FRONTIER_SCOUT_UI.
+            if ui_choice == "mission":
+                from .tui3 import run_mission_control
+
+                return run_mission_control(repo=Path("."))
             if ui_choice == "briefing":
                 from .tui2 import run_briefing
 
@@ -568,9 +573,9 @@ def main(argv: list[str] | None = None) -> int:
             auto_scout=args.auto_scout,
         )
     if args.command == "open":
-        from .tui.runner import run_setup as _run_setup
+        from .tui3 import run_mission_control
 
-        return _run_tui_with_reconfigure_loop(_run_setup, repo=Path(args.repo))
+        return run_mission_control(repo=Path(args.repo))
     if args.command == "cron":
         if args.cron_command == "run":
             from .scheduling import run_due
