@@ -67,6 +67,7 @@ class MissionControlApp(App[int]):
         self.state = AppState()
         self._bp_name = ""
         self._scanning = False
+        self._size_override: tuple[int, int] | None = None
 
     # ── lifecycle ────────────────────────────────────────────────────────────
     def compose(self) -> ComposeResult:
@@ -85,10 +86,17 @@ class MissionControlApp(App[int]):
     # ── responsive core ──────────────────────────────────────────────────────
     @property
     def _term_size(self) -> tuple[int, int]:
+        # Prefer the size carried by the last Resize event: Textual's self.size
+        # can lag one event behind during rapid/live resizes.
+        if self._size_override is not None:
+            return self._size_override
         sz = self.size
         return max(1, sz.width), max(1, sz.height)
 
     async def on_resize(self, event: Any = None) -> None:
+        size = getattr(event, "size", None)
+        if size is not None:
+            self._size_override = (max(1, size.width), max(1, size.height))
         bp = breakpoint_for(*self._term_size)
         if bp.name != self._bp_name:
             await self._render()
