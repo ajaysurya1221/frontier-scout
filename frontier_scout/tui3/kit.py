@@ -9,6 +9,7 @@ modes (color + mono). Both are first-class per the responsive requirement.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 # ── Palette (mirrors the design CSS :root, ADOPT=mint TRIAL=gold ASSESS=blue HOLD=red)
@@ -47,6 +48,55 @@ ASCII = {
 def glyphs(unicode: bool = True) -> dict[str, str]:
     """Return the active glyph map."""
     return UNI if unicode else ASCII
+
+
+_TAG = re.compile(r"\[([^\[\]]*)\]")
+_STYLES = frozenset(
+    {"b", "bold", "i", "italic", "u", "underline", "s", "strike",
+     "strikethrough", "d", "dim", "r", "reverse", "blink"}
+)
+
+
+def mono(markup: str) -> str:
+    """Strip color from Rich console markup, preserving structural styles.
+
+    Colors (``#rrggbb``, named colors, ``on <color>`` backgrounds) are removed;
+    structural styles (bold/dim/reverse/…) are kept so hierarchy survives in a
+    no-color terminal. The result is always BALANCED valid markup — a closing
+    ``[/]`` is emitted only for an opener we kept — so Rich never raises on it.
+    """
+    out: list[str] = []
+    stack: list[bool] = []  # True if the opener at this depth was emitted
+    pos = 0
+    for m in _TAG.finditer(markup):
+        out.append(markup[pos:m.start()])
+        pos = m.end()
+        inner = m.group(1).strip()
+        if inner == "" or inner.startswith("/"):  # a closer
+            if stack and stack.pop():
+                out.append("[/]")
+            continue
+        kept: list[str] = []
+        skip = False
+        for tok in inner.split():
+            if skip:  # token consumed by a preceding "on"
+                skip = False
+                continue
+            if tok == "on":
+                skip = True
+                continue
+            if tok.startswith("#"):
+                continue
+            if tok in _STYLES:
+                kept.append(tok)
+            # bare named colors are dropped
+        if kept:
+            out.append(f"[{' '.join(kept)}]")
+            stack.append(True)
+        else:
+            stack.append(False)
+    out.append(markup[pos:])
+    return "".join(out)
 
 
 # ── Verdict metadata ─────────────────────────────────────────────────────────
