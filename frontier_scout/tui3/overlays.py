@@ -2,8 +2,9 @@
 
 Esc-dismissable modal screens over the dimmed dashboard. This increment ships
 Help (keymap + glossary), Notifications (real, via the data adapter), the
-command palette (pure navigation), the confirm/typed gates, the result viewer
-and the schedule create/edit form (``ScheduleEditorScreen``).
+search-first command palette (fuzzy filter → every command reachable), the
+confirm/typed gates, the result viewer and the schedule create/edit form
+(``ScheduleEditorScreen``).
 """
 
 from __future__ import annotations
@@ -424,40 +425,163 @@ class NotificationsScreen(_Modal):
             pass
 
 
-# label, action-id (matches an app action_* or a tab id)
-PALETTE = [
-    ("Go to Scout", "tab:scout"), ("Go to Schedule", "tab:schedule"),
-    ("Go to Receipts", "tab:receipts"), ("Go to Guard", "tab:guard"),
-    ("Go to Packs", "tab:packs"), ("Go to Deps", "tab:deps"),
-    ("Go to Reports", "tab:reports"), ("Go to Settings", "tab:settings"),
-    ("Run scout now", "act:scout"), ("Refresh this tab", "act:refresh"),
-    ("Build dossier", "act:dossier"), ("Implement & test", "act:implement"),
-    ("Evaluate (costs)", "act:evaluate"), ("Lab (sandbox)", "act:lab"),
-    ("Clear history", "act:clear"), ("Reconfigure", "act:reconfigure"),
-    ("Toggle unicode/ascii", "act:unicode"), ("Toggle color/mono", "act:color"),
-    ("Help & glossary", "act:help"), ("Notifications", "act:notifications"),
+# (group, label, action-id, key) — the full operable command set.
+# ``aid`` matches an app action via ``run_palette_action``; ``key`` is the
+# top-level keyboard shortcut shown as a hint (informational only here — the
+# palette dispatches by selection, not by these keys).
+COMMANDS = [
+    ("go", "Scout", "tab:scout", "1"),
+    ("go", "Schedule", "tab:schedule", "2"),
+    ("go", "Receipts", "tab:receipts", "3"),
+    ("go", "Guard", "tab:guard", "4"),
+    ("go", "Packs", "tab:packs", "5"),
+    ("go", "Deps", "tab:deps", "6"),
+    ("go", "Reports", "tab:reports", "7"),
+    ("go", "Settings", "tab:settings", "8"),
+    ("scan", "Run scout now", "act:scout", "s"),
+    ("scan", "Refresh this tab", "act:refresh", "r"),
+    ("report", "Render report", "report:render", ""),
+    ("report", "Open report in browser", "report:open", ""),
+    ("packs", "Refresh packs (offline)", "packs:refresh", ""),
+    ("schedule", "New schedule", "schedule:new", ""),
+    ("tool", "Build dossier", "act:dossier", "D"),
+    ("tool", "Implement & test", "act:implement", "i"),
+    ("tool", "Evaluate", "act:evaluate", "e"),
+    ("tool", "Lab (sandbox)", "act:lab", "L"),
+    ("view", "Help & glossary", "act:help", "?"),
+    ("view", "Notifications", "act:notifications", "n"),
+    ("mode", "Unicode / ASCII", "act:unicode", "u"),
+    ("mode", "Color / mono", "act:color", "c"),
+    ("danger", "Clear history", "act:clear", "X"),
+    ("danger", "Reconfigure", "act:reconfigure", "R"),
 ]
+
+# Fixed width for the group column so labels line up (longest group is "schedule").
+_GROUP_W = max(len(group) for group, *_ in COMMANDS)
 
 
 class CommandPalette(_Modal):
-    """Fuzzy-free command palette: pick a destination or action by number/enter."""
+    """Search-first command palette: filter by typing, ↑/↓ to move, ⏎ to run.
+
+    The results are rendered into ONE id-tagged Static (``#cp-results``) and
+    repainted via ``.update(...)`` on every keystroke / selection move — never
+    by removing + remounting child rows (Textual's ``remove_children`` is
+    deferred and would race re-mounted ids, raising DuplicateIds). The only
+    other interactive child is the search ``Input`` (``#cp-q``).
+
+    ↑/↓ are handled in ``on_key`` (NOT via a Binding — bindings don't fire while
+    the Input is focused). Enter runs the selected command via
+    ``on_input_submitted``. Escape cancels (inherited ``_Modal`` behaviour, with
+    an ``on_key`` fallback so it works even with the Input focused). Every path
+    is no-op-safe: an empty filter or out-of-range index never raises.
+    """
 
     BINDINGS = [
         Binding("escape", "dismiss", "close", show=False),
-        *[Binding(str(d), f"pick({d})", show=False) for d in range(1, 10)],
     ]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._q = ""
+        self._i = 0
 
     def body(self) -> Iterable[Static]:
         yield Static("[#24d6a8 b]COMMAND PALETTE[/]  [#6e8aa1](esc to close)[/]")
-        for i, (label, _aid) in enumerate(PALETTE, start=1):
-            key = f"[#24d6a8 b]{i:>2}[/]" if i < 10 else "[#6e8aa1]  [/]"
-            yield Static(f"{key} [#a9bccd]{label}[/]")
+        yield Input(placeholder="search commands & capabilities…", id="cp-q")
+        yield Static("", id="cp-results")
+        yield self._static("\n[#6e8aa1]↑↓ ⏎ esc[/]")
 
-    def action_pick(self, n: int) -> None:
-        if 1 <= n <= len(PALETTE):
-            _label, aid = PALETTE[n - 1]
-            self.app.pop_screen()
-            self.app.run_palette_action(aid)
+    def on_mount(self) -> None:
+        # Focus the Input so the user can type immediately (mirrors
+        # TypedConfirmScreen.on_mount), then render the full list.
+        try:
+            self.query_one("#cp-q", Input).focus()
+        except Exception:  # noqa: BLE001
+            pass
+        self._render_results()
 
-    def _bindings(self):  # not used directly; see app-level palette dispatch
-        return PALETTE
+    def _matches(self) -> list[tuple[str, str, str, str]]:
+        """COMMANDS whose ``label + " " + group`` contains the query (case-insensitive)."""
+        q = self._q.strip().lower()
+        if not q:
+            return list(COMMANDS)
+        return [c for c in COMMANDS if q in f"{c[1]} {c[0]}".lower()]
+
+    def _render_results(self) -> None:
+        """Repaint the single results Static for the current filter + selection.
+
+        Never raises: clamps the selection into range, tolerates an empty match
+        set, and swallows any failure to find the Static (it may not be mounted
+        yet). This is the DuplicateIds-safe in-place update.
+        """
+        matches = self._matches()
+        # Clamp selection defensively (0 when empty).
+        if matches:
+            self._i = max(0, min(self._i, len(matches) - 1))
+        else:
+            self._i = 0
+        if not matches:
+            markup = "[dim]no match[/]"
+        else:
+            lines = []
+            for idx, (group, label, _aid, key) in enumerate(matches):
+                grp = f"[#6e8aa1]{group:<{_GROUP_W}}[/]"
+                key_col = f"  [#6e8aa1]{key}[/]" if key else ""
+                if idx == self._i:
+                    lines.append(
+                        f"[#24d6a8 b]▸[/] {grp}  [#d9f7ff]{label}[/]{key_col}"
+                    )
+                else:
+                    lines.append(f"  {grp}  [#a9bccd]{label}[/]{key_col}")
+            markup = "\n".join(lines)
+        try:
+            self.query_one("#cp-results", Static).update(self._paint(markup))
+        except Exception:  # noqa: BLE001 — Static may not be mounted yet
+            pass
+
+    def _paint(self, markup: str) -> str:
+        """Paint markup for the app's color mode (mono strips color)."""
+        paint = getattr(self.app, "_paint", None)
+        return paint(markup) if callable(paint) else markup
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        # New filter — reset the selection to the top and repaint.
+        self._q = event.value
+        self._i = 0
+        self._render_results()
+
+    def on_key(self, event) -> None:  # noqa: ANN001 — Textual Key event
+        """Move the selection on ↑/↓ while the Input holds focus.
+
+        Bindings don't fire while an Input is focused, so we move the index here
+        and repaint the single results Static. Other keys (including printable
+        characters and escape) fall through to the Input / inherited bindings.
+        """
+        if event.key == "down":
+            event.stop()
+            n = len(self._matches())
+            if n:
+                self._i = min(n - 1, self._i + 1)
+            else:
+                self._i = 0
+            self._render_results()
+        elif event.key == "up":
+            event.stop()
+            n = len(self._matches())
+            if n:
+                self._i = max(0, self._i - 1)
+            else:
+                self._i = 0
+            self._render_results()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        # Enter runs the selected command — but only if there IS one. With no
+        # match we ignore the Enter (and stay open), never raising.
+        matches = self._matches()
+        if not matches:
+            return
+        idx = max(0, min(self._i, len(matches) - 1))
+        aid = matches[idx][2]
+        # Dismiss FIRST, then dispatch (mirrors the other modals' order).
+        self.dismiss()
+        self.app.run_palette_action(aid)

@@ -924,6 +924,20 @@ class MissionControlApp(App[int]):
         kind, _, val = aid.partition(":")
         if kind == "tab":
             self.call_later(self._goto, val)
+        # ── capability commands: go to the owning tab, THEN run the action ────
+        # Each chains _goto (async) before reusing the existing method, so the
+        # right tab is showing when the result lands. All reuse existing logic
+        # and are safe if state is incomplete (the workers/actions self-guard).
+        elif aid == "report:render":
+            self.call_later(self._goto_then, "reports", self._report_worker)
+        elif aid == "report:open":
+            self.call_later(self._goto_then_async, "reports", self.action_open_target)
+        elif aid == "packs:refresh":
+            self.call_later(
+                self._goto_then, "packs", lambda: self._packs_refresh_worker(discover=False)
+            )
+        elif aid == "schedule:new":
+            self.call_later(self._goto_then_async, "schedule", self.action_new_schedule)
         elif val == "scout":
             self.call_later(self.action_scout_now)
         elif val == "refresh":
@@ -948,6 +962,22 @@ class MissionControlApp(App[int]):
             self.action_help()
         elif val == "notifications":
             self.action_notifications()
+
+    async def _goto_then(self, tab: str, fn) -> None:
+        """Switch to ``tab`` (async) then run a SYNC callable. Never raises."""
+        await self._goto(tab)
+        try:
+            fn()
+        except Exception:  # noqa: BLE001 — reused methods already self-guard
+            pass
+
+    async def _goto_then_async(self, tab: str, coro_fn) -> None:
+        """Switch to ``tab`` (async) then await an ASYNC callable. Never raises."""
+        await self._goto(tab)
+        try:
+            await coro_fn()
+        except Exception:  # noqa: BLE001 — reused methods already self-guard
+            pass
 
     async def action_scout_now(self) -> None:
         await self._goto("scout")
