@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "frontier-scout"
-version = "1.5.1"
+version = "1.5.2"
 description = "A local AI adoption radar for tools, MCP servers, agent frameworks, and model drops."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -66,6 +66,12 @@ frontier-scout = "frontier_scout.cli:main"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["frontier_scout*", "scripts*", "outputs*"]
+
+[tool.setuptools.package-data]
+# Bundle non-.py package data (Textual stylesheets) into the wheel and sdist.
+# Without this, setuptools ships only .py files and the TUI crashes on launch
+# with `StylesheetError: unable to read CSS file '.../theme.tcss'`.
+"*" = ["*.tcss"]
 
 [tool.ruff]
 line-length = 120
