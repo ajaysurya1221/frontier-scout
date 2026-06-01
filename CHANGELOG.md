@@ -4,6 +4,21 @@
 
 - No unreleased changes yet.
 
+## 1.5.1 - 2026-06-01
+
+### Redesigned README + release-pipeline hardening
+
+- **New README** — a dark "AI Adoption Radar" hero (animated
+  `docs/assets/frontier-scout-radar.svg`, degrading to a clean static frame)
+  over a scannable **Watch → Match → Decide** body, a concrete verdict card,
+  and three-promises / safety tables. All GitHub-sanitizer-safe Markdown, with
+  every claim re-verified against the code (Scout-row keystrokes, discovery
+  sources, demo outputs).
+- **Dependencies** — widened `croniter` to `>=2.0,<7`.
+- **Release workflow** — the GitHub Release is built as a draft with assets
+  then published (safe under immutable releases); a `v*` tag triggers the
+  gated PyPI publish; the publish step is idempotent (`skip-existing`).
+
 ## 1.5.0 - 2026-06-01
 
 ### Mission Control — a dense, fully-operable TUI (new default)
