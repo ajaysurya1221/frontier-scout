@@ -258,6 +258,48 @@ def packs(languages: tuple[str, ...] = ()) -> list[dict[str, Any]]:
         return []
 
 
+def packs_refresh(*, discover: bool = False) -> dict[str, Any]:
+    """Refresh pack candidates — mirrors ``cli.py``'s ``packs refresh`` handler.
+
+    ``discover=False`` is FREE + LOCAL + GUARANTEED OFFLINE: it only materialises
+    seed candidates and writes them to the store. ``discover=True`` may HTTP GET
+    the MCP registry (network) but spends NO money and runs NO LLM — the only
+    network gate is ``candidate_rows_for_pack(..., discover=True)`` reaching out
+    when a pack carries ``discovery.mcp_registry_url``.
+
+    Ensures the built-in packs exist (so ``list_packs`` isn't empty on first
+    run), then for each pack builds a ``ScoutPack`` model and saves every
+    candidate row. Per-pack failures are caught and skipped (the refresh as a
+    whole keeps going). Returns a render-ready summary; on a top-level failure
+    returns ``{"ok": False, "reason": str(exc)}``. Defensive — never raises.
+    """
+    try:
+        from frontier_scout import packs as packs_mod
+        from frontier_scout import store
+        from frontier_scout.packs import ScoutPack
+
+        store.save_builtin_packs_if_empty()
+        per_pack: list[dict[str, Any]] = []
+        total = 0
+        for pack in store.list_packs() or []:
+            try:
+                pack_model = ScoutPack(**(pack.get("definition") or {}))
+                count = 0
+                for candidate in packs_mod.candidate_rows_for_pack(
+                    pack_model, discover=discover
+                ):
+                    store.save_pack_candidate(candidate)
+                    count += 1
+                name = str(_g(pack, "display_name", _g(pack, "slug", "pack")))
+                per_pack.append({"name": name, "count": count})
+                total += count
+            except Exception:  # noqa: BLE001 — one bad pack must not abort the rest
+                continue
+        return {"ok": True, "discover": discover, "total": total, "packs": per_pack}
+    except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
+        return {"ok": False, "reason": str(exc)}
+
+
 # ── Dependencies ─────────────────────────────────────────────────────────────
 def dependencies(repo: str) -> list[dict[str, Any]]:
     try:

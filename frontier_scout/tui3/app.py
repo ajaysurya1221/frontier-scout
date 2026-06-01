@@ -71,6 +71,7 @@ class MissionControlApp(App[int]):
         Binding("R", "reconfigure", "reconfigure", show=False),
         Binding("enter", "primary", "primary", show=False),
         Binding("o", "open_target", "open", show=False),
+        Binding("d", "discover", "discover", show=False),
     ]
 
     SCOPES = ["all", "ai-devtools", "mcp", "deps"]
@@ -235,6 +236,9 @@ class MissionControlApp(App[int]):
         # o open). Skipped at micro width, where the compass already drops hints.
         if self.state.tab == "reports" and bp != "micro":
             hints = [(g["enter"], "render"), ("o", "open"), *hints]
+        # Packs: ⏎ refresh (offline) · d discover (network gate).
+        elif self.state.tab == "packs" and bp != "micro":
+            hints = [(g["enter"], "refresh"), ("d", "discover"), *hints]
         parts = " ".join(f"[#24d6a8 b]{k}[/][#6e8aa1] {label}[/]" for k, label in hints)
         if self._scanning:
             tail = "[#24d6a8]scanning…[/]"
@@ -347,14 +351,18 @@ class MissionControlApp(App[int]):
     async def action_primary(self) -> None:
         """The per-tab primary action (⏎). Dispatch by the active tab.
 
-        Increment 1 wires only the Reports tab (render the latest stored scan,
-        FREE). Every other tab is an explicit no-op for now — later increments
-        add schedule/packs branches here. Always no-op-safe: never raises when
-        there is no repo / no current verdict / nothing to render.
+        Reports → render the latest stored scan (FREE). Packs → refresh pack
+        candidates from their seed definitions (FREE + LOCAL + offline — a safe
+        local write, no gate; the network ``discover`` path is on ``d`` instead).
+        Every other tab is an explicit no-op. Always no-op-safe: never raises
+        when there is no repo / no current verdict / nothing to render.
         """
         tab = self.state.tab
         if tab == "reports":
             self._report_worker()
+        elif tab == "packs":
+            # Offline refresh: seed candidates only, guaranteed no network.
+            self._packs_refresh_worker(discover=False)
         # Other tabs: intentional no-op (future increments extend this).
 
     async def action_open_target(self) -> None:
@@ -396,6 +404,51 @@ class MissionControlApp(App[int]):
                 self.post_message(WorkFailed("report", str(exc)))
 
         self.run_worker(_run, thread=True, exclusive=False, group="report")
+
+    # ── Packs: refresh (⏎, FREE/offline) · discover (d, network gate) ─────────
+    async def action_discover(self) -> None:
+        """The per-tab "discover" action (d). Packs → network refresh behind a gate.
+
+        Refreshing candidates over the MCP registry is a network call (no API
+        spend, no LLM — just an HTTP GET), so it is gated behind an explicit
+        confirm: nothing reaches the network until the user clears it. All other
+        tabs are a no-op. Never raises.
+        """
+        if self.state.tab != "packs":
+            return
+        from frontier_scout.tui3.overlays import ConfirmScreen
+
+        def _on_confirm() -> None:
+            self._packs_refresh_worker(discover=True)
+
+        self.push_screen(
+            ConfirmScreen(
+                "Discover packs (network)",
+                [
+                    "[#e3c26f]Fetches candidates from the MCP registry over the "
+                    "network.[/]",
+                    "[#6e8aa1]No API spend, no LLM — just an HTTP GET.[/]",
+                ],
+                _on_confirm,
+                confirm_label="discover",
+            )
+        )
+
+    def _packs_refresh_worker(self, *, discover: bool) -> None:
+        """Refresh pack candidates on a worker thread (mirrors ``_report_worker``).
+
+        ``discover=False`` is the offline seed refresh (no network); ``discover=
+        True`` is only ever reached AFTER the discover gate's confirm. FREE — no
+        API spend, no LLM either way.
+        """
+        def _run() -> None:
+            try:
+                payload = data.packs_refresh(discover=discover)
+                self.post_message(WorkDone("packs_refresh", payload))
+            except Exception as exc:  # noqa: BLE001
+                self.post_message(WorkFailed("packs_refresh", str(exc)))
+
+        self.run_worker(_run, thread=True, exclusive=False, group="packs-refresh")
 
     # ── Guard-railed Scout actions (D = dossier · i = implement & test) ───────
     async def action_dossier(self) -> None:
@@ -748,6 +801,20 @@ class MissionControlApp(App[int]):
             else:
                 reason = str(p.get("reason") or "Could not render the report.")
                 self.push_screen(ResultScreen("Report", [f"[#ff6b6b]{reason}[/]"]))
+        elif message.kind == "packs_refresh":
+            from frontier_scout.tui3.overlays import ResultScreen
+
+            p = message.payload or {}
+            if p.get("ok"):
+                title, lines = _packs_refresh_result_lines(p)
+                self.push_screen(ResultScreen(title, lines))
+                # The packs pane is rebuilt from the store on every render, so a
+                # re-render surfaces the freshly written candidates.
+                if self.state.tab == "packs":
+                    await self._render_pane()
+            else:
+                reason = str(p.get("reason") or "Could not refresh packs.")
+                self.push_screen(ResultScreen("Packs", [f"[#ff6b6b]{reason}[/]"]))
         elif message.kind == "clear":
             from frontier_scout.tui3.overlays import ResultScreen
 
@@ -909,6 +976,37 @@ def _report_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
             lines.append(f"  [#a9bccd]{_escape_markup(str(fn))}[/]")
     lines.append("")
     lines.append("[#24d6a8]Press o to open the report in your browser.[/]")
+    return title, lines
+
+
+def _packs_refresh_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
+    """Format a packs-refresh dict into ResultScreen title + markup lines."""
+    p = payload or {}
+    discover = bool(p.get("discover"))
+    title = "Packs refreshed" + (" · discover" if discover else "")
+    total = int(p.get("total") or 0)
+    rows = p.get("packs") or []
+    lines: list[str] = [
+        f"[#6e8aa1]candidates written[/] [#d9f7ff b]{total}[/] "
+        f"[#6e8aa1]across {len(rows)} pack(s)[/]"
+    ]
+    if rows:
+        lines.append("")
+        for r in rows[:20]:
+            name = _escape_markup(str((r or {}).get("name") or "pack"))
+            count = int((r or {}).get("count") or 0)
+            lines.append(f"  [#a9bccd]{name}[/] [#6e8aa1]·[/] [#7aa6ff]{count}[/]")
+    lines.append("")
+    if discover:
+        lines.append(
+            "[#6e8aa1]Fetched over the network from the MCP registry — "
+            "no API spend, no LLM.[/]"
+        )
+    else:
+        lines.append(
+            "[#24d6a8]Offline refresh — seed candidates only, no network. "
+            "Press d to discover over the network.[/]"
+        )
     return title, lines
 
 
