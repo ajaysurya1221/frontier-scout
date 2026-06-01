@@ -254,6 +254,12 @@ class MissionControlApp(App[int]):
             if bp != "narrow":
                 sched_hints += [("N", "new"), ("E", "edit")]
             hints = [*sched_hints, *hints]
+        # Deps/Guard: surface the r-scan affordance in the compass so the "Press
+        # r" empty-state has a live keymap echo (prototype fs2-app.jsx:147-148).
+        elif self.state.tab == "deps" and bp != "micro":
+            hints = [("r", "scan"), *hints]
+        elif self.state.tab == "guard" and bp != "micro":
+            hints = [("r", "re-run"), *hints]
         parts = " ".join(f"[#24d6a8 b]{k}[/][#6e8aa1] {label}[/]" for k, label in hints)
         if self._scanning:
             tail = "[#24d6a8]scanning…[/]"
