@@ -22,7 +22,7 @@ def _tool_verdict(**over):
         unknowns=["legacy unknown text"],
         permission_manifest={"capabilities": {
             "filesystem": "likely", "network": "possible",
-            "shell": "likely", "secrets": "unlikely"}},
+            "shell": "likely", "secrets": "unlikely"}},  # pragma: allowlist secret
     )
     base.update(over)
     return Verdict.from_payload(base)
@@ -32,7 +32,7 @@ def test_verdict_projects_capabilities_from_manifest():
     v = _tool_verdict()
     assert dict(v.capabilities) == {
         "filesystem": "likely", "network": "possible",
-        "shell": "likely", "secrets": "unlikely",
+        "shell": "likely", "secrets": "unlikely",  # pragma: allowlist secret
     }
 
 
