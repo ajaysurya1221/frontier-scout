@@ -984,6 +984,10 @@ class MissionControlApp(App[int]):
         )
         self._refresh_nav()
         self.call_later(self._render)
+        # Clear any in-flight scout guard so the new repo's scout always starts;
+        # the exclusive "scout" group cancels the prior worker, and stale results
+        # are dropped by the repo tag in on_work_done.
+        self._scanning = False
         self.run_scout(dry_run=self.state.demo)
         try:
             self.notify(f"pointed at {self.state.repo_name} · re-scouting")
@@ -1096,12 +1100,16 @@ class MissionControlApp(App[int]):
         # @work assumes the wrapped callable is a method (self = args[0]); on a
         # zero-arg nested function it raises IndexError. run_worker(thread=True)
         # has the same off-thread semantics without that assumption.
+        repo = self.state.repo
+        scope = self.state.scope
+
         def _run() -> None:
             reporter = TuiReporter(self, "scout")
             try:
-                result = data.run_scan(
-                    self.state.repo, dry_run=dry_run, scope=self.state.scope, reporter=reporter)
-                self.post_message(WorkDone("scout", result))
+                result = data.run_scan(repo, dry_run=dry_run, scope=scope, reporter=reporter)
+                # Tag with the repo we scanned so a result that lands after a
+                # repo switch can be detected as stale and dropped.
+                self.post_message(WorkDone("scout", {**result, "repo": repo}))
             except Exception as exc:  # noqa: BLE001
                 self.post_message(WorkFailed("scout", str(exc)))
 
@@ -1114,6 +1122,11 @@ class MissionControlApp(App[int]):
         self._scanning = False
         if message.kind == "scout":
             r = message.payload
+            # Drop a stale result from a previous repo (a switch raced an
+            # in-flight scout) — never overwrite the new repo's state.
+            if r.get("repo") and r["repo"] != self.state.repo:
+                self._refresh_chrome()
+                return
             self.state = self.state.with_(
                 verdicts=r["verdicts"], funnel=r["funnel"],
                 languages=r["languages"] or self.state.languages, sel=0)

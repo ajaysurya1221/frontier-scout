@@ -17,7 +17,7 @@ def test_list_repos_includes_current():
     repos = data.list_repos(".")
     assert isinstance(repos, list) and len(repos) >= 1, "must return at least the current repo"
     paths = [r["path"] for r in repos]
-    assert os.path.abspath(".") in paths
+    assert os.path.realpath(".") in paths  # canonical (symlink-safe), matches list_repos
     for r in repos:
         assert "name" in r and "path" in r
 
@@ -47,6 +47,25 @@ def test_switcher_enter_calls_switch_repo():
             await pilot.press("enter")
             await pilot.pause()
             assert calls, "pressing enter in the switcher did not call switch_repo"
+
+    _run(go())
+
+
+def test_stale_scout_result_ignored_after_switch():
+    """A scout result tagged with a different repo (an in-flight scout that
+    finished after a repo switch) must not overwrite the current repo's state."""
+    from frontier_scout.tui3.messages import WorkDone
+    from frontier_scout.tui3.state import Funnel
+
+    async def go():
+        app = MissionControlApp(demo=True)
+        async with app.run_test(size=(160, 50)) as pilot:
+            await pilot.pause()
+            before = app.state.verdicts
+            app.post_message(WorkDone("scout", {
+                "repo": "/some/other/repo", "verdicts": (), "funnel": Funnel(), "languages": ()}))
+            await pilot.pause()
+            assert app.state.verdicts == before, "stale scout result overwrote current state"
 
     _run(go())
 

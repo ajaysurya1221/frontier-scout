@@ -84,7 +84,7 @@ class Verdict:
         caps = manifest.get("capabilities") if isinstance(manifest, dict) else None
         capabilities = (
             tuple((str(k), str(v)) for k, v in caps.items())
-            if isinstance(caps, dict) else ()
+            if isinstance(caps, dict) and kind != "dep" else ()
         )
         return cls(
             tool_name=str(d.get("tool_name", "—")),

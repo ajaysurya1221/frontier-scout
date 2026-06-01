@@ -92,5 +92,6 @@ def test_detail_no_permission_map_for_dep():
             await pilot.pause()
             txt = _pane_text(app)
             assert "Permission map" not in txt, "deps must not render a permission map"
+            assert "dossier" in txt and "open" in txt, "deps must keep the Dossier/Open actions"
 
     _run(go())

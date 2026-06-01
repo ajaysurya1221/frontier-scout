@@ -123,7 +123,7 @@ def list_repos(current: str | None = None) -> list[dict[str, Any]]:
         if not raw:
             return
         try:
-            p = str(Path(str(raw)).resolve())
+            p = str(Path(str(raw)).expanduser().resolve())
         except Exception:  # noqa: BLE001
             p = str(raw)
         seen.setdefault(p, {"name": _repo_name(p), "path": p})

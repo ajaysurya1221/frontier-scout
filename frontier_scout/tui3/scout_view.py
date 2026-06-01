@@ -233,21 +233,23 @@ def _detail(app: Any, gl: dict[str, str], *, side: bool) -> Vertical:
         box.compose_add_child(_S(app, f"\n[#24d6a8 b]Next safe step[/]\n  [#d9f7ff]{v.next_safe_step}[/]"))
 
     # Action bar — clickable, routing to the same gated actions as the keys (§5).
-    # Tools only: lab/evaluate/implement don't apply to dependency upgrades.
+    # Dossier + Open apply to every verdict (incl. deps); lab/evaluate/implement
+    # are tool-only. Don't gate the whole bar on kind — that would drop dep
+    # mouse parity for Dossier/Open.
+    specs = [("D", "dossier", "action_dossier"), ("o", "open", "action_open_target")]
     if v.kind != "dep":
-        actions = Horizontal(classes="scout-actions")
-        for key, label, act in (
+        specs = [
             ("L", "lab", "action_lab"),
             ("e", "evaluate", "action_evaluate"),
             ("i", "implement", "action_implement"),
-            ("D", "dossier", "action_dossier"),
-            ("o", "open", "action_open_target"),
-        ):
-            actions.compose_add_child(ClickStatic(
-                app._paint(f"[#0b1117 on #24d6a8 b] {key} [/][#6e8aa1] {label}[/]  "),
-                lambda a=act: app.call_later(getattr(app, a)),
-                classes="scout-action"))
-        box.compose_add_child(actions)
+        ] + specs
+    actions = Horizontal(classes="scout-actions")
+    for key, label, act in specs:
+        actions.compose_add_child(ClickStatic(
+            app._paint(f"[#0b1117 on #24d6a8 b] {key} [/][#6e8aa1] {label}[/]  "),
+            lambda a=act: app.call_later(getattr(app, a)),
+            classes="scout-action"))
+    box.compose_add_child(actions)
 
     box.compose_add_child(_ask(app, gl, v))
     if v.source_url:
