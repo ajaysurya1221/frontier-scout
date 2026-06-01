@@ -12,6 +12,18 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 
+def _as_str_tuple(value: Any) -> tuple[str, ...]:
+    """Coerce a payload list field to a tuple of strings WITHOUT splitting a
+    bare string into characters (a string becomes a single-item tuple)."""
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        return (value,)
+    if isinstance(value, (list, tuple)):
+        return tuple(str(x) for x in value)
+    return ()
+
+
 @dataclass(frozen=True)
 class Concern:
     label: str
@@ -73,10 +85,10 @@ class Verdict:
             source_url=str(d.get("source_url", "")),
             what=str(d.get("what", d.get("summary", ""))),
             why_it_matters=str(d.get("why_it_matters", "")),
-            fit_reasons=tuple(str(x) for x in (d.get("fit_reasons") or [])),
+            fit_reasons=_as_str_tuple(d.get("fit_reasons")),
             concerns=concerns,
             next_safe_step=str(d.get("next_safe_step", "")),
-            unknowns=tuple(str(x) for x in (d.get("unknowns") or [])),
+            unknowns=_as_str_tuple(d.get("unknowns")),
             kind=kind,
             age=str(d.get("age", "")),
             pack=str(d.get("pack", "")),
@@ -98,10 +110,12 @@ class Funnel:
 
     @classmethod
     def from_payload(cls, p: dict[str, Any]) -> Funnel:
+        v = p.get("verdicts")
+        verdicts_count = len(v) if isinstance(v, (list, tuple, set, dict)) else 0
         return cls(
             scanned=int(p.get("scanned", 0) or 0),
             candidates=int(p.get("candidates", 0) or 0),
-            verdicts=len(p.get("verdicts") or []),
+            verdicts=verdicts_count,
             cost=float(p.get("cost_usd", 0.0) or 0.0),
             duration=float(p.get("duration_s", 0.0) or 0.0),
             last_run=str(p.get("date", "never") or "never"),
@@ -134,10 +148,11 @@ class AppState:
 
     @property
     def current(self) -> Verdict | None:
-        if not self.verdicts:
+        scoped = self.scoped_verdicts
+        if not scoped:
             return None
-        i = max(0, min(self.sel, len(self.verdicts) - 1))
-        return self.verdicts[i]
+        i = max(0, min(self.sel, len(scoped) - 1))
+        return scoped[i]
 
     @property
     def scoped_verdicts(self) -> tuple[Verdict, ...]:

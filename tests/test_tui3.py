@@ -160,6 +160,59 @@ def test_funnel_from_payload():
     assert f.cost == 0.42
 
 
+def _mixed_verdicts() -> tuple[Verdict, ...]:
+    # Alternating tool / dep so the scoped subset is a strict subset of the
+    # full list at different positions (dep at indices 1 and 3).
+    return (
+        Verdict.from_payload({"tool_name": "tool-a"}, kind="tool"),
+        Verdict.from_payload({"tool_name": "dep-a"}, kind="dep"),
+        Verdict.from_payload({"tool_name": "tool-b"}, kind="tool"),
+        Verdict.from_payload({"tool_name": "dep-b"}, kind="dep"),
+    )
+
+
+def test_current_uses_scoped_index():
+    # Regression guard for the scoped-selection bug: when scope != "all", the
+    # highlighted row (rendered over scoped_verdicts at i == sel) and the detail
+    # panel (current) MUST resolve to the same verdict. This FAILS against the
+    # old `current` that indexed the full verdicts list.
+    st = AppState(verdicts=_mixed_verdicts(), scope="deps", sel=0)
+    assert st.scoped_verdicts[0].tool_name == "dep-a"
+    assert st.current is st.scoped_verdicts[0]  # first dep, not first verdict
+    moved = st.move(1)
+    assert moved.current is moved.scoped_verdicts[1]  # second dep
+    assert moved.current.tool_name == "dep-b"
+
+
+def test_current_scoped_clamps_and_stays_in_scope():
+    # An out-of-range sel resolves to the last scoped verdict, never raises,
+    # and never leaks a verdict from outside the scope.
+    st = AppState(verdicts=_mixed_verdicts(), scope="deps", sel=99)
+    scoped = st.scoped_verdicts
+    assert st.current is scoped[-1]
+    assert st.current.kind == "dep"
+
+
+def test_verdict_string_list_fields_not_char_split():
+    # A bare string payload field must become a single-item tuple, not a tuple
+    # of individual characters.
+    v = Verdict.from_payload({"fit_reasons": "high performance"})
+    assert v.fit_reasons == ("high performance",)
+    v2 = Verdict.from_payload({"unknowns": "license unclear"})
+    assert v2.unknowns == ("license unclear",)
+    # Lists still coerce element-wise to strings.
+    v3 = Verdict.from_payload({"fit_reasons": ["a", "b"]})
+    assert v3.fit_reasons == ("a", "b")
+
+
+def test_funnel_verdicts_non_sequence_guard():
+    # A non-sequence verdicts value must not raise TypeError on len().
+    assert Funnel.from_payload({"verdicts": 5}).verdicts == 0
+    assert Funnel.from_payload({"verdicts": None}).verdicts == 0
+    # Sequences still count correctly.
+    assert Funnel.from_payload({"verdicts": ["a", "b"]}).verdicts == 2
+
+
 # ── 3. Boots at every size, never crashes ────────────────────────────────────
 
 
