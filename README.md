@@ -152,7 +152,7 @@ Frontier Scout needs **exactly one** backend, and works with whichever you alrea
 Already paying for a Claude Code or Codex subscription? Scouting runs at **zero marginal cost** — it shells out to the CLI you already pay for. Force a backend with `--provider anthropic | openai | claude-cli | codex-cli`.
 
 > [!NOTE]
-> **No backend at all?** `frontier-scout --demo` runs the whole pipeline offline against bundled fixtures — no key, no network, no Slack, no cloud.
+> **No backend at all?** `frontier-scout demo` runs the whole pipeline offline against bundled fixtures — no key, no network, no Slack, no cloud.
 
 <br/>
 
@@ -220,7 +220,7 @@ See [SECURITY.md](SECURITY.md) for the full threat model.
 
 ## 💸&nbsp; Cost
 
-`frontier-scout --demo` is free — it never calls the network. The figures below model a live **weekly scan** (a recent run scanned **377** items, considered **350**, and shipped **5** verdicts for ~$0.31): a fast score pass, a fast verdict pass, and an optional Opus-class judge pass.
+`frontier-scout demo` is free — it never calls the network. The figures below model a live **weekly scan** (a recent run scanned **377** items, considered **350**, and shipped **5** verdicts for ~$0.31): a fast score pass, a fast verdict pass, and an optional Opus-class judge pass.
 
 <div align="center">
 
