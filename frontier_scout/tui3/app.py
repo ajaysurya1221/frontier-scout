@@ -58,6 +58,7 @@ class MissionControlApp(App[int]):
         Binding("g", "guard_shortcut", "guard", show=False),
         Binding("r", "refresh", "refresh", show=False),
         Binding("p", "palette", "palette", show=False),
+        Binding("w", "switch_repo", "switch repo", show=False),
         *[Binding(str(i + 1), f"goto_{t}", t, show=False) for i, (t, _, _) in enumerate(TABS)],
         Binding("j,down", "move(1)", "down", show=False),
         Binding("k,up", "move(-1)", "up", show=False),
@@ -954,6 +955,31 @@ class MissionControlApp(App[int]):
 
         self.push_screen(CommandPalette())
 
+    def action_switch_repo(self) -> None:
+        from frontier_scout.tui3.overlays import RepoSwitcherScreen
+
+        repos = data.list_repos(self.state.repo)
+        self.push_screen(RepoSwitcherScreen(repos, self.state.repo))
+
+    def switch_repo(self, path: str) -> None:
+        """Re-init state for ``path`` (preserving UI prefs), then re-scout (§9).
+
+        Verdicts/funnel/languages/profile all become relative to the new repo —
+        an honest switch, never a label-only change.
+        """
+        fresh = data.initial_state(Path(path), demo=self.state.demo)
+        self.state = fresh.with_(
+            tab=self.state.tab, scope="all", sel=0,
+            color=self.state.color, unicode=self.state.unicode,
+        )
+        self._refresh_nav()
+        self.call_later(self._render)
+        self.run_scout(dry_run=self.state.demo)
+        try:
+            self.notify(f"pointed at {self.state.repo_name} · re-scouting")
+        except Exception:  # noqa: BLE001 — toast is best-effort feedback only
+            pass
+
     def run_palette_action(self, aid: str) -> None:
         kind, _, val = aid.partition(":")
         if kind == "tab":
@@ -984,6 +1010,8 @@ class MissionControlApp(App[int]):
             self.call_later(self.action_evaluate)
         elif val == "lab":
             self.call_later(self.action_lab)
+        elif val == "switch_repo":
+            self.call_later(self.action_switch_repo)
         elif val == "clear":
             self.call_later(self.action_clear_history)
         elif val == "reconfigure":
