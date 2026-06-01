@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
 from frontier_scout.tui3 import data
@@ -71,15 +71,29 @@ def _schedule(app: Any) -> Vertical:
         live = "[#e3c26f]live scan[/]" if s["live"] else "[#24d6a8]dry-run[/]"
         repo = s["repo"].split("/")[-1]
         marker = f"[#24d6a8]{gl['tri']}[/] " if i == sel else "  "
-        box.compose_add_child(_S(
-            app,
-            f"\n{marker}{sw}  [#d9f7ff]{repo}[/]  {live}  [#6e8aa1]notify: {s['notification']}[/]"))
+        box.compose_add_child(ClickStatic(
+            app._paint(
+                f"\n{marker}{sw}  [#d9f7ff]{repo}[/]  {live}  [#6e8aa1]notify: {s['notification']}[/]"),
+            lambda i=i: app._select_sched(i)))
         plural = "" if s["last_verdict_count"] == 1 else "s"
         box.compose_add_child(_S(
             app,
             f"  [#6e8aa1]{gl['dot']} {s['human']}[/] [#6e8aa1 i]{s['cron_expr']}[/]\n"
             f"  [#6e8aa1]last run {s['last_run']} {gl['pip']} "
             f"{s['last_verdict_count']} verdict{plural}[/]"))
+        # Per-row clickable action chips — each selects this row, then runs the
+        # SAME action the schedule keybindings use (§5 mouse parity).
+        acts = Horizontal(classes="sched-actions")
+        for _lbl, _act in (
+            (f"{gl['enter']} run", "action_primary"),
+            ("t toggle", "action_toggle_schedule"),
+            ("E edit", "action_edit_schedule"),
+            ("del remove", "action_remove_schedule"),
+        ):
+            acts.compose_add_child(ClickStatic(
+                app._paint(f"  [#24d6a8 b]{_lbl}[/]"),
+                lambda i=i, a=_act: (app._select_sched(i), app.call_later(getattr(app, a)))))
+        box.compose_add_child(acts)
     box.compose_add_child(_S(
         app,
         f"\n[#e3c26f]{gl['diamond']} one-time crontab install[/]\n"

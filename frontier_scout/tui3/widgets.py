@@ -25,15 +25,26 @@ OnClick = Callable[[], None]
 
 
 class ClickStatic(Static):
-    """A painted Static that invokes ``on_click_cb`` when clicked."""
+    """A painted Static that invokes ``on_click_cb`` when clicked, and
+    ``on_dblclick_cb`` on a double-click when one is given."""
 
-    def __init__(self, renderable: str, on_click_cb: OnClick, **kw) -> None:
+    def __init__(
+        self,
+        renderable: str,
+        on_click_cb: OnClick,
+        on_dblclick_cb: OnClick | None = None,
+        **kw,
+    ) -> None:
         super().__init__(renderable, **kw)
         self._on_click_cb = on_click_cb
+        self._on_dblclick_cb = on_dblclick_cb
 
     def on_click(self, event: events.Click) -> None:
         event.stop()
-        self._on_click_cb()
+        if self._on_dblclick_cb is not None and getattr(event, "chain", 1) >= 2:
+            self._on_dblclick_cb()
+        else:
+            self._on_click_cb()
 
 
 class LineClickStatic(Static):

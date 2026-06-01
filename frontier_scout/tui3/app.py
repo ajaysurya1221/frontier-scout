@@ -19,13 +19,14 @@ from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, VerticalScroll
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import Static
 
 from frontier_scout.tui3 import data
 from frontier_scout.tui3.kit import MIN_COLS, MIN_ROWS, breakpoint_for, glyphs, mono
 from frontier_scout.tui3.messages import Progress, TuiReporter, WorkDone, WorkFailed
 from frontier_scout.tui3.state import AppState
+from frontier_scout.tui3.widgets import ClickStatic
 
 # Tab registry: (id, label, short). Incident dropped (no backend) — decision D1.
 TABS: list[tuple[str, str, str]] = [
@@ -97,8 +98,22 @@ class MissionControlApp(App[int]):
     def compose(self) -> ComposeResult:
         yield Static(id="mc-header")
         with Container(id="mc-body"):
-            yield Static(id="mc-rail")
-            yield Static(id="mc-tabstrip")
+            # Rail/tabstrip are per-tab ClickStatic cells (one clickable widget
+            # per tab — handoff §5), repainted in place on reflow (never remounted,
+            # so no DuplicateIds — Bug #3). Both are composed once; display is
+            # toggled by breakpoint. Each cell click routes to the same _goto the
+            # number keys use.
+            with Vertical(id="mc-rail"):
+                yield Static("", classes="rail-brand", id="rail-brand")
+                for tid, _label, _short in TABS:
+                    yield ClickStatic(
+                        "", lambda t=tid: self.call_later(self._goto, t),
+                        id=f"rail-{tid}", classes="rtab")
+            with Horizontal(id="mc-tabstrip"):
+                for tid, _label, _short in TABS:
+                    yield ClickStatic(
+                        "", lambda t=tid: self.call_later(self._goto, t),
+                        id=f"strip-{tid}", classes="ts")
             yield VerticalScroll(id="mc-main")
             yield Static(id="mc-floor")
         yield Static(id="mc-compass")
@@ -139,8 +154,8 @@ class MissionControlApp(App[int]):
 
         try:
             body = self.query_one("#mc-body", Container)
-            rail = self.query_one("#mc-rail", Static)
-            strip = self.query_one("#mc-tabstrip", Static)
+            rail = self.query_one("#mc-rail", Vertical)
+            strip = self.query_one("#mc-tabstrip", Horizontal)
             main = self.query_one("#mc-main", VerticalScroll)
             floor = self.query_one("#mc-floor", Static)
         except Exception:  # noqa: BLE001 — pre-mount
@@ -162,11 +177,8 @@ class MissionControlApp(App[int]):
             self._refresh_chrome()
             return
 
-        if bp.rail:
-            rail.set_class(bp.rail_compact, "compact")
-            rail.update(self._paint(self._rail_text(compact=bp.rail_compact)))
-        else:
-            strip.update(self._paint(self._tabstrip_text(numeric=bp.numeric_tabs)))
+        rail.set_class(bp.rail_compact, "compact")
+        self._paint_nav()
 
         await self._render_pane()
         self._refresh_chrome()
@@ -184,12 +196,8 @@ class MissionControlApp(App[int]):
         self._set("#mc-compass", self._compass_text())
 
     def _refresh_nav(self) -> None:
-        """Update rail/tabstrip markup in place (e.g. after a tab change)."""
-        bp = breakpoint_for(*self._term_size)
-        if bp.rail:
-            self._set("#mc-rail", self._rail_text(compact=bp.rail_compact))
-        else:
-            self._set("#mc-tabstrip", self._tabstrip_text(numeric=bp.numeric_tabs))
+        """Repaint rail + tabstrip cells in place (e.g. after a tab change)."""
+        self._paint_nav()
 
     def _paint(self, markup: str) -> str:
         """Apply the color fallback: pass markup through, or strip color in mono."""
@@ -269,30 +277,34 @@ class MissionControlApp(App[int]):
         pad = max(1, cols - _vis_len(parts) - _vis_len(tail) - 2)
         return parts + " " * pad + tail
 
-    def _rail_text(self, *, compact: bool) -> str:
+    def _paint_nav(self) -> None:
+        """Repaint the per-tab rail + tabstrip cells in place (no remount)."""
+        bp = breakpoint_for(*self._term_size)
         g = glyphs(self.state.unicode)
-        lines = [g["radar_core"] if compact else f"{g['radar_core']} [#d9f7ff b]scout[/]", ""]
-        for i, (tid, label, _short) in enumerate(TABS):
+        compact = bp.rail_compact
+        brand = g["radar_core"] if compact else f"{g['radar_core']} [#d9f7ff b]scout[/]"
+        self._set("#rail-brand", brand)
+        for i, (tid, label, short) in enumerate(TABS):
             on = tid == self.state.tab
-            badge = self._badge(tid)
             if compact:
-                cell = f"{i + 1}"
+                rcell = f"{i + 1}"
             else:
+                badge = self._badge(tid)
                 btxt = f"  {badge}" if badge else ""
-                cell = f"{i + 1} {label}{btxt}"
-            if on:
-                lines.append(f"[#d9f7ff b on #10202a]{cell}[/]")
-            else:
-                lines.append(f"[#6e8aa1]{cell}[/]")
-        return "\n".join(lines)
+                rcell = f"{i + 1} {label}{btxt}"
+            self._set_cell(
+                f"#rail-{tid}",
+                f"[#d9f7ff b on #10202a]{rcell}[/]" if on else f"[#6e8aa1]{rcell}[/]")
+            scell = f"{i + 1}" if bp.numeric_tabs else f"{i + 1}{short}"
+            self._set_cell(
+                f"#strip-{tid}",
+                f"[#24d6a8 b]{scell}[/]" if on else f"[#6e8aa1]{scell}[/]")
 
-    def _tabstrip_text(self, *, numeric: bool) -> str:
-        cells = []
-        for i, (tid, _label, short) in enumerate(TABS):
-            on = tid == self.state.tab
-            cell = f"{i + 1}" if numeric else f"{i + 1}{short}"
-            cells.append(f"[#24d6a8 b]{cell}[/]" if on else f"[#6e8aa1]{cell}[/]")
-        return "  ".join(cells)
+    def _set_cell(self, selector: str, markup: str) -> None:
+        try:
+            self.query_one(selector, ClickStatic).update(self._paint(markup))
+        except Exception:  # noqa: BLE001 — widget may not be mounted yet
+            pass
 
     def _floor_text(self) -> str:
         g = glyphs(self.state.unicode)
@@ -342,6 +354,22 @@ class MissionControlApp(App[int]):
     async def action_goto_reports(self) -> None: await self._goto("reports")
     async def action_goto_settings(self) -> None: await self._goto("settings")
     async def action_guard_shortcut(self) -> None: await self._goto("guard")
+
+    def _select(self, i: int) -> None:
+        """Select a verdict by scoped index — click parity for j/k."""
+        self.state = self.state.with_(sel=i)
+        self.call_later(self._render_pane)
+
+    def _set_scope(self, scope: str) -> None:
+        """Set the scout scope — click parity for ←/→."""
+        if scope != self.state.scope:
+            self.state = self.state.with_(scope=scope, sel=0)
+            self.call_later(self._render_pane)
+
+    def _select_sched(self, i: int) -> None:
+        """Select a schedule row by index — click parity for j/k on schedule."""
+        self.state = self.state.with_(sched_sel=i)
+        self.call_later(self._render_pane)
 
     async def action_move(self, delta: int) -> None:
         if self.state.tab == "scout" and self.state.verdicts:

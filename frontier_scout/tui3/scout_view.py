@@ -36,6 +36,7 @@ from frontier_scout.tui3.kit import (
     verdict_label,
     verdict_tone,
 )
+from frontier_scout.tui3.widgets import ClickStatic
 
 _TONE = {
     "mint": "#24d6a8", "gold": "#e3c26f", "blue": "#7aa6ff", "red": "#ff6b6b",
@@ -103,21 +104,29 @@ def _hero(app: Any, gl: dict[str, str]) -> Static:
 
 
 # ── scan bar (scope chips) ───────────────────────────────────────────────────
-def _scanbar(app: Any, gl: dict[str, str]) -> Static:
-    chips = []
+def _scanbar(app: Any, gl: dict[str, str]) -> Horizontal:
+    # Each scope chip and the scout affordance are their own ClickStatic so a
+    # click routes to the same action the keys use (←/→ scope, s scout) — §5.
+    row = Horizontal(classes="scout-scanbar")
+    row.compose_add_child(_S(app, "[#6e8aa1]scope[/] "))
     for s in SCOPES:
         on = s == app.state.scope
-        chips.append(f"[#24d6a8 b]{s}[/]" if on else f"[#6e8aa1]{s}[/]")
+        row.compose_add_child(ClickStatic(
+            app._paint(f"[#24d6a8 b]{s}[/] " if on else f"[#6e8aa1]{s}[/] "),
+            lambda sc=s: app._set_scope(sc),
+            id=f"scope-{s}", classes="chip on" if on else "chip"))
     dry = " (dry-run)" if app.state.demo else ""
-    tail = f"[#24d6a8 b]s[/][#6e8aa1] scout{dry}[/]"
+    row.compose_add_child(ClickStatic(
+        app._paint(f"  [#24d6a8 b]s[/][#6e8aa1] scout{dry}[/]"),
+        lambda: app.run_scout(dry_run=app.state.demo), id="scout-scan"))
     bp = breakpoint_for(*app._term_size)
     if bp.name != "micro":
         f = app.state.funnel
-        tail += (
+        row.compose_add_child(_S(
+            app,
             f" [#6e8aa1]{gl['pip']} last {f.last_run} {gl['pip']} "
-            f"${f.cost:.2f} {gl['pip']} {f.duration:.0f}s[/]"
-        )
-    return _S(app, "[#6e8aa1]scope[/]  " + "  ".join(chips) + f"   {tail}", classes="scout-scanbar")
+            f"${f.cost:.2f} {gl['pip']} {f.duration:.0f}s[/]"))
+    return row
 
 
 # ── empty / first-run state ──────────────────────────────────────────────────
@@ -158,7 +167,11 @@ def _list(app: Any, gl: dict[str, str], verdicts: tuple, *, side: bool, full: bo
             )
         else:
             line = f"{marker} {tag} [#d9f7ff]{name}[/] [#6e8aa1]{v.fit}/{v.risk}[/]"
-        box.compose_add_child(_S(app, line, classes="row-sel" if on else ""))
+        box.compose_add_child(ClickStatic(
+            app._paint(line),
+            lambda i=i: app._select(i),
+            lambda i=i: (app._select(i), app.call_later(app.action_dossier)),
+            classes="row-sel" if on else ""))
     return box
 
 
