@@ -50,13 +50,17 @@ def _schedule(app: Any) -> Vertical:
         "you only when verdicts change."))
     if not rows:
         box.compose_add_child(_S(app, "\n[#6e8aa1]No schedules yet.[/]"))
-    for s in rows:
+    # Clamp the selection defensively: if it ran off the end (a removal), select
+    # the last row; with no rows there is nothing to mark.
+    sel = min(max(0, getattr(app.state, "sched_sel", 0)), len(rows) - 1) if rows else -1
+    for i, s in enumerate(rows):
         sw = f"[#24d6a8]{gl['dot']} on[/]" if not s["disabled"] else f"[#6e8aa1]{gl['ring']} off[/]"
         live = "[#e3c26f]live scan[/]" if s["live"] else "[#24d6a8]dry-run[/]"
         repo = s["repo"].split("/")[-1]
+        marker = f"[#24d6a8]{gl['tri']}[/] " if i == sel else "  "
         box.compose_add_child(_S(
             app,
-            f"\n{sw}  [#d9f7ff]{repo}[/]  {live}  [#6e8aa1]notify: {s['notification']}[/]"))
+            f"\n{marker}{sw}  [#d9f7ff]{repo}[/]  {live}  [#6e8aa1]notify: {s['notification']}[/]"))
         plural = "" if s["last_verdict_count"] == 1 else "s"
         box.compose_add_child(_S(
             app,

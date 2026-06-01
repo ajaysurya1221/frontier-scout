@@ -118,6 +118,7 @@ class AppState:
     funnel: Funnel = field(default_factory=Funnel)
     tab: str = "scout"          # active tab id
     sel: int = 0                # selected verdict index
+    sched_sel: int = 0          # selected schedule index (Schedule tab)
     scope: str = "all"          # all | ai-devtools | mcp | deps
     unicode: bool = True
     color: bool = True

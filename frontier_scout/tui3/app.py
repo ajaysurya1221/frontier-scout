@@ -72,6 +72,8 @@ class MissionControlApp(App[int]):
         Binding("enter", "primary", "primary", show=False),
         Binding("o", "open_target", "open", show=False),
         Binding("d", "discover", "discover", show=False),
+        Binding("t", "toggle_schedule", "toggle", show=False),
+        Binding("delete,backspace", "remove_schedule", "remove", show=False),
     ]
 
     SCOPES = ["all", "ai-devtools", "mcp", "deps"]
@@ -239,6 +241,12 @@ class MissionControlApp(App[int]):
         # Packs: ⏎ refresh (offline) · d discover (network gate).
         elif self.state.tab == "packs" and bp != "micro":
             hints = [(g["enter"], "refresh"), ("d", "discover"), *hints]
+        # Schedule: j/k select · ⏎ run · t toggle · del remove.
+        elif self.state.tab == "schedule" and bp != "micro":
+            hints = [
+                ("j/k", "select"), (g["enter"], "run"),
+                ("t", "toggle"), ("del", "remove"), *hints,
+            ]
         parts = " ".join(f"[#24d6a8 b]{k}[/][#6e8aa1] {label}[/]" for k, label in hints)
         if self._scanning:
             tail = "[#24d6a8]scanning…[/]"
@@ -327,6 +335,13 @@ class MissionControlApp(App[int]):
             self.state = self.state.move(delta)
             self._refresh_nav()
             await self._render_pane()
+        elif self.state.tab == "schedule":
+            rows = data.schedules()
+            if not rows:
+                return
+            nxt = max(0, min(len(rows) - 1, self.state.sched_sel + delta))
+            self.state = self.state.with_(sched_sel=nxt)
+            await self._render_pane()
 
     async def action_scope(self, delta: int) -> None:
         """Cycle the Scout scope chip (all / ai-devtools / mcp / deps)."""
@@ -363,7 +378,112 @@ class MissionControlApp(App[int]):
         elif tab == "packs":
             # Offline refresh: seed candidates only, guaranteed no network.
             self._packs_refresh_worker(discover=False)
+        elif tab == "schedule":
+            await self._schedule_primary()
         # Other tabs: intentional no-op (future increments extend this).
+
+    async def _schedule_primary(self) -> None:
+        """Run the selected schedule (⏎). The ONLY schedule spend path.
+
+        ``dry_run`` is true when the app is in demo mode OR the schedule is not
+        marked ``live`` — and that is exactly when running is free (seeded, no
+        network, no spend), so it starts immediately with no gate. A LIVE
+        schedule outside demo would spend, so it is held behind an explicit
+        cost-confirm: nothing reaches the judge until the user clears it.
+        No-op-safe: returns quietly when there are no schedules.
+        """
+        rows = data.schedules()
+        if not rows:
+            return
+        idx = min(max(0, self.state.sched_sel), len(rows) - 1)
+        sched = rows[idx]
+        sched_id = str(sched["id"])
+        repo = str(sched["repo"]).split("/")[-1]
+        dry_run = self.state.demo or (not sched["live"])
+        if not dry_run:
+            from frontier_scout.tui3.overlays import ConfirmScreen
+
+            def _on_confirm() -> None:
+                self._schedule_run_worker(sched_id, dry_run=False)
+
+            self.push_screen(
+                ConfirmScreen(
+                    "Run live scan",
+                    [
+                        f"[#e3c26f]Runs a LIVE scout for {repo} — calls the "
+                        "judge, costs money.[/]",
+                        "[#6e8aa1]The schedule is marked live scan.[/]",
+                    ],
+                    _on_confirm,
+                    confirm_label="run live",
+                )
+            )
+        else:
+            self._schedule_run_worker(sched_id, dry_run=True)
+
+    def _schedule_run_worker(self, schedule_id: str, *, dry_run: bool) -> None:
+        """Run a schedule on a worker thread (mirrors ``_evaluate_worker``).
+
+        ``dry_run`` is passed straight through to ``data.schedule_run`` — the
+        gate decision was already made by ``_schedule_primary``; this method
+        never re-decides it.
+        """
+        def _run() -> None:
+            try:
+                payload = data.schedule_run(schedule_id, dry_run=dry_run)
+                self.post_message(WorkDone("schedule_run", payload))
+            except Exception as exc:  # noqa: BLE001
+                self.post_message(WorkFailed("schedule_run", str(exc)))
+
+        self.run_worker(_run, thread=True, exclusive=False, group="schedule-run")
+
+    # ── Schedule: toggle (t, FREE) · remove (del, FREE) ───────────────────────
+    async def action_toggle_schedule(self) -> None:
+        """Enable/disable the selected schedule (t) — FREE local JSON write.
+
+        Schedule tab only. No gate: flipping ``disabled`` never spends, never
+        reaches the network. Re-renders the pane so the on/off badge updates.
+        No-op-safe when there are no schedules / wrong tab.
+        """
+        if self.state.tab != "schedule":
+            return
+        rows = data.schedules()
+        if not rows:
+            return
+        idx = min(max(0, self.state.sched_sel), len(rows) - 1)
+        data.schedule_toggle(str(rows[idx]["id"]))
+        if self.state.tab == "schedule":
+            await self._render_pane()
+
+    async def action_remove_schedule(self) -> None:
+        """Remove the selected schedule (del/backspace) — FREE, simple confirm.
+
+        Schedule tab only. A removal is a cheap local JSON delete, so it uses a
+        simple y-confirm (not a typed gate). Re-renders the pane afterwards so
+        the row disappears. No-op-safe when there are no schedules / wrong tab.
+        """
+        if self.state.tab != "schedule":
+            return
+        rows = data.schedules()
+        if not rows:
+            return
+        idx = min(max(0, self.state.sched_sel), len(rows) - 1)
+        sched_id = str(rows[idx]["id"])
+        repo = str(rows[idx]["repo"]).split("/")[-1]
+        from frontier_scout.tui3.overlays import ConfirmScreen
+
+        def _on_confirm() -> None:
+            data.schedule_remove(sched_id)
+            self.call_later(self._render_pane)
+
+        self.push_screen(
+            ConfirmScreen(
+                "Remove schedule",
+                [f"Remove the scheduled scout for {repo}?"],
+                _on_confirm,
+                confirm_label="remove",
+            )
+        )
 
     async def action_open_target(self) -> None:
         """The per-tab "open" action (o). Dispatch by the active tab — FREE.
@@ -815,6 +935,33 @@ class MissionControlApp(App[int]):
             else:
                 reason = str(p.get("reason") or "Could not refresh packs.")
                 self.push_screen(ResultScreen("Packs", [f"[#ff6b6b]{reason}[/]"]))
+        elif message.kind == "schedule_run":
+            from frontier_scout.tui3.overlays import ResultScreen
+
+            p = message.payload or {}
+            if p.get("ok"):
+                dry = bool(p.get("dry_run"))
+                repo = str(p.get("repo") or "—")
+                verdicts = int(p.get("verdicts") or 0)
+                cost = float(p.get("cost") or 0.0)
+                note = (
+                    "[#24d6a8]Dry-run — seeded sample, no spend, no network.[/]"
+                    if dry else
+                    "[#e3c26f]Live scout — judged against the provider.[/]"
+                )
+                title = "Scheduled scout" + (" (dry-run)" if dry else "")
+                self.push_screen(ResultScreen(
+                    title,
+                    [f"[#d9f7ff]{repo}[/]",
+                     f"[#6e8aa1]{verdicts} verdicts[/]",
+                     f"[#6e8aa1]${cost:.2f}[/]",
+                     note]))
+            else:
+                reason = str(p.get("reason") or "Could not run the schedule.")
+                self.push_screen(ResultScreen("Schedule run", [f"[#ff6b6b]{reason}[/]"]))
+            # last_run may have changed — re-render so the pane reflects it.
+            if self.state.tab == "schedule":
+                await self._render_pane()
         elif message.kind == "clear":
             from frontier_scout.tui3.overlays import ResultScreen
 

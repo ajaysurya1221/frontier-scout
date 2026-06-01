@@ -202,6 +202,101 @@ def crontab_line() -> str:
         return '*/15 * * * * "~/.frontier-scout/cron-runner.sh"'
 
 
+# ── Schedule mutations (FREE local JSON writes — no spend, no network) ────────
+# Toggle + remove only rewrite ``~/.frontier-scout/schedules.json``. They never
+# run a scan, never touch a provider, never reach the network. ``schedule_run``
+# is the ONLY spend path here, and it honours the ``dry_run`` the *caller*
+# passes — the cost gate lives in the app, never inside these wrappers. All
+# three are defensive (mirror the ``schedules()`` try/except style): a backend
+# hiccup degrades to ``{"ok": False, "reason": …}`` rather than crashing.
+def schedule_toggle(schedule_id: str) -> dict[str, Any]:
+    """Flip a schedule's ``disabled`` flag in place. FREE local JSON write.
+
+    Loads the schedules, finds the one with ``schedule_id``, flips its
+    ``disabled`` field (mutating the non-frozen dataclass) and saves. Returns
+    the NEW ``disabled`` value so the caller can report it. Never raises.
+    """
+    try:
+        from frontier_scout import scheduling
+
+        rows = scheduling.load_schedules() or []
+        for s in rows:
+            if str(_g(s, "id")) == str(schedule_id):
+                s.disabled = not bool(_g(s, "disabled", False))
+                scheduling.save_schedules(rows)
+                return {"ok": True, "disabled": bool(s.disabled),
+                        "repo": _repo_name(_g(s, "repo", ""))}
+        return {"ok": False, "reason": "schedule not found"}
+    except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
+        return {"ok": False, "reason": str(exc)}
+
+
+def schedule_remove(schedule_id: str) -> dict[str, Any]:
+    """Remove a schedule by id. FREE local JSON write (destructive but cheap).
+
+    Resolves the basename BEFORE the delete so the result can name what went.
+    Delegates to ``scheduling.remove_schedule`` (returns True when one was
+    removed). Never raises.
+    """
+    try:
+        from frontier_scout import scheduling
+
+        repo = ""
+        for s in scheduling.load_schedules() or []:
+            if str(_g(s, "id")) == str(schedule_id):
+                repo = _repo_name(_g(s, "repo", ""))
+                break
+        ok = bool(scheduling.remove_schedule(str(schedule_id)))
+        return {"ok": ok, "repo": repo}
+    except Exception:  # noqa: BLE001 — actions must never crash the UI
+        return {"ok": False, "repo": ""}
+
+
+def schedule_run(schedule_id: str, *, dry_run: bool) -> dict[str, Any]:
+    """Run the scout for a single schedule. The ONLY spend path here.
+
+    Loads the schedule, runs it through the SAME ``run_scan`` the app's scout
+    uses (``scope="all"``), and HONOURS the ``dry_run`` the caller passes —
+    never forces it. ``dry_run=True`` is the seeded, no-spend, no-network path;
+    ``dry_run=False`` spends (the app gates that before ever calling here).
+    Best-effort records the run against the schedule (``record_run``) so the
+    Schedule tab's "last run" reflects it; a record_run failure NEVER aborts the
+    run (it is wrapped). Returns a render-honest dict. Never raises.
+    """
+    try:
+        from frontier_scout import scheduling
+
+        sched = None
+        for s in scheduling.load_schedules() or []:
+            if str(_g(s, "id")) == str(schedule_id):
+                sched = s
+                break
+        if sched is None:
+            return {"ok": False, "reason": "schedule not found"}
+
+        repo = str(_g(sched, "repo", "")) or "."
+        result = run_scan(repo, dry_run=dry_run, scope="all")
+        funnel = result.get("funnel")
+        verdicts = int(_g(funnel, "verdicts", 0) or 0)
+        cost = float(_g(funnel, "cost", 0.0) or 0.0)
+
+        # Best-effort: stamp last_run on the schedule. A real persisted scan
+        # lands under the store's runs dir; we point record_run there. Any
+        # failure here is swallowed — it must never abort a completed run.
+        try:
+            result_dir = scheduling.runs_dir() / str(_g(sched, "id", "run"))
+            scheduling.record_run(
+                sched, result_dir=result_dir, verdict_count=verdicts
+            )
+        except Exception:  # noqa: BLE001 — record_run is best-effort only
+            pass
+
+        return {"ok": True, "repo": _repo_name(repo), "verdicts": verdicts,
+                "cost": cost, "dry_run": dry_run}
+    except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
+        return {"ok": False, "reason": str(exc)}
+
+
 # ── Receipts (real) ──────────────────────────────────────────────────────────
 def receipts(limit: int = 50) -> list[dict[str, Any]]:
     try:
