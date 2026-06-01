@@ -88,23 +88,25 @@ The TUI is the front door. Inside any repo:
 frontier-scout
 ```
 
-As of **v1.5.0** that lands you on **the Briefing** — a calm,
-wizard-style scout that hands you one card at a time. A home menu
-(*Scout my repo · Explore a tool · Settings · Quit*) leads into focused
-flows; staged progress while it works (never a frozen "loading
-forever"); then a card carousel where each finding shows *what* it is,
-*why it fits your repo*, its concerns, risk, and the *next safe step*.
-An always-present one-line **compass** at the bottom tells you exactly
-what you can do right now. `←/→` flip cards, `Enter` runs the primary
-action (Implement & test in a repo, Tell me more without one), `a` opens
-more actions, `Esc` always goes back. It is flawless at any terminal
-size — a cramped VS Code panel and a full-screen window are both
-first-class.
+As of **v1.5.0** that lands you on **Mission Control** — a dense, tabbed
+command center that puts the whole workflow on one keyboard-driven screen:
+**Scout · Schedule · Receipts · Guard · Packs · Deps · Reports · Settings**.
+Every capability is operable without leaving the TUI — run a scout, render
+and open a report, refresh packs, create/edit/run/remove schedules, run the
+Adoption Firewall guard, scan dependencies, build dossiers, and reach
+everything from a searchable command palette (`p`). Anything that could spend
+or hit the network (a *live* scheduled scan, pack discovery) sits behind an
+explicit confirmation. It is flawless at any terminal size — a cramped VS Code
+panel and a full-screen window are both first-class — with unicode/ASCII and
+colour/mono fallbacks.
 
-Prefer the previous tabbed Mission Control TUI? It stays reachable for
-one release via `--ui classic` (or `FRONTIER_SCOUT_UI=classic`). Run
-`frontier-scout setup` from anywhere to configure your LLM backend or
-schedule recurring scouts.
+Prefer something calmer? **The Briefing** — a wizard-style scout that hands
+you one finding at a time, with an always-present one-line **compass** telling
+you exactly what you can do right now (`←/→` flip cards, `Enter` runs the
+primary action, `Esc` goes back) — is a flag away via `--ui briefing` (or
+`FRONTIER_SCOUT_UI=briefing`); the previous setup TUI via `--ui classic`. Run
+`frontier-scout setup` from anywhere to configure your LLM backend or schedule
+recurring scouts.
 
 Every other CLI command (`evaluate`, `trial`, `guard`, `report`,
 `packs`, `deps`, `incident`, `dossier`) still works for scripting and

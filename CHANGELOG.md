@@ -4,37 +4,45 @@
 
 - No unreleased changes yet.
 
-## 1.5.0 - 2026-05-29
+## 1.5.0 - 2026-06-01
 
-### The Briefing — a calm, zero-bug TUI
+### Mission Control — a dense, fully-operable TUI (new default)
 
-Bare `frontier-scout` now opens **the Briefing**: a calm, wizard-style scout
-that hands you one card at a time, with an always-present one-line *compass*
-telling you exactly what you can do right now. It is unique by design — not a
-dense cockpit, not a fuzzy-finder — and its linearity is what makes it
-testable to zero bugs.
+Bare `frontier-scout` now opens **Mission Control**: a tabbed command center
+that puts the whole adoption workflow in one keyboard-driven screen —
+**Scout · Schedule · Receipts · Guard · Packs · Deps · Reports · Settings**.
 
-- **Built for zero bugs by construction.** One immutable `AppState` is the
-  single source of truth; navigation is an explicit screen stack (Home ·
-  Explore · Working · Findings · Action result · Settings · Error); all async
-  work is worker → message so every flow is a *total function* that ends in a
-  result or error screen — never a frozen "loading forever". Errors are a
-  screen, not a crash.
-- **Flawless at any terminal size.** A three-row layout (Header · Body that
-  fills and scrolls · Compass) means content can never clip — verified from a
-  cramped 50×12 VS Code panel up to a 200×60 full-screen window. Below ~24×7
-  it shows a single "Enlarge the window" line.
-- **The briefing carousel.** `←/→` flip findings; `Enter` runs the
-  context-primary action (Implement & test with a repo, Tell me more without
-  one); `a` opens more actions; `o` opens the URL; `d` dismisses; `Esc` home.
-- **A signature look, ported from the Claude Design mock.** A deep-navy field
-  with a mint accent; a character-grid **radar** (rotating sweep + colour-coded
-  pings) anchors the splash, home, and working screens; verdicts render as
-  filled pills (ADOPT/TRIAL/ASSESS/HOLD), with mint section headers, severity-
-  coloured concern dots, and a bordered "next safe step" callout. The radar is
-  pure monospace cells, so it renders identically in any terminal.
-- **Default UI, with a safety net.** The classic Mission Control TUI stays
-  reachable for one release via `--ui classic` or `FRONTIER_SCOUT_UI=classic`.
+- **Every capability is operable from inside the TUI.** Run an on-demand
+  scout; render and open a shareable report; refresh Scout Packs; create,
+  edit, run, enable/disable and remove schedules; run the Adoption Firewall
+  guard; scan dependencies; build dossiers; clear notifications; and reach
+  every command through a searchable command palette. You never drop to the
+  shell for anything the project supports.
+- **Nothing spends or hits the network silently.** The one money path (a
+  *live* scheduled scan) and the one network path (pack discovery against the
+  MCP registry) are each behind an explicit confirmation; everything else is a
+  local, offline, free operation, and `--demo` stays zero-spend by default.
+- **Flawless at any terminal size.** Responsive from a cramped ~40-column or
+  short panel up to 200+ columns — reflowing rail ↔ tab-strip and
+  master/detail ↔ stacked as space shrinks, redrawing cleanly on live resize,
+  and dropping to a single "resize to continue" line below the minimum.
+  Unicode/ASCII glyphs and colour/mono are both first-class fallbacks.
+- **Honest by construction.** The Settings security posture states only
+  invariants the code actually enforces — repo source is never sent to an LLM
+  (only filenames and AST import names leave your machine), fetched release
+  text is treated as untrusted data, and lab subprocesses run in a scrubbed
+  environment. Policy and the repo profile are shown read-only and edited via
+  the CLI.
+
+### The Briefing and classic TUIs remain available
+
+The calm, wizard-style **Briefing** — one finding at a time, an always-present
+one-line *compass*, and a monospace **radar** — is a flag away via
+`--ui briefing` (or `FRONTIER_SCOUT_UI=briefing`); the previous setup TUI via
+`--ui classic`. Like Mission Control, both are built on a single immutable
+`AppState` with worker → message async, so every flow ends in a result or
+error screen — never a frozen "loading forever", and errors are a screen, not
+a crash.
 
 ## 1.4.0 - 2026-05-29
 
