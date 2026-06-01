@@ -490,3 +490,61 @@ def clear_history(repo: str) -> int:
         return int(store.clear_scans_for_repo(repo))
     except Exception:  # noqa: BLE001 — actions must never crash the UI
         return 0
+
+
+# ── Reports (FREE — pure render of already-stored scan data) ──────────────────
+# Both wrappers are no-spend / no-network: ``report_render`` re-renders the
+# latest *stored* scan into static files; ``report_open`` hands an already
+# written file to the OS browser. Neither calls an LLM or hits the network.
+def report_render(repo: str) -> dict[str, Any]:
+    """Render the latest stored scan for ``repo`` into a stable reports dir.
+
+    Reads ``store.latest_scan(repo)`` (no scan is run — this only renders data
+    already on disk) and writes the briefing bundle via ``report.write_report``.
+    Returns ``{"ok": False, "reason": …}`` when there is nothing to render or on
+    any failure; otherwise ``{"ok": True, "dir", "html", "files"}``. Defensive —
+    never raises.
+    """
+    try:
+        from frontier_scout import report, store
+
+        payload = store.latest_scan(Path(repo))
+        if not payload:
+            return {"ok": False, "reason": "No stored scan yet — run a scout first."}
+        verdicts = list(_g(payload, "verdicts", []) or [])
+        date = str(_g(payload, "date", "latest") or "latest")
+        # The stored payload carries the flat funnel fields (scanned/candidates/
+        # cost_usd/…) at top level, mirroring how cli.py + setup_app.py feed it
+        # straight back to the renderer as ``funnel``.
+        out_dir = Path.home() / ".frontier-scout" / "reports" / _repo_name(repo)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        written = report.write_report(
+            out_dir, verdicts, date=date, funnel=payload, include_trials=True
+        )
+        html_path = written.get("html")
+        return {
+            "ok": True,
+            "dir": str(out_dir),
+            "html": str(html_path) if html_path else "",
+            "files": sorted(Path(p).name for p in written.values()),
+        }
+    except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
+        return {"ok": False, "reason": str(exc)}
+
+
+def report_open(html_path: str) -> bool:
+    """Open a rendered HTML report in the OS browser. Never raises.
+
+    Uses the stdlib ``webbrowser`` (same pattern as the legacy setup_app). The
+    file is opened via a ``file://`` URI so it resolves offline. Returns True on
+    a successful hand-off, False on any failure.
+    """
+    try:
+        import webbrowser
+
+        target = Path(html_path)
+        if not target.exists():
+            return False
+        return bool(webbrowser.open(target.resolve().as_uri()))
+    except Exception:  # noqa: BLE001 — actions must never crash the UI
+        return False

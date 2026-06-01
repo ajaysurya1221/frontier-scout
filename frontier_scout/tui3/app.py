@@ -69,6 +69,8 @@ class MissionControlApp(App[int]):
         Binding("L", "lab", "lab", show=False),
         Binding("X", "clear_history", "clear history", show=False),
         Binding("R", "reconfigure", "reconfigure", show=False),
+        Binding("enter", "primary", "primary", show=False),
+        Binding("o", "open_target", "open", show=False),
     ]
 
     SCOPES = ["all", "ai-devtools", "mcp", "deps"]
@@ -82,6 +84,9 @@ class MissionControlApp(App[int]):
         self._scanning = False
         self._size_override: tuple[int, int] | None = None
         self._ask_i = 0
+        # Path of the last rendered briefing.html (set by the report worker);
+        # the Reports tab's "open" action reuses it instead of re-rendering.
+        self._last_report_html: str | None = None
 
     # ── lifecycle ────────────────────────────────────────────────────────────
     def compose(self) -> ComposeResult:
@@ -226,6 +231,10 @@ class MissionControlApp(App[int]):
                 (g["lr"], "swipe"), ("a", "ask"), ("s", "scout"),
                 (f"{g['cmd']}K", "palette"), ("u/c", "ascii/mono"), ("?", "help"), ("q", "quit"),
             ]
+        # Tab-contextual hint: the Reports tab's primary/open actions (⏎ render ·
+        # o open). Skipped at micro width, where the compass already drops hints.
+        if self.state.tab == "reports" and bp != "micro":
+            hints = [(g["enter"], "render"), ("o", "open"), *hints]
         parts = " ".join(f"[#24d6a8 b]{k}[/][#6e8aa1] {label}[/]" for k, label in hints)
         if self._scanning:
             tail = "[#24d6a8]scanning…[/]"
@@ -333,6 +342,60 @@ class MissionControlApp(App[int]):
         if self.state.tab == "scout" and self.state.verdicts:
             self._ask_i += 1
             await self._render_pane()
+
+    # ── Per-tab primary / open (⏎ / o) — FREE, no spend, no gate ──────────────
+    async def action_primary(self) -> None:
+        """The per-tab primary action (⏎). Dispatch by the active tab.
+
+        Increment 1 wires only the Reports tab (render the latest stored scan,
+        FREE). Every other tab is an explicit no-op for now — later increments
+        add schedule/packs branches here. Always no-op-safe: never raises when
+        there is no repo / no current verdict / nothing to render.
+        """
+        tab = self.state.tab
+        if tab == "reports":
+            self._report_worker()
+        # Other tabs: intentional no-op (future increments extend this).
+
+    async def action_open_target(self) -> None:
+        """The per-tab "open" action (o). Dispatch by the active tab — FREE.
+
+        Reports → open the last-rendered briefing.html (render first if none
+        exists yet). Scout → open the selected verdict's source link in the
+        browser. All other tabs are a no-op. Never raises.
+        """
+        tab = self.state.tab
+        if tab == "reports":
+            if self._last_report_html and Path(self._last_report_html).exists():
+                data.report_open(self._last_report_html)
+            else:
+                # Nothing rendered yet — render now; on_work_done will open it.
+                self._report_worker(open_after=True)
+        elif tab == "scout":
+            current = self.state.current
+            url = getattr(current, "source_url", "") if current else ""
+            if url:
+                data.report_open(url)
+        # Other tabs: intentional no-op.
+
+    def _report_worker(self, *, open_after: bool = False) -> None:
+        """Render the latest stored scan on a worker thread (mirrors evaluate).
+
+        ``open_after`` carries the intent to open the result in the browser as
+        soon as it lands (used by the Reports "open" action when nothing has
+        been rendered yet). FREE — ``data.report_render`` only re-renders stored
+        data; no LLM, no network, no spend.
+        """
+        def _run() -> None:
+            try:
+                payload = data.report_render(self.state.repo)
+                if isinstance(payload, dict):
+                    payload = {**payload, "_open_after": open_after}
+                self.post_message(WorkDone("report", payload))
+            except Exception as exc:  # noqa: BLE001
+                self.post_message(WorkFailed("report", str(exc)))
+
+        self.run_worker(_run, thread=True, exclusive=False, group="report")
 
     # ── Guard-railed Scout actions (D = dossier · i = implement & test) ───────
     async def action_dossier(self) -> None:
@@ -670,6 +733,21 @@ class MissionControlApp(App[int]):
 
             title, lines = _lab_result_lines(message.payload)
             self.push_screen(ResultScreen(title, lines))
+        elif message.kind == "report":
+            from frontier_scout.tui3.overlays import ResultScreen
+
+            p = message.payload or {}
+            if p.get("ok"):
+                self._last_report_html = p.get("html") or None
+                # Honour a deferred open request (Reports "open" with nothing
+                # rendered yet) before showing the result screen.
+                if p.get("_open_after") and self._last_report_html:
+                    data.report_open(self._last_report_html)
+                title, lines = _report_result_lines(p)
+                self.push_screen(ResultScreen(title, lines))
+            else:
+                reason = str(p.get("reason") or "Could not render the report.")
+                self.push_screen(ResultScreen("Report", [f"[#ff6b6b]{reason}[/]"]))
         elif message.kind == "clear":
             from frontier_scout.tui3.overlays import ResultScreen
 
@@ -812,6 +890,25 @@ def _lab_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
     if p.get("detail"):
         lines.append("")
         lines.append(f"[#a9bccd]{p['detail']}[/]")
+    return title, lines
+
+
+def _report_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
+    """Format a rendered-report dict into ResultScreen title + markup lines."""
+    p = payload or {}
+    title = "Report rendered"
+    out_dir = str(p.get("dir") or "")
+    files = p.get("files") or []
+    lines: list[str] = []
+    if out_dir:
+        lines.append(f"[#6e8aa1]written to[/] [#7aa6ff]{_escape_markup(out_dir)}[/]")
+    if files:
+        lines.append("")
+        lines.append(f"[#6e8aa1]files ({len(files)})[/]")
+        for fn in files[:20]:
+            lines.append(f"  [#a9bccd]{_escape_markup(str(fn))}[/]")
+    lines.append("")
+    lines.append("[#24d6a8]Press o to open the report in your browser.[/]")
     return title, lines
 
 
