@@ -198,8 +198,11 @@ def _detail(app: Any, gl: dict[str, str], *, side: bool) -> Vertical:
                     f"[#6e8aa1]{v.classification}[/]")
         )
 
+    # Order follows the prototype's VerdictDetail exactly: What it is → why it
+    # fits → Concerns/✓ clean → Permission map → Next safe step → Actions → Ask →
+    # source. (No "Why it matters" or inline "Unknowns" — the prototype keeps
+    # unknowns in the Dossier only.)
     _section(app, box, "What it is", v.what)
-    _section(app, box, "Why it matters", v.why_it_matters)
     if v.fit_reasons:
         fit_head = "why this upgrade works for you" if v.kind == "dep" else "why it fits your repo"
         box.compose_add_child(_S(app, f"\n[#24d6a8 b]{fit_head}[/]"))
@@ -213,12 +216,38 @@ def _detail(app: Any, gl: dict[str, str], *, side: bool) -> Vertical:
             box.compose_add_child(_S(app, f"  [{ct}]{c.severity:<6}[/] [#a9bccd]{c.label}[/]{ev}"))
     else:
         box.compose_add_child(_S(app, f"\n[#24d6a8]{gl['check']} clean[/] [#6e8aa1]— no concerns flagged[/]"))
-    if v.unknowns:
-        box.compose_add_child(_S(app, "\n[#24d6a8 b]Unknowns[/]"))
-        for u in v.unknowns:
-            box.compose_add_child(_S(app, f"  [#6e8aa1]? {u}[/]"))
+
+    # Permission map — only when the verdict carries a capability manifest (deps
+    # don't), matching the prototype. Tone: red for certain/likely on the
+    # sensitive surfaces (shell/secrets/network), gold for possible, else muted.
+    if v.capabilities:
+        box.compose_add_child(_S(app, "\n[#24d6a8 b]Permission map[/]"))
+        cells = []
+        for key, status in v.capabilities:
+            danger = status in ("certain", "likely") and key in ("shell", "secrets", "network")
+            tone = "#ff6b6b" if danger else ("#e3c26f" if status == "possible" else "#6e8aa1")
+            cells.append(f"[#6e8aa1]{key}[/] [{tone}]{status}[/]")
+        box.compose_add_child(_S(app, "  " + "  ".join(cells)))
+
     if v.next_safe_step:
         box.compose_add_child(_S(app, f"\n[#24d6a8 b]Next safe step[/]\n  [#d9f7ff]{v.next_safe_step}[/]"))
+
+    # Action bar — clickable, routing to the same gated actions as the keys (§5).
+    # Tools only: lab/evaluate/implement don't apply to dependency upgrades.
+    if v.kind != "dep":
+        actions = Horizontal(classes="scout-actions")
+        for key, label, act in (
+            ("L", "lab", "action_lab"),
+            ("e", "evaluate", "action_evaluate"),
+            ("i", "implement", "action_implement"),
+            ("D", "dossier", "action_dossier"),
+            ("o", "open", "action_open_target"),
+        ):
+            actions.compose_add_child(ClickStatic(
+                app._paint(f"[#0b1117 on #24d6a8 b] {key} [/][#6e8aa1] {label}[/]  "),
+                lambda a=act: app.call_later(getattr(app, a)),
+                classes="scout-action"))
+        box.compose_add_child(actions)
 
     box.compose_add_child(_ask(app, gl, v))
     if v.source_url:
