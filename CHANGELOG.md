@@ -4,6 +4,17 @@
 
 - No unreleased changes yet.
 
+## 1.5.2 - 2026-06-01
+
+### Fixed
+
+- **Critical packaging fix** — the wheel and sdist now bundle the Textual
+  stylesheets (`tui2/theme.tcss`, `tui3/theme.tcss`). v1.5.1 and earlier shipped
+  without them, so any `pip install frontier-scout` crashed immediately on launch
+  with `StylesheetError: unable to read CSS file '.../theme.tcss'`. Added
+  `[tool.setuptools.package-data]` (and a `MANIFEST.in`) so non-`.py` package data
+  is always packaged. No code or behavior changes.
+
 ## 1.5.1 - 2026-06-01
 
 ### Redesigned README + release-pipeline hardening
