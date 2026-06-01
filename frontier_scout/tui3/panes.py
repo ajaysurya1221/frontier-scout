@@ -17,7 +17,7 @@ from textual.containers import Vertical
 from textual.widgets import Static
 
 from frontier_scout.tui3 import data
-from frontier_scout.tui3.kit import glyphs
+from frontier_scout.tui3.kit import bar, glyphs
 
 
 def build_pane(app: Any, tab: str) -> Vertical:
@@ -31,7 +31,7 @@ def _S(app: Any, markup: str, **kw: Any) -> Static:
 
 
 def _head(app: Any, title: str, sub: str) -> Static:
-    return _S(app, f"[#24d6a8 b]{title.upper()}[/]   [#6e8aa1]{sub}[/]", classes="panel-title")
+    return _S(app, f"[#24d6a8 b]{title}[/]\n[#6e8aa1]{sub}[/]")
 
 
 def _scout(app: Any) -> Vertical:
@@ -44,28 +44,58 @@ def _schedule(app: Any) -> Vertical:
     gl = glyphs(app.state.unicode)
     rows = data.schedules()
     box = Vertical()
-    box.compose_add_child(_head(app, "Schedule", f"{len(rows)} schedule(s) · headless coverage"))
+    box.compose_add_child(_head(
+        app, "Schedule",
+        "Headless coverage — scheduled scouts run in the background and notify "
+        "you only when verdicts change."))
     if not rows:
         box.compose_add_child(_S(app, "\n[#6e8aa1]No schedules yet.[/]"))
     for s in rows:
-        state = "[#24d6a8]on[/]" if not s["disabled"] else "[#6e8aa1]off[/]"
+        sw = f"[#24d6a8]{gl['dot']} on[/]" if not s["disabled"] else f"[#6e8aa1]{gl['ring']} off[/]"
+        live = "[#e3c26f]live scan[/]" if s["live"] else "[#24d6a8]dry-run[/]"
+        repo = s["repo"].split("/")[-1]
         box.compose_add_child(_S(
-            app, f"{gl['dot']} [#d9f7ff]{s['repo'].split('/')[-1]}[/]  [#6e8aa1]{s['human']}[/]  {state}"))
-    box.compose_add_child(_S(app, f"\n[#6e8aa1]crontab:[/] [#a9bccd]{data.crontab_line()}[/]"))
+            app,
+            f"\n{sw}  [#d9f7ff]{repo}[/]  {live}  [#6e8aa1]notify: {s['notification']}[/]"))
+        plural = "" if s["last_verdict_count"] == 1 else "s"
+        box.compose_add_child(_S(
+            app,
+            f"  [#6e8aa1]{gl['dot']} {s['human']}[/] [#6e8aa1 i]{s['cron_expr']}[/]\n"
+            f"  [#6e8aa1]last run {s['last_run']} {gl['pip']} "
+            f"{s['last_verdict_count']} verdict{plural}[/]"))
+    box.compose_add_child(_S(
+        app,
+        f"\n[#e3c26f]{gl['diamond']} one-time crontab install[/]\n"
+        "[#a9bccd]Frontier Scout never edits your crontab for you. Add this single "
+        "line once; the runner wakes every 15 min and fires only due schedules:[/]"))
+    box.compose_add_child(_S(app, f"  [#24d6a8]{data.crontab_line()}[/]"))
+    box.compose_add_child(_S(
+        app,
+        "[#6e8aa1]Dry-run by default — scheduled scouts never drain API quota you "
+        "forgot you configured. Flip a schedule to “live scan” to opt in.[/]"))
     return box
 
 
 def _receipts(app: Any) -> Vertical:
+    gl = glyphs(app.state.unicode)
     rows = data.receipts()
     box = Vertical()
-    box.compose_add_child(_head(app, "Receipts", f"{len(rows)} recorded · try-before-trust"))
+    box.compose_add_child(_head(
+        app, "Receipts",
+        "Every lab probe and trial leaves a recorded receipt — proof of what "
+        "happened before you trusted it."))
     if not rows:
         box.compose_add_child(_S(app, "\n[#6e8aa1]No receipts yet — run a lab or trial.[/]"))
+    tone = {"passed": "#24d6a8", "failed": "#ff6b6b", "report-only": "#7aa6ff"}
     for r in rows:
+        col = tone.get(r["status"], "#6e8aa1")
+        rt = f"  [#6e8aa1]{r['runtime']}[/]" if r["runtime"] else ""
         box.compose_add_child(_S(
             app,
-            f"[#a9bccd]{r['tool_name']}[/]  [#6e8aa1]{r['kind']}[/]  "
-            f"[#24d6a8]{r['status']}[/]  [#6e8aa1]{r['when']}[/]"))
+            f"\n[{col}]{gl['dot']}[/] [#a9bccd]{r['tool_name']}[/]  [#6e8aa1]{r['kind']}[/]  "
+            f"[{col}]{r['status']}[/]{rt}  [#6e8aa1]{r['when']}[/]"))
+        if r["note"]:
+            box.compose_add_child(_S(app, f"  [#6e8aa1]{r['note']}[/]"))
     return box
 
 
@@ -73,39 +103,62 @@ def _guard(app: Any) -> Vertical:
     gl = glyphs(app.state.unicode)
     gd = app.state.guard_cache
     box = Vertical()
-    box.compose_add_child(_head(app, "Guard", "Adoption Firewall · deterministic policy"))
+    box.compose_add_child(_head(
+        app, "Guard",
+        "Deterministic local policy checks — the Adoption Firewall. CI-friendly "
+        "exit codes, never modifies your repo."))
     if gd is None:
         box.compose_add_child(_S(
             app, "\n[#6e8aa1]No guard run yet. Press [#24d6a8 b]r[/] to run the adoption firewall.[/]"))
         return box
     if gd["fail"]:
-        mark = f"[#ff6b6b]{gl['cross']} exit 1[/]"
+        summary = (f"[#ff6b6b]{gl['cross']} exit 1[/] "
+                   f"[#6e8aa1]— {gd['high']} high, {gd['medium']} medium[/]")
     else:
-        mark = f"[#24d6a8]{gl['check']} exit 0[/]"
-    box.compose_add_child(_S(app, f"\n{mark}  [#6e8aa1]{gd['high']} high · {gd['medium']} medium[/]"))
+        summary = f"[#24d6a8]{gl['check']} exit 0[/] [#6e8aa1]— policy satisfied[/]"
+    box.compose_add_child(_S(app, f"\n{summary}"))
+    sev = {"high": "#ff6b6b", "medium": "#e3c26f", "low": "#6e8aa1"}
     for f in gd["findings"]:
+        col = sev.get(f["severity"], "#6e8aa1")
+        rule_col = "#24d6a8" if f["rule"] == "ok" else "#6e8aa1"
         box.compose_add_child(_S(
             app,
-            f"[#e3c26f]{f['severity']}[/] [#d9f7ff]{f['tool']}[/] [#6e8aa1]{f['rule']}[/] — {f['detail']}"))
+            f"\n[{col}]{f['severity']:<6}[/] [#d9f7ff]{f['tool']}[/] [{rule_col}]{f['rule']}[/]\n"
+            f"  [#a9bccd]{f['detail']}[/]"))
     return box
 
 
 def _packs(app: Any) -> Vertical:
+    gl = glyphs(app.state.unicode)
     rows = data.packs(app.state.languages)
     box = Vertical()
-    box.compose_add_child(_head(app, "Scout Packs", f"{len(rows)} curated source sets"))
+    box.compose_add_child(_head(
+        app, "Scout Packs",
+        "Living, curated source sets per domain — so you scout one focused feed, "
+        "not five."))
+    if not rows:
+        box.compose_add_child(_S(app, "\n[#6e8aa1]No packs available.[/]"))
+    maxv = max((p["sources"] for p in rows), default=1) or 1
     for p in rows:
+        filled, empty = bar(p["sources"], maxv, 14, unicode=app.state.unicode)
+        box.compose_add_child(_S(app, f"\n[#d9f7ff]{p['name']}[/]  [#6e8aa1]{p['slug']}[/]"))
+        if p["desc"]:
+            box.compose_add_child(_S(app, f"  [#6e8aa1]{p['desc']}[/]"))
         box.compose_add_child(_S(
             app,
-            f"[#d9f7ff]{p['name']}[/]  [#6e8aa1]{p['slug']}[/]  "
-            f"[#6e8aa1]{p['seeds']} seeds · {p['sources']} sources[/]"))
+            f"  [#6e8aa1]{p['seeds']} seeds {gl['vbar']} {p['sources']} sources[/]  "
+            f"[#24d6a8]{filled}[/][#152232]{empty}[/]"))
     return box
 
 
 def _deps(app: Any) -> Vertical:
+    gl = glyphs(app.state.unicode)
     rows = app.state.deps_cache
     box = Vertical()
-    box.compose_add_child(_head(app, "Dependencies", "Upgrades for packages you import"))
+    box.compose_add_child(_head(
+        app, "Dependencies",
+        "Meaningful upgrades for packages your repo actually imports — with why "
+        "the upgrade works."))
     if rows is None:
         box.compose_add_child(_S(
             app, "\n[#6e8aa1]No dependency scan yet. Press [#24d6a8 b]r[/] to scan your manifests.[/]"))
@@ -113,24 +166,56 @@ def _deps(app: Any) -> Vertical:
     if rows == ():
         box.compose_add_child(_S(app, "\n[#6e8aa1]No dependency findings.[/]"))
         return box
+    vhex = {"adopt": "#24d6a8", "trial": "#e3c26f", "assess": "#7aa6ff", "hold": "#ff6b6b"}
+    vlbl = {"adopt": "ADOPT", "trial": "TRIAL", "assess": "ASSESS", "hold": "HOLD"}
     for d in rows:
+        v = d["verdict"]
+        col = vhex.get(v, "#7aa6ff")
+        lbl = vlbl.get(v, "ASSESS")
         box.compose_add_child(_S(
             app,
-            f"[#d9f7ff]{d['tool_name']}[/] [#6e8aa1]{d['from_version']}→{d['to_version']}[/] "
+            f"\n[{col} b]{lbl:<6}[/] [#d9f7ff]{d['tool_name']}[/] "
+            f"[#6e8aa1]{d['from_version']}{gl['arrow']}{d['to_version']}[/] "
             f"[#6e8aa1]{d['classification']}[/]"))
+        if d["why"]:
+            box.compose_add_child(_S(app, f"  [#6e8aa1]{d['why']}[/]"))
     return box
 
 
 def _reports(app: Any) -> Vertical:
+    gl = glyphs(app.state.unicode)
     box = Vertical()
-    box.compose_add_child(_head(app, "Reports", "Render the latest scan into a shareable radar"))
+    box.compose_add_child(_head(
+        app, "Reports",
+        "Render the latest scan into a static, shareable radar. No server, no "
+        "telemetry — just files."))
+    verdicts = app.state.verdicts
+    box.compose_add_child(_S(
+        app,
+        f"\n[#6e8aa1]Frontier Scout — weekly radar {gl['pip']}[/] [#d9f7ff]{app.state.repo_name}[/]"))
+    if verdicts:
+        vhex = {"adopt": "#24d6a8", "trial": "#e3c26f", "assess": "#7aa6ff", "hold": "#ff6b6b"}
+        vlbl = {"adopt": "ADOPT", "trial": "TRIAL", "assess": "ASSESS", "hold": "HOLD"}
+        for v in verdicts[:4]:
+            col = vhex.get(v.verdict, "#7aa6ff")
+            lbl = vlbl.get(v.verdict, "ASSESS")
+            box.compose_add_child(_S(
+                app,
+                f"  [{col} b]{lbl:<6}[/] [#a9bccd]{v.tool_name}[/]  [#6e8aa1]{v.category}[/]"))
+        extra = len(verdicts) - 4
+        more = f"+ {extra} more {gl['pip']} " if extra > 0 else ""
+        box.compose_add_child(_S(app, f"  [#6e8aa1]{more}{app.state.funnel.scanned} sources covered[/]"))
+    else:
+        box.compose_add_child(_S(app, "  [#6e8aa1]No scan yet — render after scouting.[/]"))
     outs = [
         ("briefing.html", "executive radar — shareable, offline"),
         ("briefing.md", "markdown digest for PRs / chat"),
         ("verdicts.json", "machine-readable verdict payload"),
+        ("cost-breakdown.md", "per-pass token + dollar accounting"),
+        ("judge-trace.md", "why each verdict landed where it did"),
     ]
-    for f, d in outs:
-        box.compose_add_child(_S(app, f"[#a9bccd]{f}[/]  [#6e8aa1]{d}[/]"))
+    box.compose_add_child(_S(
+        app, "\n" + "\n".join(f"[#a9bccd]{fn}[/]  [#6e8aa1]{d}[/]" for fn, d in outs)))
     return box
 
 
