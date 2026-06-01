@@ -222,13 +222,41 @@ def _reports(app: Any) -> Vertical:
 def _settings(app: Any) -> Vertical:
     gl = glyphs(app.state.unicode)
     box = Vertical()
-    box.compose_add_child(_head(app, "Settings", "Providers · policy · profile · doctor"))
+    box.compose_add_child(_head(
+        app, "Settings",
+        "Providers, security posture, the repo profile that personalizes your "
+        "scout, and self-diagnostics."))
 
-    # Providers — cheap env/which checks, safe inline.
-    box.compose_add_child(_S(app, "\n[#24d6a8 b]Providers[/]"))
+    # Provider — cheap env/which checks, safe inline on the render path.
+    box.compose_add_child(_S(app, "\n[#24d6a8 b]Provider[/]"))
+    active = str(getattr(app.state, "provider", "") or "").lower()
     for p in data.providers():
-        dot = f"[#24d6a8]{gl['dot']}[/]" if p["present"] else f"[#6e8aa1]{gl['ring']}[/]"
-        box.compose_add_child(_S(app, f"{dot} [#d9f7ff]{p['name']}[/]  [#6e8aa1]{p['badge']} · {p['cost']}[/]"))
+        present = p["present"]
+        dot = f"[#24d6a8]{gl['dot']}[/]" if present else f"[#6e8aa1]{gl['ring']}[/]"
+        bcol = "#24d6a8" if present else "#6e8aa1"
+        mark = " [#24d6a8]· active[/]" if active and active in (p["id"].lower(), p["name"].lower()) else ""
+        box.compose_add_child(_S(
+            app,
+            f"{dot} [#d9f7ff]{p['name']}[/]  [{bcol}]{p['badge']}[/]  [#6e8aa1]{p['cost']}[/]{mark}"))
+        if p["detail"]:
+            box.compose_add_child(_S(app, f"    [#6e8aa1]{p['detail']}[/]"))
+
+    # Security posture — locked architectural invariants (each verified against
+    # the implementation) + the real read-only policy below.
+    box.compose_add_child(_S(app, "\n[#24d6a8 b]Security posture[/]"))
+    invariants = [
+        ("Repo source is never sent to an LLM",
+         "Only filenames + AST import names ever leave your machine."),
+        ("Fetched release text is treated as untrusted data",
+         "Public content is data, never instructions — injection is contained."),
+        ("Lab subprocesses run with a scrubbed environment",
+         "Stripped env, wall-clock timeout, size caps, secret scan."),
+    ]
+    for label, detail in invariants:
+        box.compose_add_child(_S(
+            app,
+            f"[#24d6a8]{gl['check']}[/] [#a9bccd]{label}[/]  [#6e8aa1]invariant[/]\n"
+            f"    [#6e8aa1]{detail}[/]"))
 
     cache = app.state.settings_cache
     if cache is None:
@@ -236,23 +264,33 @@ def _settings(app: Any) -> Vertical:
             app, "\n[#6e8aa1]Press [#24d6a8 b]r[/] to load policy, repo profile, and doctor.[/]"))
         return box
 
-    # Policy (read-only display; edit via the CLI).
-    pol = cache.get("policy", {})
-    box.compose_add_child(_S(app, "\n[#24d6a8 b]Policy[/]  [#6e8aa1](read-only)[/]"))
-    if pol.get("exists"):
-        strict = "[#24d6a8]on[/]" if pol.get("strict") else "[#6e8aa1]off[/]"
-        box.compose_add_child(_S(
-            app, f"  [#6e8aa1]strict[/] {strict}  [#6e8aa1]max risk[/] [#a9bccd]{pol.get('max_risk','medium')}[/]"))
-        allowed = ", ".join(pol.get("allowed_verdicts", []) or []) or "—"
-        blocked = ", ".join(pol.get("blocked_capabilities", []) or []) or "—"
-        box.compose_add_child(_S(app, f"  [#6e8aa1]allow[/] [#a9bccd]{allowed}[/]"))
-        box.compose_add_child(_S(app, f"  [#6e8aa1]block[/] [#a9bccd]{blocked}[/]"))
-    else:
-        box.compose_add_child(_S(app, "  [#6e8aa1]no policy file — defaults in effect[/]"))
+    # Policy (read-only — the REAL Policy model fields; edit via the CLI).
+    pol = cache.get("policy", {}) or {}
 
-    # Repo profile (read-only).
-    prof = cache.get("profile", {})
-    box.compose_add_child(_S(app, "\n[#24d6a8 b]Repo profile[/]"))
+    def onoff(flag: bool) -> str:
+        return "[#24d6a8]on[/]" if flag else "[#6e8aa1]off[/]"
+
+    box.compose_add_child(_S(
+        app, "\n[#24d6a8 b]Policy[/]  [#6e8aa1](read-only · edit via frontier-scout setup)[/]"))
+    box.compose_add_child(_S(
+        app,
+        f"  [#6e8aa1]strict[/] {onoff(pol.get('strict', False))}   "
+        f"[#6e8aa1]require trial for dangerous capabilities[/] "
+        f"{onoff(pol.get('require_trial_for_dangerous_capabilities', True))}"))
+    box.compose_add_child(_S(
+        app,
+        f"  [#6e8aa1]fail unknown capabilities[/] "
+        f"{onoff(pol.get('fail_unknown_capabilities', True))}   "
+        f"[#6e8aa1]allow adopt without lab (low risk)[/] "
+        f"{onoff(pol.get('allow_adopt_without_lab_for_low_risk', False))}"))
+    npacks = len(pol.get("packs", {}) or {})
+    if npacks:
+        box.compose_add_child(_S(app, f"  [#6e8aa1]packs configured[/] [#a9bccd]{npacks}[/]"))
+
+    # Repo profile (read-only — what personalizes the scout).
+    prof = cache.get("profile", {}) or {}
+    box.compose_add_child(_S(
+        app, "\n[#24d6a8 b]Repo profile[/]  [#6e8aa1]— what personalizes your scout[/]"))
     for label, key in (("languages", "languages"), ("frameworks", "frameworks"),
                        ("managers", "managers"), ("agent configs", "agent_configs")):
         vals = ", ".join(prof.get(key, []) or []) or "—"
@@ -269,11 +307,19 @@ def _settings(app: Any) -> Vertical:
         "fail": f"[#ff6b6b]{gl['cross']}[/]",
     }
     for c in cache.get("doctor", []):
-        mk = marks.get(c.get("status", "ok"), "·")
-        box.compose_add_child(_S(app, f"{mk} [#a9bccd]{c.get('name','')}[/]  [#6e8aa1]{c.get('detail','')}[/]"))
+        mk = marks.get(c.get("status", "ok"), gl["pip"])
+        box.compose_add_child(_S(
+            app, f"{mk} [#a9bccd]{c.get('name','')}[/]  [#6e8aa1]{c.get('detail','')}[/]"))
+        fix = c.get("fix", "")
+        if fix:
+            box.compose_add_child(_S(app, f"    [#6e8aa1]fix: {fix}[/]"))
 
+    # Danger row — real keybindings (discoverable affordances, not fake buttons).
     box.compose_add_child(_S(
-        app, "\n[#6e8aa1]edit policy / rebuild profile / reconfigure: use the CLI (frontier-scout setup).[/]"))
+        app,
+        f"\n[#6e8aa1]{gl['pip']} [#24d6a8 b]R[/] reconfigure   "
+        f"{gl['pip']} [#24d6a8 b]X[/] clear history   "
+        f"{gl['pip']} [#24d6a8 b]q[/] quit[/]"))
     return box
 
 

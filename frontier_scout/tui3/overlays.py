@@ -21,27 +21,34 @@ from frontier_scout.tui3 import data
 KEYS = [
     ("1–8", "jump to a tab"),
     ("j / k  ↑ ↓", "move selection"),
+    ("← / →", "change scope"),
     ("s", "run scout now"),
+    ("a", "ask (offline)"),
     ("g", "guard"),
+    ("r", "refresh tab"),
     ("D", "dossier"),
     ("i", "implement & test"),
     ("e", "evaluate"),
     ("L", "lab"),
+    ("p", "command palette"),
     ("n", "notifications"),
+    ("X", "clear history"),
+    ("R", "reconfigure"),
     ("u", "unicode ↔ ascii"),
     ("c", "color ↔ mono"),
-    ("?", "this help"),
+    ("?", "this help & glossary"),
     ("q", "quit"),
 ]
 
 GLOSSARY = [
-    ("ADOPT", "Strong fit, low risk, enough evidence. Safe to bring in."),
+    ("ADOPT", "Strong fit, low risk, enough readiness evidence. Safe to bring in."),
     ("TRIAL", "Promising but needs a hands-on try-before-trust run first."),
     ("ASSESS", "Watch and gather evidence; not yet worth integration time."),
     ("HOLD", "Don't adopt now — wrong fit, high risk, or unproven."),
-    ("Pack", "A living, curated set of sources for one domain (MCP, models…)."),
+    ("Scout Pack", "A living, curated set of sources for one domain (MCP, models…)."),
     ("Receipt", "A recorded proof of a lab/trial run — what happened, before trust."),
     ("Guard", "The Adoption Firewall: deterministic local policy checks, CI-friendly."),
+    ("Lab", "A throwaway hermetic sandbox to probe a tool with a scrubbed env."),
 ]
 
 
