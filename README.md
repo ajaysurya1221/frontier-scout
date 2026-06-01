@@ -272,7 +272,8 @@ Set `JUDGE_ENABLED=false` to skip the judge for the cheapest run on any provider
 - [x] **v1.1.0** — Global setup wizard, automation mode with cron scheduling, notifications, Go/Rust/Ruby coverage.
 - [x] **v1.4.0** — Universal LLM provider (Anthropic / OpenAI / Claude CLI / Codex CLI), RLAIF fit-grounding loop, honest per-provider costs.
 - [x] **v1.5.0** — Mission Control complete: 8-tab keyboard command center + command palette.
-- [ ] **v1.6** — Streaming subprocess output in Trials, multi-repo workspace, launchd / Windows Task Scheduler.
+- [x] **v1.6.0** — Mission Control v2: full mouse↔keyboard parity, Permission map, repo switcher.
+- [ ] **v1.7** — Streaming subprocess output in Trials, multi-repo workspace, launchd / Windows Task Scheduler.
 
 See [ROADMAP.md](ROADMAP.md) for the longer view.
 </details>

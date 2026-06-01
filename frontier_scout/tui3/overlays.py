@@ -18,6 +18,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, Static
 
 from frontier_scout.tui3 import data
+from frontier_scout.tui3.widgets import ClickStatic, LineClickStatic
 
 KEYS = [
     ("1–8", "jump to a tab"),
@@ -124,10 +125,11 @@ class ConfirmScreen(_Modal):
         yield self._static(f"[#24d6a8 b]{self._title}[/]")
         for line in self._lines:
             yield self._static(line)
-        yield self._static(
-            f"\n[#24d6a8 b]{self._confirm_key}[/] {self._confirm_label}"
-            f"   [#6e8aa1]esc cancel[/]"
-        )
+        paint = getattr(self.app, "_paint", lambda m: m)
+        yield ClickStatic(
+            paint(f"\n[#0b1117 on #24d6a8 b] {self._confirm_key} [/] [#24d6a8]{self._confirm_label}[/]"),
+            self.action_confirm, id="confirm-yes")
+        yield ClickStatic(paint("[#6e8aa1]esc cancel[/]"), self.action_dismiss, id="confirm-no")
 
     def on_key(self, event) -> None:  # noqa: ANN001 — Textual Key event
         """Honour a non-default confirm key (the class binding covers ``y``)."""
@@ -175,7 +177,9 @@ class TypedConfirmScreen(_Modal):
             yield self._static(line)
         yield Input(placeholder=f"type '{self._token}' to confirm", id="typed-confirm-input")
         yield Static("", id="typed-confirm-error")
-        yield self._static("\n[#6e8aa1]enter confirm · esc cancel[/]")
+        paint = getattr(self.app, "_paint", lambda m: m)
+        yield self._static("\n[#6e8aa1]enter confirm[/]")
+        yield ClickStatic(paint("[#6e8aa1]esc cancel[/]"), self.action_dismiss, id="typed-confirm-cancel")
 
     def on_mount(self) -> None:
         # Focus the input so the user can type immediately.
@@ -438,6 +442,7 @@ COMMANDS = [
     ("go", "Deps", "tab:deps", "6"),
     ("go", "Reports", "tab:reports", "7"),
     ("go", "Settings", "tab:settings", "8"),
+    ("go", "Switch repo", "act:switch_repo", "w"),
     ("scan", "Run scout now", "act:scout", "s"),
     ("scan", "Refresh this tab", "act:refresh", "r"),
     ("report", "Render report", "report:render", ""),
@@ -488,7 +493,7 @@ class CommandPalette(_Modal):
     def body(self) -> Iterable[Static]:
         yield Static("[#24d6a8 b]COMMAND PALETTE[/]  [#6e8aa1](esc to close)[/]")
         yield Input(placeholder="search commands & capabilities…", id="cp-q")
-        yield Static("", id="cp-results")
+        yield LineClickStatic("", {}, id="cp-results")
         yield self._static("\n[#6e8aa1]↑↓ ⏎ esc[/]")
 
     def on_mount(self) -> None:
@@ -520,11 +525,12 @@ class CommandPalette(_Modal):
             self._i = max(0, min(self._i, len(matches) - 1))
         else:
             self._i = 0
+        line_map: dict[int, Callable[[], None]] = {}
         if not matches:
             markup = "[dim]no match[/]"
         else:
             lines = []
-            for idx, (group, label, _aid, key) in enumerate(matches):
+            for idx, (group, label, aid, key) in enumerate(matches):
                 grp = f"[#6e8aa1]{group:<{_GROUP_W}}[/]"
                 key_col = f"  [#6e8aa1]{key}[/]" if key else ""
                 if idx == self._i:
@@ -533,11 +539,19 @@ class CommandPalette(_Modal):
                     )
                 else:
                     lines.append(f"  {grp}  [#a9bccd]{label}[/]{key_col}")
+                line_map[idx] = (lambda a=aid: self._run(a))
             markup = "\n".join(lines)
         try:
-            self.query_one("#cp-results", Static).update(self._paint(markup))
+            w = self.query_one("#cp-results", LineClickStatic)
+            w.set_line_map(line_map)
+            w.update(self._paint(markup))
         except Exception:  # noqa: BLE001 — Static may not be mounted yet
             pass
+
+    def _run(self, aid: str) -> None:
+        """Run a command — mouse-click parity for Enter: dismiss, then dispatch."""
+        self.dismiss()
+        self.app.run_palette_action(aid)
 
     def _paint(self, markup: str) -> str:
         """Paint markup for the app's color mode (mono strips color)."""
@@ -581,7 +595,63 @@ class CommandPalette(_Modal):
         if not matches:
             return
         idx = max(0, min(self._i, len(matches) - 1))
-        aid = matches[idx][2]
-        # Dismiss FIRST, then dispatch (mirrors the other modals' order).
-        self.dismiss()
-        self.app.run_palette_action(aid)
+        self._run(matches[idx][2])
+
+
+class RepoSwitcherScreen(_Modal):
+    """Switch the active repo. Driven by j/k + ⏎ (and mouse); on select the app
+    re-inits state for the repo and re-scouts. Honest preview of the multi-repo
+    workspace — it never changes only a label (handoff §9)."""
+
+    BINDINGS = [Binding("escape", "dismiss", "close", show=False)]
+
+    def __init__(self, repos: list[dict], current: str) -> None:
+        super().__init__()
+        self._repos = repos
+        self._sel = next((i for i, r in enumerate(repos) if r.get("path") == current), 0)
+
+    def body(self) -> Iterable[Static]:
+        yield self._static("[#24d6a8 b]Switch repo[/]")
+        yield self._static(
+            "[#6e8aa1]Point Mission Control at another repo. Re-scouts on switch — "
+            "verdicts are always relative to the repo you're in.[/]")
+        line_map = {i: (lambda p=r["path"]: self._choose(p)) for i, r in enumerate(self._repos)}
+        yield LineClickStatic(self._list_markup(), line_map, id="repo-list")
+        yield self._static(
+            "\n[#7aa6ff]◆ this surface previews the upcoming multi-repo workspace — "
+            "see the handoff for the backend it needs.[/]\n"
+            "[#6e8aa1]j/k move · ⏎ switch · esc cancel[/]")
+
+    def _list_markup(self) -> str:
+        if not self._repos:
+            return "[#6e8aa1]no known repos[/]"
+        lines = []
+        for i, r in enumerate(self._repos):
+            mark = "[#24d6a8 b]▸ [/]" if i == self._sel else "  "
+            lines.append(f"{mark}[#d9f7ff]{r.get('name', '?')}[/]  [#6e8aa1]{r.get('path', '')}[/]")
+        return "\n".join(lines)
+
+    def _repaint(self) -> None:
+        try:
+            self.query_one("#repo-list", LineClickStatic).update(self.app._paint(self._list_markup()))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def on_key(self, event) -> None:  # noqa: ANN001 — Textual Key event
+        if not self._repos:
+            return
+        if event.key in ("j", "down"):
+            event.stop()
+            self._sel = min(len(self._repos) - 1, self._sel + 1)
+            self._repaint()
+        elif event.key in ("k", "up"):
+            event.stop()
+            self._sel = max(0, self._sel - 1)
+            self._repaint()
+        elif event.key == "enter":
+            event.stop()
+            self._choose(self._repos[self._sel]["path"])
+
+    def _choose(self, path: str) -> None:
+        self.app.pop_screen()
+        self.app.switch_repo(path)

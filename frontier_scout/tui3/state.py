@@ -52,6 +52,10 @@ class Verdict:
     from_version: str = ""
     to_version: str = ""
     classification: str = ""
+    # Permission manifest (tools only): (capability_key, status) pairs, e.g.
+    # ("shell", "likely"). Empty for deps. Projected from the scan payload's
+    # verdict["permission_manifest"]["capabilities"] (scout.py / mcp_audit).
+    capabilities: tuple[tuple[str, str], ...] = ()
 
     @property
     def source(self) -> str:
@@ -76,6 +80,12 @@ class Verdict:
             for c in (d.get("concerns") or [])
             if isinstance(c, dict)
         )
+        manifest = d.get("permission_manifest") or {}
+        caps = manifest.get("capabilities") if isinstance(manifest, dict) else None
+        capabilities = (
+            tuple((str(k), str(v)) for k, v in caps.items())
+            if isinstance(caps, dict) and kind != "dep" else ()
+        )
         return cls(
             tool_name=str(d.get("tool_name", "—")),
             verdict=str(d.get("verdict", "assess")),
@@ -95,6 +105,7 @@ class Verdict:
             from_version=str(d.get("from_version", "")),
             to_version=str(d.get("to_version", "")),
             classification=str(d.get("classification", "")),
+            capabilities=capabilities,
         )
 
 

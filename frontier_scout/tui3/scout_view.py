@@ -36,6 +36,7 @@ from frontier_scout.tui3.kit import (
     verdict_label,
     verdict_tone,
 )
+from frontier_scout.tui3.widgets import ClickStatic
 
 _TONE = {
     "mint": "#24d6a8", "gold": "#e3c26f", "blue": "#7aa6ff", "red": "#ff6b6b",
@@ -103,21 +104,29 @@ def _hero(app: Any, gl: dict[str, str]) -> Static:
 
 
 # ── scan bar (scope chips) ───────────────────────────────────────────────────
-def _scanbar(app: Any, gl: dict[str, str]) -> Static:
-    chips = []
+def _scanbar(app: Any, gl: dict[str, str]) -> Horizontal:
+    # Each scope chip and the scout affordance are their own ClickStatic so a
+    # click routes to the same action the keys use (←/→ scope, s scout) — §5.
+    row = Horizontal(classes="scout-scanbar")
+    row.compose_add_child(_S(app, "[#6e8aa1]scope[/] "))
     for s in SCOPES:
         on = s == app.state.scope
-        chips.append(f"[#24d6a8 b]{s}[/]" if on else f"[#6e8aa1]{s}[/]")
+        row.compose_add_child(ClickStatic(
+            app._paint(f"[#24d6a8 b]{s}[/] " if on else f"[#6e8aa1]{s}[/] "),
+            lambda sc=s: app._set_scope(sc),
+            id=f"scope-{s}", classes="chip on" if on else "chip"))
     dry = " (dry-run)" if app.state.demo else ""
-    tail = f"[#24d6a8 b]s[/][#6e8aa1] scout{dry}[/]"
+    row.compose_add_child(ClickStatic(
+        app._paint(f"  [#24d6a8 b]s[/][#6e8aa1] scout{dry}[/]"),
+        lambda: app.run_scout(dry_run=app.state.demo), id="scout-scan"))
     bp = breakpoint_for(*app._term_size)
     if bp.name != "micro":
         f = app.state.funnel
-        tail += (
+        row.compose_add_child(_S(
+            app,
             f" [#6e8aa1]{gl['pip']} last {f.last_run} {gl['pip']} "
-            f"${f.cost:.2f} {gl['pip']} {f.duration:.0f}s[/]"
-        )
-    return _S(app, "[#6e8aa1]scope[/]  " + "  ".join(chips) + f"   {tail}", classes="scout-scanbar")
+            f"${f.cost:.2f} {gl['pip']} {f.duration:.0f}s[/]"))
+    return row
 
 
 # ── empty / first-run state ──────────────────────────────────────────────────
@@ -158,7 +167,11 @@ def _list(app: Any, gl: dict[str, str], verdicts: tuple, *, side: bool, full: bo
             )
         else:
             line = f"{marker} {tag} [#d9f7ff]{name}[/] [#6e8aa1]{v.fit}/{v.risk}[/]"
-        box.compose_add_child(_S(app, line, classes="row-sel" if on else ""))
+        box.compose_add_child(ClickStatic(
+            app._paint(line),
+            lambda i=i: app._select(i),
+            lambda i=i: (app._select(i), app.call_later(app.action_dossier)),
+            classes="row-sel" if on else ""))
     return box
 
 
@@ -185,8 +198,11 @@ def _detail(app: Any, gl: dict[str, str], *, side: bool) -> Vertical:
                     f"[#6e8aa1]{v.classification}[/]")
         )
 
+    # Order follows the prototype's VerdictDetail exactly: What it is → why it
+    # fits → Concerns/✓ clean → Permission map → Next safe step → Actions → Ask →
+    # source. (No "Why it matters" or inline "Unknowns" — the prototype keeps
+    # unknowns in the Dossier only.)
     _section(app, box, "What it is", v.what)
-    _section(app, box, "Why it matters", v.why_it_matters)
     if v.fit_reasons:
         fit_head = "why this upgrade works for you" if v.kind == "dep" else "why it fits your repo"
         box.compose_add_child(_S(app, f"\n[#24d6a8 b]{fit_head}[/]"))
@@ -200,12 +216,40 @@ def _detail(app: Any, gl: dict[str, str], *, side: bool) -> Vertical:
             box.compose_add_child(_S(app, f"  [{ct}]{c.severity:<6}[/] [#a9bccd]{c.label}[/]{ev}"))
     else:
         box.compose_add_child(_S(app, f"\n[#24d6a8]{gl['check']} clean[/] [#6e8aa1]— no concerns flagged[/]"))
-    if v.unknowns:
-        box.compose_add_child(_S(app, "\n[#24d6a8 b]Unknowns[/]"))
-        for u in v.unknowns:
-            box.compose_add_child(_S(app, f"  [#6e8aa1]? {u}[/]"))
+
+    # Permission map — only when the verdict carries a capability manifest (deps
+    # don't), matching the prototype. Tone: red for certain/likely on the
+    # sensitive surfaces (shell/secrets/network), gold for possible, else muted.
+    if v.capabilities:
+        box.compose_add_child(_S(app, "\n[#24d6a8 b]Permission map[/]"))
+        cells = []
+        for key, status in v.capabilities:
+            danger = status in ("certain", "likely") and key in ("shell", "secrets", "network")
+            tone = "#ff6b6b" if danger else ("#e3c26f" if status == "possible" else "#6e8aa1")
+            cells.append(f"[#6e8aa1]{key}[/] [{tone}]{status}[/]")
+        box.compose_add_child(_S(app, "  " + "  ".join(cells)))
+
     if v.next_safe_step:
         box.compose_add_child(_S(app, f"\n[#24d6a8 b]Next safe step[/]\n  [#d9f7ff]{v.next_safe_step}[/]"))
+
+    # Action bar — clickable, routing to the same gated actions as the keys (§5).
+    # Dossier + Open apply to every verdict (incl. deps); lab/evaluate/implement
+    # are tool-only. Don't gate the whole bar on kind — that would drop dep
+    # mouse parity for Dossier/Open.
+    specs = [("D", "dossier", "action_dossier"), ("o", "open", "action_open_target")]
+    if v.kind != "dep":
+        specs = [
+            ("L", "lab", "action_lab"),
+            ("e", "evaluate", "action_evaluate"),
+            ("i", "implement", "action_implement"),
+        ] + specs
+    actions = Horizontal(classes="scout-actions")
+    for key, label, act in specs:
+        actions.compose_add_child(ClickStatic(
+            app._paint(f"[#0b1117 on #24d6a8 b] {key} [/][#6e8aa1] {label}[/]  "),
+            lambda a=act: app.call_later(getattr(app, a)),
+            classes="scout-action"))
+    box.compose_add_child(actions)
 
     box.compose_add_child(_ask(app, gl, v))
     if v.source_url:
