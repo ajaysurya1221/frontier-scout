@@ -199,10 +199,13 @@ class MissionControlApp(App[int]):
         micro = self._bp_name == "micro"
         left = f"[#24d6a8]{g['radar_core']}[/] "
         if not micro:
-            left += "[#d9f7ff b]frontier scout[/] [#25405c]" + g["pip"] + "[/] "
+            left += "[#d9f7ff b]frontier scout[/] [#25405c]" + g["vbar"] + "[/] "
         left += f"[#a9bccd]{self.state.repo_name}[/]"
         if not micro:
-            left += f"  [#6e8aa1]{g['dot']} {self.state.provider}[/]"
+            prov = self.state.provider
+            if " " in prov:
+                prov = prov.split(" ", 1)[0].lower()
+            left += f"  [#6e8aa1]{g['dot']} {prov}[/]"
         right = ""
         if not micro:
             right += f"[#6e8aa1]{self.state.funnel.scanned} src {g['pip']} {self.state.funnel.window}[/]  "
@@ -218,8 +221,11 @@ class MissionControlApp(App[int]):
         elif bp == "narrow":
             hints = [("1-8", "tabs"), ("j/k", "move"), ("s", "scout"), ("?", "help"), ("q", "quit")]
         else:
-            hints = [("1-8", "tabs"), ("j/k", "move"), ("s", "scout"), ("g", "guard"),
-                     ("u", "ascii"), ("c", "mono"), ("?", "help"), ("q", "quit")]
+            hints = [
+                ("1-8", "tabs"), (f"j/k {g['ud']}", "move"), (g["enter"], "open"),
+                (g["lr"], "swipe"), ("a", "ask"), ("s", "scout"),
+                (f"{g['cmd']}K", "palette"), ("u/c", "ascii/mono"), ("?", "help"), ("q", "quit"),
+            ]
         parts = " ".join(f"[#24d6a8 b]{k}[/][#6e8aa1] {label}[/]" for k, label in hints)
         if self._scanning:
             tail = "[#24d6a8]scanning…[/]"
@@ -715,7 +721,7 @@ def _dossier_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
         lines.append(f"[#6e8aa1]next safe step[/]  [#a9bccd]{p['next_step']}[/]")
     if p.get("receipt_path"):
         lines.append("")
-        lines.append(f"[#6e8aa1]saved[/] [#5cc8ff]{p['receipt_path']}[/]")
+        lines.append(f"[#6e8aa1]saved[/] [#7aa6ff]{p['receipt_path']}[/]")
     return title, lines
 
 
@@ -723,7 +729,7 @@ def _implement_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
     """Format a projected implement dict into ResultScreen title + markup lines."""
     p = payload or {}
     status = str(p.get("status") or "error")
-    color = {"passed": "#24d6a8", "dry_run": "#5cc8ff", "prepared": "#5cc8ff",
+    color = {"passed": "#24d6a8", "dry_run": "#7aa6ff", "prepared": "#7aa6ff",
              "failed": "#e3c26f", "error": "#ff6b6b"}.get(status, "#a9bccd")
     title = "Implement & test"
     lines: list[str] = [f"[#6e8aa1]status[/] [{color} b]{status.upper()}[/]"]
@@ -740,7 +746,7 @@ def _implement_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
         lines.append("")
         lines.append(f"[#6e8aa1]files ({len(files)})[/]")
         for f in files[:20]:
-            lines.append(f"  [#5cc8ff]{f}[/]")
+            lines.append(f"  [#7aa6ff]{f}[/]")
     diff = str(p.get("diff") or "")
     if diff:
         lines.append("")
@@ -798,7 +804,7 @@ def _lab_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
             lines.append(f"[#6e8aa1]{_escape_markup(str(err))}[/]")
         return title, lines
     status = str(p.get("status") or "")
-    color = {"passed": "#24d6a8", "skipped": "#5cc8ff", "failed": "#e3c26f",
+    color = {"passed": "#24d6a8", "skipped": "#7aa6ff", "failed": "#e3c26f",
              "error": "#ff6b6b"}.get(status, "#a9bccd")
     lines: list[str] = [f"[#6e8aa1]status[/] [{color} b]{status.upper() or '−'}[/]"]
     if p.get("runtime"):

@@ -36,12 +36,14 @@ PALETTE = {
 UNI = {
     "bar_full": "█", "bar_empty": "░", "dot": "●", "ring": "○", "diamond": "◆",
     "arrow": "→", "check": "✓", "cross": "✕", "tri": "▸", "chev": "›",
-    "radar_core": "◉", "pip": "·", "bullet": "▪",
+    "radar_core": "◉", "pip": "·", "bullet": "▪", "vbar": "│",
+    "enter": "⏎", "lr": "←→", "ud": "↑↓", "cmd": "⌘",
 }
 ASCII = {
     "bar_full": "#", "bar_empty": ".", "dot": "*", "ring": "o", "diamond": "<>",
     "arrow": "->", "check": "v", "cross": "x", "tri": ">", "chev": ">",
-    "radar_core": "(o)", "pip": ".", "bullet": "-",
+    "radar_core": "(o)", "pip": ".", "bullet": "-", "vbar": "|",
+    "enter": "ent", "lr": "<>", "ud": "^v", "cmd": "^",
 }
 
 

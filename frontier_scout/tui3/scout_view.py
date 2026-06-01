@@ -41,7 +41,6 @@ _TONE = {
     "mint": "#24d6a8", "gold": "#e3c26f", "blue": "#7aa6ff", "red": "#ff6b6b",
     "muted": "#6e8aa1", "bright": "#d9f7ff", "text": "#a9bccd",
 }
-_LEVEL = {"high": 3, "medium": 2, "low": 1}
 SCOPES = ["all", "ai-devtools", "mcp", "deps"]
 _ASKS = ["Is it safe to adopt now?", "What is the main risk?", "What is the next safe step?"]
 
@@ -109,8 +108,15 @@ def _scanbar(app: Any, gl: dict[str, str]) -> Static:
     for s in SCOPES:
         on = s == app.state.scope
         chips.append(f"[#24d6a8 b]{s}[/]" if on else f"[#6e8aa1]{s}[/]")
-    tail = f"[#6e8aa1]{gl['arrow']} switch {gl['pip']} [#24d6a8 b]s[/][#6e8aa1] scout"
-    tail += " (dry-run)[/]" if app.state.demo else "[/]"
+    dry = " (dry-run)" if app.state.demo else ""
+    tail = f"[#24d6a8 b]s[/][#6e8aa1] scout{dry}[/]"
+    bp = breakpoint_for(*app._term_size)
+    if bp.name != "micro":
+        f = app.state.funnel
+        tail += (
+            f" [#6e8aa1]{gl['pip']} last {f.last_run} {gl['pip']} "
+            f"${f.cost:.2f} {gl['pip']} {f.duration:.0f}s[/]"
+        )
     return _S(app, "[#6e8aa1]scope[/]  " + "  ".join(chips) + f"   {tail}", classes="scout-scanbar")
 
 
@@ -134,7 +140,7 @@ def _empty(app: Any, gl: dict[str, str]) -> Static:
 def _list(app: Any, gl: dict[str, str], verdicts: tuple, *, side: bool, full: bool) -> Vertical:
     box = Vertical(classes="scout-list" + (" side" if side else ""))
     box.compose_add_child(
-        _S(app, f"[#6e8aa1]{len(verdicts)} verdict(s) {gl['pip']} scope {app.state.scope} {gl['pip']} j/k move[/]")
+        _S(app, f"[#6e8aa1]{len(verdicts)} verdict(s) {gl['pip']} ranked for {app.state.repo_name}[/]")
     )
     for i, v in enumerate(verdicts):
         on = i == app.state.sel
@@ -142,18 +148,16 @@ def _list(app: Any, gl: dict[str, str], verdicts: tuple, *, side: bool, full: bo
         tag = f"[{_hex(verdict_tone(v.verdict))} b]{verdict_label(v.verdict):<6}[/]"
         name = v.tool_name if len(v.tool_name) <= 22 else v.tool_name[:21] + "…"
         if full:
-            fb_f, fb_e = bar(_LEVEL.get(v.fit, 1), 3, 3, unicode=app.state.unicode)
-            fitbar = f"[{_hex(fit_tone(v.fit))}]{fb_f}[/][#152232]{fb_e}[/]"
-            fit = f"[{_hex(fit_tone(v.fit))}]{gl['dot']}[/]"
-            risk = f"[{_hex(risk_tone(v.risk))}]{gl['dot']}[/]"
-            ncon = len(v.concerns)
-            con = f"  [#e3c26f]{ncon}{gl['diamond']}[/]" if ncon else ""
+            fit_hex = _hex(fit_tone(v.fit))
+            risk_hex = _hex(risk_tone(v.risk))
             age = f"  [#6e8aa1]{v.age}[/]" if v.age else ""
-            line = f"{marker} {fitbar} {tag} [#d9f7ff]{name}[/]  [#6e8aa1]{v.category}[/]  {fit}{risk}{age}{con}"
+            line = (
+                f"{marker} {tag}  [#d9f7ff]{name:<22}[/]  [#6e8aa1]{v.category}[/]  "
+                f"[#6e8aa1]fit[/] [{fit_hex} b]{v.fit}[/] "
+                f"[#6e8aa1]· risk[/] [{risk_hex} b]{v.risk}[/]{age}"
+            )
         else:
-            ncon = len(v.concerns)
-            con = f" [#e3c26f]{ncon}{gl['diamond']}[/]" if ncon else ""
-            line = f"{marker} {tag} [#d9f7ff]{name}[/]{con}"
+            line = f"{marker} {tag} [#d9f7ff]{name}[/] [#6e8aa1]{v.fit}/{v.risk}[/]"
         box.compose_add_child(_S(app, line, classes="row-sel" if on else ""))
     return box
 
@@ -184,7 +188,8 @@ def _detail(app: Any, gl: dict[str, str], *, side: bool) -> Vertical:
     _section(app, box, "What it is", v.what)
     _section(app, box, "Why it matters", v.why_it_matters)
     if v.fit_reasons:
-        box.compose_add_child(_S(app, f"\n[#24d6a8 b]Why it fits {app.state.repo_name}[/]"))
+        fit_head = "why this upgrade works for you" if v.kind == "dep" else "why it fits your repo"
+        box.compose_add_child(_S(app, f"\n[#24d6a8 b]{fit_head}[/]"))
         for r in v.fit_reasons:
             box.compose_add_child(_S(app, f"  [#24d6a8]{gl['pip']}[/] [#a9bccd]{r}[/]"))
     if v.concerns:
