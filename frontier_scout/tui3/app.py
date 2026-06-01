@@ -458,9 +458,19 @@ class MissionControlApp(App[int]):
         if not rows:
             return
         idx = min(max(0, self.state.sched_sel), len(rows) - 1)
-        data.schedule_toggle(str(rows[idx]["id"]))
+        result = data.schedule_toggle(str(rows[idx]["id"]))
         if self.state.tab == "schedule":
             await self._render_pane()
+        # Toast the REAL new state so the keypress visibly "lands". On a failed
+        # toggle ``disabled`` is absent — say so rather than implying success.
+        try:
+            if result.get("ok"):
+                disabled = bool(result.get("disabled"))
+                self.notify(f"schedule {'disabled' if disabled else 'enabled'}")
+            else:
+                self.notify("could not toggle schedule", severity="warning")
+        except Exception:  # noqa: BLE001 — toast is best-effort feedback only
+            self._set("#mc-compass", self._compass_text())
 
     async def action_remove_schedule(self) -> None:
         """Remove the selected schedule (del/backspace) — FREE, simple confirm.
@@ -879,11 +889,21 @@ class MissionControlApp(App[int]):
     async def action_toggle_unicode(self) -> None:
         self.state = self.state.with_(unicode=not self.state.unicode)
         await self._render()
+        # Toast so the keypress visibly "lands" (no behaviour change).
+        try:
+            self.notify("unicode glyphs" if self.state.unicode else "ascii glyphs")
+        except Exception:  # noqa: BLE001 — toast is best-effort feedback only
+            self._set("#mc-compass", self._compass_text())
 
     async def action_toggle_color(self) -> None:
         self.state = self.state.with_(color=not self.state.color)
         self.screen.set_class(not self.state.color, "-mono")
         await self._render()
+        # Toast so the keypress visibly "lands" (no behaviour change).
+        try:
+            self.notify("color" if self.state.color else "mono")
+        except Exception:  # noqa: BLE001 — toast is best-effort feedback only
+            self._set("#mc-compass", self._compass_text())
 
     def action_help(self) -> None:
         from frontier_scout.tui3.overlays import HelpScreen

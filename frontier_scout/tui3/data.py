@@ -174,6 +174,22 @@ def notifications_list() -> list[dict[str, Any]]:
         return []
 
 
+def notifications_clear() -> int:
+    """Clear ALL notifications. Returns the count cleared. FREE local DB write.
+
+    A benign, explicit-keypress local write (no spend, no network): it only
+    deletes rows from ``~/.frontier-scout``'s notifications store. Defensive —
+    mirrors the ``notifications_list`` try/except style; degrades to 0 on any
+    backend hiccup rather than raising.
+    """
+    try:
+        from frontier_scout import notifications
+
+        return int(notifications.clear_all())
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 # ── Schedules ────────────────────────────────────────────────────────────────
 def schedules() -> list[dict[str, Any]]:
     try:

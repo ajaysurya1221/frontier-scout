@@ -355,15 +355,73 @@ class ResultScreen(_Modal):
 
 
 class NotificationsScreen(_Modal):
-    def body(self) -> Iterable[Static]:
-        yield Static("[#24d6a8 b]NOTIFICATIONS[/]")
-        rows = data.notifications_list()
+    """The notifications list, plus a real "clear all" (c) — a benign local write.
+
+    The list is rendered into ONE id-tagged Static (``#notif-list``) rather than
+    a Static-per-row, so "clear all" can repaint it to the empty state IN PLACE
+    via ``.update(...)``. That is the codebase's DuplicateIds-safe pattern: we
+    never remove + remount child widgets to refresh the list (Textual's
+    ``remove_children`` is deferred and would race re-mounted ids). ``c`` is
+    bound here so it shadows the global color-toggle ONLY while this modal is
+    open; closing it restores the global ``c``.
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "close", show=False),
+        Binding("q", "dismiss", "close", show=False),
+        Binding("c", "clear_all", "clear all", show=False),
+    ]
+
+    def _list_markup(self, rows: list[dict] | None = None) -> str:
+        """Render the notifications rows (or the empty state) as one markup blob."""
+        if rows is None:
+            rows = data.notifications_list()
         if not rows:
-            yield Static("\n[#6e8aa1]no notifications[/]")
+            return "[#6e8aa1]no notifications[/]"
+        lines = []
         for n in rows:
             dot = "[#24d6a8]●[/]" if not n["read"] else "[#6e8aa1]○[/]"
-            yield Static(f"{dot} [#a9bccd]{n['text']}[/]  [#6e8aa1]{n['repo']} · {n['when']}[/]")
-        yield Static("\n[#6e8aa1]esc to close[/]")
+            lines.append(
+                f"{dot} [#a9bccd]{n['text']}[/]  [#6e8aa1]{n['repo']} · {n['when']}[/]"
+            )
+        return "\n".join(lines)
+
+    def body(self) -> Iterable[Static]:
+        yield Static("[#24d6a8 b]NOTIFICATIONS[/]")
+        yield Static(self._list_markup(), id="notif-list")
+        yield Static("\n[#6e8aa1]c clear all · esc close[/]")
+
+    def action_clear_all(self) -> None:
+        """Clear every notification (benign local DB write), then repaint empty.
+
+        Refreshes the list to the EMPTY state IN PLACE (updates the single
+        ``#notif-list`` Static — never remove + remount rows, which would risk
+        DuplicateIds). Surfaces a toast with the count cleared, and best-effort
+        refreshes the main header bell/unread count. Never raises.
+        """
+        n = data.notifications_clear()
+        # Repaint the list to the empty state in place (DuplicateIds-safe).
+        try:
+            self.query_one("#notif-list", Static).update(self._list_markup([]))
+        except Exception:  # noqa: BLE001 — refresh must never crash the modal
+            pass
+        # Toast: confirm the keypress landed (guard the no-op case).
+        try:
+            if n > 0:
+                self.app.notify(f"cleared {n} notification(s)")
+            else:
+                self.app.notify("no notifications to clear")
+        except Exception:  # noqa: BLE001 — notify is best-effort feedback only
+            pass
+        # Best-effort: refresh the header bell / unread count on the main app.
+        try:
+            app = self.app
+            app.state = app.state.with_(unread=data._unread_count())
+            refresh = getattr(app, "_refresh_chrome", None)
+            if callable(refresh):
+                refresh()
+        except Exception:  # noqa: BLE001 — chrome refresh is best-effort only
+            pass
 
 
 # label, action-id (matches an app action_* or a tab id)
