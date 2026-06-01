@@ -46,6 +46,11 @@ jobs:
           path: dist/
       - name: Publish to PyPI (trusted publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Idempotent: a tag push re-runs publish, but the version may already
+          # be on PyPI (e.g. published earlier via workflow_dispatch). Skip it
+          # instead of failing on a duplicate upload.
+          skip-existing: true
 
   github_release:
     needs: build
