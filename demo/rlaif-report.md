@@ -1,91 +1,40 @@
 # RLAIF Report — Frontier Scout AI-radar reinforcement
 
-_Reinforcement Learning via AI Feedback. Claude Opus audits each live scout for scope discipline (no generic frameworks in the AI feed) and verdict quality. The loop is satisfied when two consecutive cycles surface zero scope false-positives._
+_Reinforcement Learning via AI Feedback. An AI judge audits each live scout for scope discipline (no generic frameworks in the AI feed) and verdict quality, applying the `audit_verdicts` rubric. The loop is satisfied when two consecutive cycles surface zero scope false-positives._
 
-- **Generated:** 2026-05-29 05:12 UTC
-- **Session:** `rlaif-v140-live`
-- **Cycles in this report:** 3
-- **Budget cap:** $55.00
-- **Cost of cycles in this report:** $1.1561
-- **Session ledger total (all reruns of this session id):** $4.0601
+> **This round's judge:** the in-session Claude Code agent (not the Opus API), applying the same `audit_verdicts` rubric verdict-by-verdict. The only LLM spend this round was the single live scout scan; the audit cost is $0.00 because the agent judged directly.
+
+- **Generated:** 2026-05-29 19:19 UTC
+- **Session:** `rlaif-v150-claude-judge-23f5a4`
+- **Cycles in this report:** 1
+- **Budget cap:** $3.00
+- **Cost of cycles in this report:** $0.3587
+- **Actual LLM spend this round:** $0.3587 — one live scout scan (score $0.1695 + verdict $0.0611 + judge $0.1281), recorded in the scout ledger (`.scratch/frontier-scout-home/costs.jsonl`). The audit was free: the in-session Claude agent judged directly, so $0.00 audit spend.
+- **Harness session-reader total:** $0.0000 — the harness sums `costs.jsonl` (cost_tracker ledger), which the scout does not write to; this is a known ledger-path split, not lost money.
 - **Status:** ⏳ in progress / needs another pass
 
 
 ## Cycle 1
 
 - Rating: **excellent**
-- Verdicts surfaced: 8
+- Verdicts surfaced: 7
 - Scope false-positives: 0
 - Quality issues: 0
-- Cost: scan $0.3675 + audit $0.0558
+- Cost: scan $0.3587 + audit $0.0000
 
-> All 8 verdicts are in-scope AI-native items (plugins, skills, MCP server, agent framework, model drops, agent-oriented code graph). No generic web framework / ORM / build-tool false positives. Fit reasoning is consistently grounded in the actual stack profile, and the two cases that could have been fit-overreach (pydantic-ai, chrome-devtools-mcp) explicitly disclose the non-match and frame relevance conditionally — exactly the honest 'don't miss a pin, don't lie about adoption' behavior the radar is designed for. Risk tiers (low for first-party Anthropic repos, medium for solo-maintainer skills, high for the SSRF security advisory) are sane. No re-announcements detected.
-
-
-<details><summary>Verdicts surfaced this cycle</summary>
-
-- **anthropics/claude-plugins-official** (adopt, skill) — Anthropic's official, curated directory of high-quality Claude Code plugins — the canonical first-party source.
-- **anthropics/knowledge-work-plugins** (trial, skill) — Anthropic-published open-source plugin repository targeting knowledge-worker workflows inside Claude Code.
-- **Claude Opus 4.8** (adopt, model_drop) — New Anthropic flagship model drop — Claude Opus 4.8 — available via the Anthropic API.
-- **colbymchenry/codegraph** (trial, dev_tool) — Pre-indexed local code knowledge graph that provides Claude Code and other coding agents a compressed structural view of
-- **mukul975/Anthropic-Cybersecurity-Skills** (assess, skill) — 754 structured cybersecurity skills for AI agents mapped to MITRE ATT&CK, NIST CSF 2.0, MITRE ATLAS, D3FEND, and NIST AI
-- **ChromeDevTools/chrome-devtools-mcp** (assess, mcp_server) — Official Chrome DevTools MCP server that exposes browser DevTools capabilities (DOM inspection, network, console, perfor
-- **pydantic/pydantic-ai v1.102.0** (hold, agent_framework) — Security patch for pydantic-ai (the agent framework) fixing an SSRF cloud-metadata blocklist bypass via IPv6 transition 
-- **deepseek-ai/DeepSeek-V4-Pro** (hold, model_drop) — DeepSeek's latest open-weight text-generation model published to HuggingFace with 5.2M downloads.
-
-</details>
-
-## Cycle 2
-
-- Rating: **excellent**
-- Verdicts surfaced: 8
-- Scope false-positives: 0
-- Quality issues: 1
-- Cost: scan $0.2959 + audit $0.0612
-
-> All 8 verdicts are in scope (models, MCP servers, Claude Code plugins/skills, agent frameworks, AI-native dev tools) — no generic web-framework or infra false positives. Quality is strong across the board: fit reasoning is grounded in the actual stack (Python, Claude Code config, anthropic/mcp tooling), risk tiers are sane, and the pydantic-ai verdict is a model example of the honest adjacent-pin disclosure pattern (explicitly distinguishing pydantic from pydantic-ai and framing relevance conditionally) — exactly what the radar should produce. One minor nit on verdict 1 (Opus 4.8): mildly assumes daily Claude Code use and leans on HN vote counts as a signal, but not enough to flag as a hard quality failure given .claude config is present.
+> All 7 verdicts are in-scope AI-native items: a first-party model drop, two agent-oriented code-knowledge-graph dev tools, the official Claude Code plugin registry, an Anthropic knowledge-work plugin set, a MITRE-mapped agent skill pack, and a security patch to the pydantic-ai agent framework. Zero generic-framework leaks — the canonical FastAPI-style false positive did not recur. Fit reasoning is grounded in the detected stack (python, pydantic, pytest, docker, github-actions, .claude/anthropic). The two verdicts that risked fit-overreach handle it exemplarily: pydantic-ai explicitly discloses it is NOT in the stack (distinguishing it from the pydantic data library) and frames the SSRF patch conditionally, and the knowledge-work plugins verdict openly rates its own fit as weaker (assess). Risk tiers are sane (low for first-party Anthropic, medium for solo-maintainer trials, high for the SSRF advisory). No re-announcements, contradictions, or unfalsifiable marketing. Clean cycle.
 
 
-**Quality issues:**
-
-- `Claude Opus 4.8` — Fit overreach: asserts 'If you're driving Claude Code daily' as a near-fact framing; stack shows anthropic + .claude config but daily usage is assumed. Minor, but the prose treats it as given rather than conditional. Borderline — main concern is the unfalsifiable 'HN points signal real-world signal, not just benchmarks' marketing-ish line.
-
-**Rubric recommendation:** Minor: tighten guidance on model-drop verdicts to avoid leaning on social-proof metrics (HN points/comments) as fit justification — prefer concrete capability deltas or pricing/latency changes. Also encourage conditional framing ('if you use Claude Code regularly...') rather than declarative ('if you're driving Claude Code daily') when usage frequency isn't directly evidenced in the stack profile.
+**Rubric recommendation:** Clean — no rubric or backstop change is required for scope or quality. Two soft, optional observations for a future pass (neither is a defect): (1) verdict 3 (claude-plugins-official) is categorised 'mcp_server' though it is a plugin/registry — a dedicated 'plugin_registry' (or 'skill') category would be more precise; (2) verdicts 1 and 2 are near-duplicate 'code-graph-for-agents' tools — a light dedupe/diversity nudge in the stratifier would broaden the feed.
 
 <details><summary>Verdicts surfaced this cycle</summary>
 
-- **anthropics/claude-plugins-official** (adopt, skill) — Anthropic-managed, curated directory of high-quality Claude Code plugins — the official first-party catalogue.
-- **Claude Opus 4.8** (adopt, model_drop) — Anthropic's latest Opus-tier model release, positioned as the top-capability Claude endpoint.
-- **anthropics/knowledge-work-plugins** (trial, skill) — Anthropic-published open-source plugin collection aimed at knowledge-work workflows inside Claude Code.
-- **colbymchenry/codegraph** (trial, dev_tool) — Pre-indexed, fully local code knowledge graph that lets Claude Code and similar agents navigate a codebase with fewer to
-- **Lum1104/Understand-Anything** (trial, dev_tool) — Converts any codebase into an interactive, searchable knowledge graph you can explore and query — integrates with Claude
-- **ChromeDevTools/chrome-devtools-mcp** (assess, mcp_server) — MCP server that exposes Chrome DevTools (DOM inspection, network, console, performance) to coding agents.
-- **pydantic/pydantic-ai v1.102.0** (hold, agent_framework) — Security patch for pydantic-ai (the agent framework) closing an IPv6-form SSRF bypass in URL validation.
-- **mukul975/Anthropic-Cybersecurity-Skills** (assess, skill) — 754 structured cybersecurity skills for AI agents mapped to MITRE ATT&CK, NIST CSF 2.0, and three other frameworks, publ
-
-</details>
-
-## Cycle 3
-
-- Rating: **excellent**
-- Verdicts surfaced: 9
-- Scope false-positives: 0
-- Quality issues: 0
-- Cost: scan $0.3169 + audit $0.0588
-
-> All 9 verdicts are genuinely AI-native (model drops, MCP servers, Claude/Codex skills, agent frameworks, agent-targeted dev tools). No FastAPI-class scope false positives. Fit reasoning is grounded throughout; the pydantic-ai verdict is a model example of honest disclosure — it surfaces an adjacent security release without pretending the package is adopted, exactly the 'don't miss a pin, don't lie about fit' behavior the radar promises. Risk tiers are sane (low for major-lab official drops, medium for community/agent-governance items). Next actions are concrete where applicable.
-
-
-<details><summary>Verdicts surfaced this cycle</summary>
-
-- **Claude Opus 4.8** (adopt, model_drop) — New flagship Claude model release from Anthropic, the latest in the Opus 4 series.
-- **anthropics/claude-plugins-official** (trial, skill) — Anthropic-managed directory of vetted, high-quality Claude Code plugins.
-- **anthropics/knowledge-work-plugins** (trial, skill) — Anthropic's open-source collection of Claude Code plugins aimed at knowledge-work workflows (research, writing, analysis
-- **ChromeDevTools/chrome-devtools-mcp** (trial, mcp_server) — Official Chrome DevTools MCP server that exposes browser debugging capabilities (DOM inspection, network, console, cover
-- **mukul975/Anthropic-Cybersecurity-Skills** (assess, skill) — 754 structured cybersecurity skills for AI agents, mapped to MITRE ATT&CK, NIST CSF 2.0, MITRE ATLAS, D3FEND, and NIST A
-- **microsoft/agent-governance-toolkit** (assess, agent_framework) — Microsoft toolkit for AI agent governance: policy enforcement, zero-trust identity, execution sandboxing, and reliabilit
-- **Lum1104/Understand-Anything** (assess, dev_tool) — Converts any codebase into an interactive, searchable knowledge graph you can explore and query via Claude Code or simil
-- **pydantic/pydantic-ai v1.102.0 (SSRF security fix)** (hold, agent_framework) — Security patch for pydantic-ai closing an SSRF bypass via IPv6 transition-form URL handling in FileUrl with force_downlo
-- **openai/skills** (trial, skill) — OpenAI's official Skills catalog for Codex — the OpenAI-side analogue to Anthropic's plugin/skill directories.
+- **Claude Opus 4.8** (adopt, model_drop) — Anthropic's latest Opus-tier model release, presumably a capability and efficiency step-up from Opus 4.x.
+- **colbymchenry/codegraph** (trial, dev_tool) — A pre-indexed, fully local code knowledge graph that reduces token usage and tool calls when Claude Code (and similar ag…
+- **Lum1104/Understand-Anything** (trial, dev_tool) — Converts any codebase into an interactive, searchable knowledge graph you can explore and query via Claude Code and simi…
+- **anthropics/claude-plugins-official** (trial, mcp_server) — Anthropic-maintained directory of high-quality, vetted Claude Code plugins — the official plugin registry.
+- **anthropics/knowledge-work-plugins** (assess, skill) — Anthropic's open-source collection of Claude Code plugins targeting knowledge-work use cases (research, writing, review)…
+- **mukul975/Anthropic-Cybersecurity-Skills** (assess, skill) — 754 structured cybersecurity skills for AI agents mapped to MITRE ATT&CK, NIST CSF 2.0, MITRE ATLAS, D3FEND, and NIST AI…
+- **pydantic/pydantic-ai v1.102.0** (hold, agent_framework) — Security patch for pydantic-ai (the agent framework), closing an SSRF cloud-metadata blocklist bypass via IPv6 transitio…
 
 </details>

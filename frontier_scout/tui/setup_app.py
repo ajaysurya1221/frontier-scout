@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import ClassVar
 
-from textual import on, work
+from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container

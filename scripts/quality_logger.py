@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -40,7 +40,7 @@ def log_run(component: str, **stats) -> None:
         crashed, error_type, error_msg
     """
     record = {
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
         "component": component,
         **stats,
     }

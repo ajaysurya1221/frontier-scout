@@ -4,6 +4,46 @@
 
 - No unreleased changes yet.
 
+## 1.5.0 - 2026-06-01
+
+### Mission Control — a dense, fully-operable TUI (new default)
+
+Bare `frontier-scout` now opens **Mission Control**: a tabbed command center
+that puts the whole adoption workflow in one keyboard-driven screen —
+**Scout · Schedule · Receipts · Guard · Packs · Deps · Reports · Settings**.
+
+- **Every capability is operable from inside the TUI.** Run an on-demand
+  scout; render and open a shareable report; refresh Scout Packs; create,
+  edit, run, enable/disable and remove schedules; run the Adoption Firewall
+  guard; scan dependencies; build dossiers; clear notifications; and reach
+  every command through a searchable command palette. You never drop to the
+  shell for anything the project supports.
+- **Nothing spends or hits the network silently.** The one money path (a
+  *live* scheduled scan) and the one network path (pack discovery against the
+  MCP registry) are each behind an explicit confirmation; everything else is a
+  local, offline, free operation, and `--demo` stays zero-spend by default.
+- **Flawless at any terminal size.** Responsive from a cramped ~40-column or
+  short panel up to 200+ columns — reflowing rail ↔ tab-strip and
+  master/detail ↔ stacked as space shrinks, redrawing cleanly on live resize,
+  and dropping to a single "resize to continue" line below the minimum.
+  Unicode/ASCII glyphs and colour/mono are both first-class fallbacks.
+- **Honest by construction.** The Settings security posture states only
+  invariants the code actually enforces — repo source is never sent to an LLM
+  (only filenames and AST import names leave your machine), fetched release
+  text is treated as untrusted data, and lab subprocesses run in a scrubbed
+  environment. Policy and the repo profile are shown read-only and edited via
+  the CLI.
+
+### The Briefing and classic TUIs remain available
+
+The calm, wizard-style **Briefing** — one finding at a time, an always-present
+one-line *compass*, and a monospace **radar** — is a flag away via
+`--ui briefing` (or `FRONTIER_SCOUT_UI=briefing`); the previous setup TUI via
+`--ui classic`. Like Mission Control, both are built on a single immutable
+`AppState` with worker → message async, so every flow ends in a result or
+error screen — never a frozen "loading forever", and errors are a screen, not
+a crash.
+
 ## 1.4.0 - 2026-05-29
 
 ### Universal provider + honest, grounded fit
@@ -612,3 +652,5 @@ scout-first workspace; every CLI capability now has a TUI surface.
 - Removed stale Slack/Lambda/S3 launch documentation from the public security and contribution model.
 - Added GitHub issue templates, PR template, and GitHub Actions CI alignment.
 - Added README visual preview assets, social preview artwork, and release metadata for the public v0.1 launch.
+- **Adoption-firewall hardening (security).** Four fail-open/silent-failure fixes found by the quality pass: (1) ``policy.load_policy`` now falls back to defaults on a malformed ``policy.toml`` instead of crashing; (2) ``mcp_audit`` capability detection now flags common real-world phrasings of shell/write/credential access (previously missed e.g. "run arbitrary commands", "writes files", "authentication"); (3) the dependency scanner no longer reports a vulnerable package as benign when the OSV advisory lookup fails — it surfaces an explicit ``advisory_lookup_failed`` hold; and (4) ``guard`` now fails closed (high ``capability.missing`` finding) for tools with no stored permission manifest instead of silently passing them.
+- **Code-review follow-ups (CodeRabbit on PR #18).** (1) ``frontier-scout setup --plain``/``--json`` without ``--repo`` no longer crashes with a ``TypeError`` (the ``--repo`` default is ``None`` to preserve the wizard path, and the ``Path()`` call now falls back to ``.``); (2) the ``mcp_audit`` shell-capability regex now also catches ``system("…")`` (the trailing ``\b`` previously prevented a match after ``(``); (3) Briefing TUI "open URL" actions restrict to ``http(s)`` schemes; (4) the actions menu guards against empty item lists.

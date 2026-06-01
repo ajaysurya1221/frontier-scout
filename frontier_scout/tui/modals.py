@@ -10,7 +10,6 @@ from textual.containers import Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
-
 _HELP_BODY = """\
 Navigation
   1 / 2             jump between Scout and Settings tabs

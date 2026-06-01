@@ -15,7 +15,6 @@ The backend reporter protocol must:
 from __future__ import annotations
 
 import io
-from pathlib import Path
 
 from frontier_scout.progress import (
     NullReporter,
@@ -23,7 +22,6 @@ from frontier_scout.progress import (
     RecordingReporter,
     StderrReporter,
 )
-
 
 # ---------------------------------------------------------------------------
 # Protocol + concrete implementations

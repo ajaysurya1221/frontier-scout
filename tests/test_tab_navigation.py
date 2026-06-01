@@ -18,8 +18,9 @@ def test_default_landing_tab_is_scout(tmp_path, monkeypatch):
     async def run() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
         diagnostics = setup_diagnostics(_seed(tmp_path / "repo"), ollama_timeout_s=0.001)
-        from frontier_scout.tui.setup_app import SetupApp
         from textual.widgets import TabbedContent
+
+        from frontier_scout.tui.setup_app import SetupApp
 
         app = SetupApp(diagnostics)
         async with app.run_test() as pilot:
@@ -86,8 +87,9 @@ def test_launch_with_tab_flag_lands_on_named_tab(tmp_path, monkeypatch):
     async def run() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
         diagnostics = setup_diagnostics(_seed(tmp_path / "repo"), ollama_timeout_s=0.001)
-        from frontier_scout.tui.setup_app import SetupApp
         from textual.widgets import TabbedContent
+
+        from frontier_scout.tui.setup_app import SetupApp
 
         app = SetupApp(diagnostics, initial_tab="settings")
         async with app.run_test() as pilot:
@@ -102,8 +104,9 @@ def test_unknown_tab_falls_back_to_scout(tmp_path, monkeypatch):
     async def run() -> None:
         monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
         diagnostics = setup_diagnostics(_seed(tmp_path / "repo"), ollama_timeout_s=0.001)
-        from frontier_scout.tui.setup_app import SetupApp
         from textual.widgets import TabbedContent
+
+        from frontier_scout.tui.setup_app import SetupApp
 
         app = SetupApp(diagnostics, initial_tab="bogus")
         async with app.run_test() as pilot:

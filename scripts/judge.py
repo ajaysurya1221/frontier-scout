@@ -23,10 +23,10 @@ from typing import Any
 
 from cost_tracker import log_call
 from llm_client import call_with_retry
-from prompts import cached_judge_blocks
 from tools import JUDGE_TOOL
 
 from frontier_scout.providers import DEEP, resolve_provider
+from prompts import cached_judge_blocks
 
 PROVIDER = None
 

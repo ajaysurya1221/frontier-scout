@@ -5,12 +5,15 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .packs import default_packs
 from .profile import build_scout_profile, stack_from_profile
 from .report import SAMPLE_FUNNEL, SAMPLE_VERDICTS
 from .store import save_scan
+
+if TYPE_CHECKING:
+    from frontier_scout.progress import ProgressReporter
 
 
 def detect_stack(repo: Path) -> dict[str, Any]:
@@ -29,7 +32,7 @@ def run_scan(
     persist: bool = True,
     pack: str | None = None,
     discover: bool = False,
-    reporter: "ProgressReporter | None" = None,
+    reporter: ProgressReporter | None = None,
 ) -> dict[str, Any]:
     """Run an AI-tool scout against the given repo.
 
@@ -173,7 +176,7 @@ def _concerns(verdict: dict[str, Any]) -> list[dict[str, Any]]:
                 ),
             }
         )
-    elif isinstance(cost, (int, float)) and cost > 0.05:
+    elif isinstance(cost, int | float) and cost > 0.05:
         concerns.append(
             {
                 "slug": "token_burn",
@@ -187,7 +190,7 @@ def _concerns(verdict: dict[str, Any]) -> list[dict[str, Any]]:
         )
 
     # abandoned — > 9 months since last release.
-    if isinstance(age, (int, float)) and age > 270:
+    if isinstance(age, int | float) and age > 270:
         concerns.append(
             {
                 "slug": "abandoned",

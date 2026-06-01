@@ -739,7 +739,7 @@ def list_guard_records() -> list[dict[str, Any]]:
                     ORDER BY tr.id DESC LIMIT 1
                 ) AS latest_decision
             FROM tools t
-            JOIN permission_manifests pm ON pm.id = (
+            LEFT JOIN permission_manifests pm ON pm.id = (
                 SELECT id FROM permission_manifests pm2
                 WHERE pm2.tool_id = t.id
                 ORDER BY pm2.id DESC LIMIT 1
@@ -750,6 +750,11 @@ def list_guard_records() -> list[dict[str, Any]]:
     records = []
     for row in rows:
         item = dict(row)
+        # LEFT JOIN: a tool with no stored manifest yields NULL manifest_json.
+        # Surface that explicitly so guard can fail CLOSED (a missing manifest
+        # means the capability surface was never captured — not that it's safe),
+        # matching evaluate_policy's ``capability.missing`` HOLD behaviour.
+        item["manifest_missing"] = item.get("manifest_json") is None
         item["dangerous_flags"] = json.loads(item.pop("dangerous_flags_json") or "[]")
         item["manifest"] = json.loads(item.pop("manifest_json") or "{}")
         records.append(item)

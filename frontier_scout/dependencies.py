@@ -9,7 +9,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, Field
@@ -17,7 +17,20 @@ from pydantic import BaseModel, Field
 from .profile import DependencySpec, build_scout_profile
 from .store import get_dep_cache, save_dep_cache, save_dependency_finding
 
+if TYPE_CHECKING:
+    from frontier_scout.progress import ProgressReporter
+
 Classification = Literal["security", "hardening", "breaking", "feature", "noise"]
+
+
+class AdvisoryLookupError(RuntimeError):
+    """Raised when the OSV advisory lookup cannot be completed.
+
+    Distinct from "no advisories found": a caller that treats this as an empty
+    result would silently report a vulnerable dependency as benign during an
+    OSV outage.
+    """
+
 
 OSV_ENDPOINT = "https://api.osv.dev/v1/query"
 PYPI_ENDPOINT = "https://pypi.org/pypi/{name}/json"
@@ -51,6 +64,11 @@ class DependencyFinding(BaseModel):
     verdict: Literal["trial", "assess", "hold"] = "assess"
     repo_fit: str = "medium"
     next_safe_step: str
+    #: True when the OSV advisory lookup could not be completed (network/parse
+    #: error). The finding then cannot be trusted as "clean": absence of
+    #: advisory_ids means "unknown", not "safe". Defaults False so persisted
+    #: legacy rows and the metadata/offline path read as a completed check.
+    advisory_lookup_failed: bool = False
 
 
 def classify_release_notes(
@@ -115,7 +133,7 @@ def run_dependency_scan(
     metadata: dict[str, Any] | None = None,
     max_items: int = 30,
     persist: bool = True,
-    reporter: "ProgressReporter | None" = None,
+    reporter: ProgressReporter | None = None,
 ) -> dict[str, Any]:
     """Scan pinned repo dependencies for meaningful upgrade findings.
 
@@ -192,19 +210,36 @@ def _finding_for_dependency(
         to_version=latest,
         text=notes,
     )
-    advisory_ids = _advisory_ids(dep, current, metadata)
+    advisory_lookup_failed = False
+    try:
+        advisory_ids = _advisory_ids(dep, current, metadata)
+    except AdvisoryLookupError:
+        # OSV is unreachable. We cannot claim this upgrade is clean, so flag the
+        # gap and never let the dep be dropped (the "noise + no advisory" path
+        # below) or read as benign. The advisory check simply did not run.
+        advisory_lookup_failed = True
+        advisory_ids = []
     if advisory_ids and classification.classification in {"feature", "noise"}:
         classification = classification.model_copy(
             update={"classification": "security", "confidence": max(classification.confidence, 0.85)}
         )
-    if classification.classification == "noise" and not advisory_ids:
+    if classification.classification == "noise" and not advisory_ids and not advisory_lookup_failed:
         return None
     verdict: Literal["trial", "assess", "hold"] = (
         "trial" if classification.classification in {"security", "hardening", "breaking"} else "assess"
     )
-    next_step = (
-        f"frontier-scout deps trial {dep.name} --from {current} --to {latest} --repo {repo}"
-    )
+    if advisory_lookup_failed:
+        # Surface, but do not over-state: not "security" (we have no evidence of
+        # a vuln), yet not silently clean either. Hold for a human re-run.
+        verdict = "hold" if verdict == "assess" else verdict
+        next_step = (
+            f"OSV advisory lookup failed for {dep.name} {current}→{latest}; "
+            f"re-run `frontier-scout deps` once OSV is reachable before trusting this as clean."
+        )
+    else:
+        next_step = (
+            f"frontier-scout deps trial {dep.name} --from {current} --to {latest} --repo {repo}"
+        )
     return DependencyFinding(
         repo_id=repo_id,
         repo=repo,
@@ -215,6 +250,7 @@ def _finding_for_dependency(
         classification=classification.classification,
         classifier_confidence=classification.confidence,
         advisory_ids=advisory_ids,
+        advisory_lookup_failed=advisory_lookup_failed,
         evidence_quotes=classification.evidence_quotes,
         verdict=verdict,
         repo_fit="high" if dep.name in {"langchain-core", "@modelcontextprotocol/sdk"} else "medium",
@@ -253,6 +289,15 @@ def _package_metadata(dep: DependencySpec, metadata: dict[str, Any] | None) -> d
 
 
 def _advisory_ids(dep: DependencySpec, version: str, metadata: dict[str, Any] | None) -> list[str]:
+    """Return OSV advisory IDs for ``dep@version``.
+
+    Raises :class:`AdvisoryLookupError` when the OSV query cannot be completed
+    (network/parse error). Callers MUST distinguish that from an empty list: an
+    empty list means "OSV answered: no advisories", whereas the exception means
+    "we never found out" — treating the latter as clean would silently hide a
+    real CVE during an OSV outage.
+    """
+
     key = f"{_osv_ecosystem(dep.ecosystem)}:{dep.name}:{version}"
     if metadata:
         vulns = ((metadata.get("osv") or {}).get(key) or {}).get("vulns") or []
@@ -268,8 +313,10 @@ def _advisory_ids(dep: DependencySpec, version: str, metadata: dict[str, Any] | 
                     "package": {"name": dep.name, "ecosystem": _osv_ecosystem(dep.ecosystem)},
                 },
             )
-        except RuntimeError:
-            return []
+        except RuntimeError as exc:
+            # Do NOT swallow into [] — that is indistinguishable from "no
+            # advisories" and would present a vulnerable dep as benign.
+            raise AdvisoryLookupError(str(exc)) from exc
         save_dep_cache("osv", key, cached, ttl_seconds=24 * 60 * 60)
     return [str(v.get("id")) for v in (cached.get("vulns") or []) if v.get("id")]
 

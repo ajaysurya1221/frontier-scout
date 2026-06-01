@@ -88,13 +88,25 @@ The TUI is the front door. Inside any repo:
 frontier-scout
 ```
 
-That lands you on Mission Control — two tabs only: **Scout** (the
-product) and **Settings**. The Scout tab shows one unified list of
-findings (AI tools + dependency upgrades), each row with full
-reasoning: *what* it is, *why* we suggest it, *why it fits your repo*,
-*risk reasoning*, and the *next safe step*. Press Enter to write a
-dry-run receipt. Run `frontier-scout setup` from anywhere to configure
-your LLM backend or schedule recurring scouts.
+As of **v1.5.0** that lands you on **Mission Control** — a dense, tabbed
+command center that puts the whole workflow on one keyboard-driven screen:
+**Scout · Schedule · Receipts · Guard · Packs · Deps · Reports · Settings**.
+Every capability is operable without leaving the TUI — run a scout, render
+and open a report, refresh packs, create/edit/run/remove schedules, run the
+Adoption Firewall guard, scan dependencies, build dossiers, and reach
+everything from a searchable command palette (`p`). Anything that could spend
+or hit the network (a *live* scheduled scan, pack discovery) sits behind an
+explicit confirmation. It is flawless at any terminal size — a cramped VS Code
+panel and a full-screen window are both first-class — with unicode/ASCII and
+colour/mono fallbacks.
+
+Prefer something calmer? **The Briefing** — a wizard-style scout that hands
+you one finding at a time, with an always-present one-line **compass** telling
+you exactly what you can do right now (`←/→` flip cards, `Enter` runs the
+primary action, `Esc` goes back) — is a flag away via `--ui briefing` (or
+`FRONTIER_SCOUT_UI=briefing`); the previous setup TUI via `--ui classic`. Run
+`frontier-scout setup` from anywhere to configure your LLM backend or schedule
+recurring scouts.
 
 Every other CLI command (`evaluate`, `trial`, `guard`, `report`,
 `packs`, `deps`, `incident`, `dossier`) still works for scripting and

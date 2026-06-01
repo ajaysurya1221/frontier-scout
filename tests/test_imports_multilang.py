@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from frontier_scout.imports import scan_imports
 
 
