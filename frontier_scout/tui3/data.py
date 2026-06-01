@@ -297,6 +297,60 @@ def schedule_run(schedule_id: str, *, dry_run: bool) -> dict[str, Any]:
         return {"ok": False, "reason": str(exc)}
 
 
+def schedule_create(
+    repo: str, cron_expr: str = "@daily", notification: str = "file", live: bool = False
+) -> dict[str, Any]:
+    """Create a new schedule. FREE local JSON write (no spend, no network).
+
+    Validates the cron expression first (``is_valid_cron_expr``) so a malformed
+    expr is rejected BEFORE ``add_schedule`` writes anything; then delegates to
+    ``scheduling.add_schedule`` (which appends + persists ``schedules.json``).
+    The editor screen already normalises the cron, but we re-validate here so
+    the wrapper is safe to call directly. Returns a render-ready dict; defensive
+    — any failure degrades to ``{"ok": False, "reason": …}`` rather than raising.
+    """
+    try:
+        from frontier_scout import scheduling
+
+        if not scheduling.is_valid_cron_expr(cron_expr):
+            return {"ok": False, "reason": "invalid cron"}
+        scheduling.add_schedule(
+            repo, cron_expr=cron_expr, notification=notification, live=bool(live)
+        )
+        return {"ok": True, "repo": _repo_name(repo), "cron": cron_expr, "live": bool(live)}
+    except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
+        return {"ok": False, "reason": str(exc)}
+
+
+def schedule_update(
+    schedule_id: str, repo: str, cron_expr: str, notification: str, live: bool
+) -> dict[str, Any]:
+    """Edit an existing schedule in place. FREE local JSON write.
+
+    Loads the schedules, finds the one with ``schedule_id``, mutates its
+    repo/cron_expr/notification/live fields (the dataclass is non-frozen) and
+    saves the whole list back. Returns ``{"ok": False, "reason": "not found"}``
+    when no schedule matches; otherwise ``{"ok": True, "repo": <basename>}``.
+    Defensive — any failure degrades to ``{"ok": False, "reason": …}``; never
+    raises.
+    """
+    try:
+        from frontier_scout import scheduling
+
+        rows = scheduling.load_schedules() or []
+        for s in rows:
+            if str(_g(s, "id")) == str(schedule_id):
+                s.repo = str(repo)
+                s.cron_expr = str(cron_expr)
+                s.notification = str(notification)
+                s.live = bool(live)
+                scheduling.save_schedules(rows)
+                return {"ok": True, "repo": _repo_name(repo)}
+        return {"ok": False, "reason": "not found"}
+    except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
+        return {"ok": False, "reason": str(exc)}
+
+
 # ── Receipts (real) ──────────────────────────────────────────────────────────
 def receipts(limit: int = 50) -> list[dict[str, Any]]:
     try:

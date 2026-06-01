@@ -1,9 +1,9 @@
 """Mission Control (tui3) — modal overlays.
 
 Esc-dismissable modal screens over the dimmed dashboard. This increment ships
-Help (keymap + glossary), Notifications (real, via the data adapter) and the
-command palette (pure navigation); the dossier, diff/result and schedule editor
-land in a later increment.
+Help (keymap + glossary), Notifications (real, via the data adapter), the
+command palette (pure navigation), the confirm/typed gates, the result viewer
+and the schedule create/edit form (``ScheduleEditorScreen``).
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
+from textual.containers import Horizontal, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Input, Static
 
@@ -200,6 +200,140 @@ class TypedConfirmScreen(_Modal):
 
     def on_key(self, event) -> None:  # noqa: ANN001 — Textual Key event
         """Ensure escape cancels even when the Input has focus."""
+        if event.key == "escape":
+            event.stop()
+            self.action_dismiss()
+
+
+class ScheduleEditorScreen(_Modal):
+    """A create/edit form for a schedule — FOUR text Inputs, Enter to save.
+
+    Generalises ``TypedConfirmScreen``'s single-Input pattern to a small form:
+    every field is a plain ``Input`` (no checkboxes) so Enter submits from any
+    field with no focus/Enter ambiguity. Creating/editing a schedule is a FREE
+    local JSON write — there is NO cost/network gate here. The boundary this
+    screen enforces is *validity*: ``on_save`` fires ONLY after every field
+    validates, and it receives a normalised dict (``cron_expr`` already passed
+    through ``normalise_cron_expr``; ``live`` already a bool). On ANY validation
+    failure the error Static is painted red and the modal stays open so the user
+    can fix it — the form never raises on bad input, only shows the inline error.
+    Escape always cancels (the ``on_key`` fallback guarantees it even while an
+    Input is focused).
+    """
+
+    BINDINGS = [
+        Binding("escape", "dismiss", "cancel", show=False),
+    ]
+
+    # field id -> (label, initial-dict key, fallback default)
+    _FIELDS = (
+        ("f-repo", "repo path", "repo", "."),
+        ("f-cron", "cron", "cron_expr", "@daily"),
+        ("f-notify", "notify (file/system/disabled)", "notification", "file"),
+        ("f-live", "live (yes/no)", "live", "no"),
+    )
+    _NOTIFY_CHOICES = {"file", "system", "disabled"}
+    _LIVE_YES = {"yes", "y", "true", "1", "live", "on"}
+    _LIVE_NO = {"no", "n", "false", "0", "dry", "off"}
+
+    def __init__(
+        self,
+        *,
+        title: str,
+        initial: dict,
+        on_save: Callable[[dict], None],
+    ) -> None:
+        super().__init__()
+        self._title = title
+        self._initial = initial or {}
+        self._on_save = on_save
+
+    def body(self) -> Iterable[Static]:
+        yield self._static(f"[#24d6a8 b]{self._title}[/]")
+        for fid, label, key, fallback in self._FIELDS:
+            value = str(self._initial.get(key, fallback))
+            row = Horizontal(classes="form-row")
+            row.compose_add_child(self._static(f"[#6e8aa1]{label}[/]"))
+            row.compose_add_child(Input(value=value, id=fid))
+            yield row
+        yield Static("", id="f-err")
+        yield self._static("\n[#6e8aa1]tab move · enter save · esc cancel[/]")
+
+    def on_mount(self) -> None:
+        # Focus the repo Input so the user can type immediately (mirrors
+        # TypedConfirmScreen's on_mount focus).
+        try:
+            self.query_one("#f-repo", Input).focus()
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _read(self, fid: str) -> str:
+        try:
+            return str(self.query_one(f"#{fid}", Input).value)
+        except Exception:  # noqa: BLE001
+            return ""
+
+    def _error(self, message: str) -> None:
+        """Surface an inline error WITHOUT dismissing — never raises."""
+        try:
+            self.query_one("#f-err", Static).update(f"[#ff6b6b]{message}[/]")
+        except Exception:  # noqa: BLE001
+            pass
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        # Enter in ANY field submits the whole form.
+        self._submit()
+
+    def _submit(self) -> None:
+        repo = self._read("f-repo").strip()
+        cron_raw = self._read("f-cron").strip()
+        notify = self._read("f-notify").strip().lower()
+        live_raw = self._read("f-live").strip().lower()
+
+        # repo: required.
+        if not repo:
+            self._error("repo path is required")
+            return
+
+        # cron: validate via the backend (defensive — accept raw on import error).
+        try:
+            from frontier_scout import scheduling
+
+            normalised = scheduling.normalise_cron_expr(cron_raw)
+            if not scheduling.is_valid_cron_expr(normalised):
+                self._error("invalid cron (try @daily, @weekly, or 0 7 * * 1-5)")
+                return
+        except Exception:  # noqa: BLE001 — backend unavailable: accept raw value
+            normalised = cron_raw or "@daily"
+
+        # notify: must be one of the known channels.
+        if notify not in self._NOTIFY_CHOICES:
+            self._error("notify must be file, system, or disabled")
+            return
+
+        # live: parse a permissive yes/no.
+        if live_raw in self._LIVE_YES:
+            live = True
+        elif live_raw in self._LIVE_NO:
+            live = False
+        else:
+            self._error("live must be yes or no")
+            return
+
+        # All valid — dismiss FIRST, then fire the callback (mirrors
+        # TypedConfirmScreen ordering so the modal is gone before the write).
+        cb = self._on_save
+        fields = {
+            "repo": repo,
+            "cron_expr": normalised,
+            "notification": notify,
+            "live": live,
+        }
+        self.app.pop_screen()
+        cb(fields)
+
+    def on_key(self, event) -> None:  # noqa: ANN001 — Textual Key event
+        """Ensure escape cancels even when an Input has focus."""
         if event.key == "escape":
             event.stop()
             self.action_dismiss()

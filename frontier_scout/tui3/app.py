@@ -74,6 +74,8 @@ class MissionControlApp(App[int]):
         Binding("d", "discover", "discover", show=False),
         Binding("t", "toggle_schedule", "toggle", show=False),
         Binding("delete,backspace", "remove_schedule", "remove", show=False),
+        Binding("N", "new_schedule", "new schedule", show=False),
+        Binding("E", "edit_schedule", "edit schedule", show=False),
     ]
 
     SCOPES = ["all", "ai-devtools", "mcp", "deps"]
@@ -241,12 +243,17 @@ class MissionControlApp(App[int]):
         # Packs: ⏎ refresh (offline) · d discover (network gate).
         elif self.state.tab == "packs" and bp != "micro":
             hints = [(g["enter"], "refresh"), ("d", "discover"), *hints]
-        # Schedule: j/k select · ⏎ run · t toggle · del remove.
+        # Schedule: j/k select · ⏎ run · t toggle · del remove · N new · E edit.
+        # The create/edit hints are only shown from "narrow" up (skipped on the
+        # already-trimmed micro compass) so the line stays readable.
         elif self.state.tab == "schedule" and bp != "micro":
-            hints = [
+            sched_hints = [
                 ("j/k", "select"), (g["enter"], "run"),
-                ("t", "toggle"), ("del", "remove"), *hints,
+                ("t", "toggle"), ("del", "remove"),
             ]
+            if bp != "narrow":
+                sched_hints += [("N", "new"), ("E", "edit")]
+            hints = [*sched_hints, *hints]
         parts = " ".join(f"[#24d6a8 b]{k}[/][#6e8aa1] {label}[/]" for k, label in hints)
         if self._scanning:
             tail = "[#24d6a8]scanning…[/]"
@@ -484,6 +491,123 @@ class MissionControlApp(App[int]):
                 confirm_label="remove",
             )
         )
+
+    # ── Schedule: new (N, FREE) · edit (E, FREE) ──────────────────────────────
+    async def action_new_schedule(self) -> None:
+        """Open the create-schedule form (N) — FREE local JSON write, no gate.
+
+        Schedule tab only. Pushes the ``ScheduleEditorScreen`` prefilled for a
+        NEW schedule (current repo, @daily, file notify, dry-run). Creating one
+        never spends and never reaches the network, so there is no cost/network
+        gate — the write happens synchronously in ``_on_schedule_create`` once
+        the form validates. No-op-safe off-tab.
+        """
+        if self.state.tab != "schedule":
+            return
+        from frontier_scout.tui3.overlays import ScheduleEditorScreen
+
+        self.push_screen(
+            ScheduleEditorScreen(
+                title="New schedule",
+                initial={
+                    "repo": self.state.repo,
+                    "cron_expr": "@daily",
+                    "notification": "file",
+                    "live": "no",
+                },
+                on_save=self._on_schedule_create,
+            )
+        )
+
+    def _on_schedule_create(self, fields: dict[str, Any]) -> None:
+        """Persist a new schedule from the form, then re-render + report.
+
+        FREE: ``data.schedule_create`` is a local JSON write (cron already
+        normalised + validated by the form). On success re-renders the Schedule
+        pane so the new row appears and shows a ResultScreen; on failure surfaces
+        the reason. Never raises.
+        """
+        from frontier_scout.tui3.overlays import ResultScreen
+
+        result = data.schedule_create(
+            fields["repo"],
+            cron_expr=fields["cron_expr"],
+            notification=fields["notification"],
+            live=fields["live"],
+        )
+        if result.get("ok"):
+            if self.state.tab == "schedule":
+                self.call_later(self._render_pane)
+            repo = str(result.get("repo") or "—")
+            cron = str(result.get("cron") or fields.get("cron_expr") or "")
+            live_note = "live scan" if result.get("live") else "dry-run"
+            self.push_screen(ResultScreen(
+                "Schedule created",
+                [f"[#d9f7ff]{repo}[/]",
+                 f"[#6e8aa1]{cron}[/]",
+                 (f"[#e3c26f]{live_note}[/]" if result.get("live")
+                  else f"[#24d6a8]{live_note}[/]")]))
+        else:
+            reason = str(result.get("reason") or "Could not create the schedule.")
+            self.push_screen(ResultScreen("Schedule", [f"[#ff6b6b]{reason}[/]"]))
+
+    async def action_edit_schedule(self) -> None:
+        """Open the edit form for the selected schedule (E) — FREE, no gate.
+
+        Schedule tab only, and only when schedules exist. Resolves the selected
+        schedule the same way the toggle/remove/run actions do (``data.schedules``
+        + a clamped ``sched_sel``), then pushes the ``ScheduleEditorScreen``
+        prefilled from it. The save callback edits the schedule in place — a free
+        local JSON write, no spend, no network. No-op-safe off-tab / when empty.
+        """
+        if self.state.tab != "schedule":
+            return
+        rows = data.schedules()
+        if not rows:
+            return
+        idx = min(max(0, self.state.sched_sel), len(rows) - 1)
+        sched = rows[idx]
+        sched_id = str(sched["id"])
+        from frontier_scout.tui3.overlays import ScheduleEditorScreen
+
+        self.push_screen(
+            ScheduleEditorScreen(
+                title="Edit schedule",
+                initial={
+                    "repo": str(sched["repo"]),
+                    "cron_expr": str(sched["cron_expr"]),
+                    "notification": str(sched["notification"]),
+                    "live": "yes" if sched["live"] else "no",
+                },
+                on_save=lambda f: self._on_schedule_update(sched_id, f),
+            )
+        )
+
+    def _on_schedule_update(self, schedule_id: str, fields: dict[str, Any]) -> None:
+        """Persist an edit from the form, then re-render + report. FREE; never raises."""
+        from frontier_scout.tui3.overlays import ResultScreen
+
+        result = data.schedule_update(
+            schedule_id,
+            fields["repo"],
+            fields["cron_expr"],
+            fields["notification"],
+            fields["live"],
+        )
+        if result.get("ok"):
+            if self.state.tab == "schedule":
+                self.call_later(self._render_pane)
+            repo = str(result.get("repo") or "—")
+            live_note = "live scan" if fields.get("live") else "dry-run"
+            self.push_screen(ResultScreen(
+                "Schedule updated",
+                [f"[#d9f7ff]{repo}[/]",
+                 f"[#6e8aa1]{fields.get('cron_expr') or ''}[/]",
+                 (f"[#e3c26f]{live_note}[/]" if fields.get("live")
+                  else f"[#24d6a8]{live_note}[/]")]))
+        else:
+            reason = str(result.get("reason") or "Could not update the schedule.")
+            self.push_screen(ResultScreen("Schedule", [f"[#ff6b6b]{reason}[/]"]))
 
     async def action_open_target(self) -> None:
         """The per-tab "open" action (o). Dispatch by the active tab — FREE.
