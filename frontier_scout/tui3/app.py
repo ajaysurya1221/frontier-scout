@@ -131,7 +131,17 @@ class MissionControlApp(App[int]):
         if self._size_override is not None:
             return self._size_override
         sz = self.size
-        return max(1, sz.width), max(1, sz.height)
+        w, h = sz.width, sz.height
+        if w <= 1 or h <= 1:
+            # Container not laid out yet (e.g. the very first paint before the
+            # first Resize event). Fall back to the real terminal size from the
+            # driver, never to the "too small" floor (handoff measurement note).
+            try:
+                cs = self.console.size
+                w, h = cs.width, cs.height
+            except Exception:  # noqa: BLE001
+                w, h = 80, 24
+        return max(1, w), max(1, h)
 
     async def on_resize(self, event: Any = None) -> None:
         size = getattr(event, "size", None)
