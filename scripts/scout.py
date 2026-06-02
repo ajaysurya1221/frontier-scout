@@ -18,7 +18,7 @@ Pipeline:
 Env:
     ANTHROPIC_API_KEY    required for live scans
     GITHUB_TOKEN         optional — raises GitHub API rate limit 60→5000/hr
-    JUDGE_ENABLED        ``false`` skips the Opus RLAIF judge (saves ~$0.20/scan)
+    JUDGE_ENABLED        ``false`` skips the deep-tier RLAIF judge (saves ~$0.20/scan)
     DRY_RUN              ``1`` → use fixture data only, no LLM calls
 """
 
@@ -56,7 +56,7 @@ from prompts import cached_system_blocks
 MODEL = "claude-sonnet-4-6"
 CUTOFF = datetime.now(UTC) - timedelta(days=7)
 
-# Hard cap to bound worst-case scoring cost (Sonnet ~$0.20 at this cap).
+# Hard cap to bound worst-case scoring cost (fast tier ~$0.20 at this cap).
 MAX_ITEMS = 220
 
 # Per-source-group quotas. Designed for the solo-AI-builder bullseye — heavy
@@ -880,7 +880,7 @@ def run_scan(
     final_verdicts: list[dict] = list(draft_verdicts)
 
     if _judge_enabled() and draft_verdicts:
-        print("⚖️  Judge pass (Opus)...")
+        print("⚖️  Judge pass (deep tier)...")
         judge_result, judge_cost = judge_mod.critique(
             draft_verdicts, scored, stack_profile
         )
@@ -889,7 +889,7 @@ def run_scan(
         )
     else:
         if not _judge_enabled():
-            print("  JUDGE_ENABLED=false — skipping Opus pass.")
+            print("  JUDGE_ENABLED=false — skipping the deep-tier judge pass.")
 
     final_verdicts = _attach_tags(final_verdicts, scored)
 

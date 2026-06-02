@@ -391,6 +391,24 @@ def _settings(app: Any) -> Vertical:
         if p["detail"]:
             box.compose_add_child(_S(app, f"    [#6e8aa1]{p['detail']}[/]"))
 
+    # Active tier models (defensive — never break the render path).
+    try:
+        from frontier_scout.providers import DEEP, FAST, resolve_provider
+
+        _p = resolve_provider(active) if active and active != "local" else None
+        if _p is not None:
+            _fast = _p.model(FAST) or "(CLI default)"
+            _deep = _p.model(DEEP) or "(CLI default)"
+            box.compose_add_child(
+                _S(
+                    app,
+                    f"    [#6e8aa1]tiers — scout (fast): [#a9bccd]{_fast}[/]  ·  "
+                    f"judge (deep): [#a9bccd]{_deep}[/][/]",
+                )
+            )
+    except Exception:  # noqa: BLE001 — Settings must never crash on provider probe
+        pass
+
     # Security posture — locked architectural invariants (each verified against
     # the implementation) + the real read-only policy below.
     box.compose_add_child(_S(app, "\n[#24d6a8 b]Security posture[/]"))

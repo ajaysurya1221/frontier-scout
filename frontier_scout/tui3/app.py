@@ -108,7 +108,8 @@ class MissionControlApp(App[int]):
 
     # ── lifecycle ────────────────────────────────────────────────────────────
     def compose(self) -> ComposeResult:
-        yield Static(id="mc-header")
+        # clicking the status bar opens the provider switcher (repo switch stays on 'w')
+        yield ClickStatic("", self.action_switch_provider, id="mc-header")
         with Container(id="mc-body"):
             # Rail/tabstrip are per-tab ClickStatic cells (one clickable widget
             # per tab — handoff §5), repainted in place on reflow (never remounted,

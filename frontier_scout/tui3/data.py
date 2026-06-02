@@ -203,6 +203,32 @@ def providers() -> list[dict[str, Any]]:
             "detail": "OPENAI_API_KEY " + ("found" if o else "not set"),
         },
         {
+            "id": "openai-compatible",
+            "name": "Custom endpoint",
+            "present": bool(
+                os.environ.get("FRONTIER_SCOUT_OPENAI_BASE_URL")
+                or os.environ.get("OPENAI_BASE_URL")
+            ),
+            "badge": (
+                "configured"
+                if (
+                    os.environ.get("FRONTIER_SCOUT_OPENAI_BASE_URL")
+                    or os.environ.get("OPENAI_BASE_URL")
+                )
+                else "not set"
+            ),
+            "cost": "your gateway",
+            "detail": "OPENAI_BASE_URL "
+            + (
+                "set"
+                if (
+                    os.environ.get("FRONTIER_SCOUT_OPENAI_BASE_URL")
+                    or os.environ.get("OPENAI_BASE_URL")
+                )
+                else "not set"
+            ),
+        },
+        {
             "id": "codex-cli",
             "name": "Codex CLI",
             "present": cx,
