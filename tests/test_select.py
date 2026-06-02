@@ -54,3 +54,11 @@ def test_auto_single(monkeypatch):
 
 def test_none_available():
     assert sel.select().reason == "none"
+
+
+def test_current_provider_caches_and_resets(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "y")  # pragma: allowlist secret
+    first = sel.current_provider()
+    assert first is sel.current_provider()      # cached (same object)
+    sel.reset_provider()
+    assert sel.current_provider() is not first  # rebuilt after reset

@@ -45,7 +45,7 @@ from llm_client import call_with_retry
 from tools import SCORE_ITEMS_TOOL, VERDICT_TOOL
 from validators import validate_verdicts
 
-from frontier_scout.providers import FAST, resolve_provider
+from frontier_scout.providers import FAST
 from prompts import cached_system_blocks
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -553,15 +553,12 @@ def filter_by_seen(
 # ── LLM passes ──────────────────────────────────────────────────────────────
 
 
-_PROVIDER = None
-
-
 def _provider():
-    """Resolve (once) the active LLM backend for this scan."""
-    global _PROVIDER
-    if _PROVIDER is None:
-        _PROVIDER = resolve_provider()
-    return _PROVIDER
+    """The live provider — resolved via the shared selection ladder so a saved
+    preference (and TUI runtime switches) are honored here too."""
+    from frontier_scout.providers.select import current_provider
+
+    return current_provider()
 
 
 def score_items(
