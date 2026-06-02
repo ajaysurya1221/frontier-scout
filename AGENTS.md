@@ -8,7 +8,7 @@ humans and coding agents landing on the repo.
 
 ```text
 frontier_scout/     # installable CLI package
-  cli.py            # argparse entry point: init, demo, scan, report, lab
+  cli.py            # entry point + --ui/--provider/--demo; subcommands: init setup demo scan report lab evaluate dossier trial guard packs deps policy incident profile
   scout.py          # stack detection + CLI-facing scan wrapper
   report.py         # static HTML/Markdown report renderer + demo fixtures
   store.py          # local SQLite store under ~/.frontier-scout
@@ -20,6 +20,9 @@ frontier_scout/     # installable CLI package
   guard.py          # local/CI policy guard output
   profile.py        # local Scout Profile for repo-aware recommendations
   dossier.py        # adoption dossiers with fit, risk, gaps, and next steps
+  tui3/             # Mission Control TUI (Textual) — the DEFAULT `frontier-scout` UX
+  tui2/  tui/       # alternative UIs: --ui briefing (tui2) / --ui classic (tui)
+  providers/        # LLM provider abstraction: anthropic / openai / claude-cli / codex-cli
 
 scripts/            # mature engine modules
   scout.py          # fetch -> score -> verdict -> judge -> validate
@@ -41,6 +44,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 
+frontier-scout                 # opens Mission Control TUI (default); --ui briefing|classic, --demo offline
 frontier-scout demo
 frontier-scout init --repo .
 frontier-scout profile --repo .
@@ -69,7 +73,7 @@ GitHub REST rate limits.
 - **CLI/report first.** Do not make plugin setup the first-run requirement.
 - **Local state stays local.** Runtime files belong in `~/.frontier-scout` or ignored scratch directories.
 - **Verdict schema is load-bearing.** `category`, `risk`, `fit`, `readiness`, and `source_url` must stay aligned across prompts, tools, validators, reports, and tests.
-- **All Anthropic calls go through `scripts/llm_client.py`.**
+- **All LLM calls go through the provider abstraction** (`frontier_scout/providers/`): pin one backend with `--provider anthropic|openai|claude-cli|codex-cli`. Needs exactly one; `--demo`/offline needs none.
 - **Lab subprocesses must stay hermetic.** Reuse `_hermetic_base_env()`; never pass `os.environ` into untrusted package code.
 - **Do not auto-install recommendations.** The lab tests; the user chooses.
 - **Adoption Firewall is evidence, not autonomy.** `evaluate`, `trial`, and
@@ -86,6 +90,19 @@ GitHub REST rate limits.
 3. `frontier-scout demo` regenerates clean demo artifacts.
 4. README, ROADMAP, SECURITY, and CONTRIBUTING match any user-visible behavior.
 5. No secrets or noisy runtime ledgers are introduced in git diff.
+
+## Release
+
+1. Bump `version` in `pyproject.toml` + `frontier_scout/__init__.py`; add a `CHANGELOG.md` entry.
+2. PR → CI `test` (full suite + `detect-secrets --all-files` secret scan + CodeQL).
+3. `main` is protected (1 review + `enforce_admins`, **squash-only**); merge via the
+   relax→merge→restore dance on `required_approving_review_count` (1→0→1; always restore).
+4. Tag `vX.Y.Z` → `release.yml` publishes the GitHub Release (draft→publish) + PyPI
+   (trusted publishing, gated by the `pypi` deployment environment — approve the run).
+5. Non-`.py` data (`tui3/theme.tcss`) must be in `[tool.setuptools.package-data]` + `MANIFEST.in`,
+   or the installed TUI crashes on launch — verify the **built wheel** bundles the `.tcss`.
+6. Never reuse a burned version: GitHub immutable-releases permanently reserve a deleted tag
+   name (`v1.5.0` is dead); bump to the next patch.
 
 ## Ask before changing
 
