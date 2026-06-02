@@ -23,7 +23,7 @@ from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import Static
 
 from frontier_scout.tui3 import data
-from frontier_scout.tui3.kit import MIN_COLS, MIN_ROWS, breakpoint_for, glyphs, mono
+from frontier_scout.tui3.kit import MIN_COLS, MIN_ROWS, asciify, breakpoint_for, glyphs, mono
 from frontier_scout.tui3.messages import Progress, TuiReporter, WorkDone, WorkFailed
 from frontier_scout.tui3.state import AppState
 from frontier_scout.tui3.widgets import ClickStatic
@@ -211,7 +211,10 @@ class MissionControlApp(App[int]):
         self._paint_nav()
 
     def _paint(self, markup: str) -> str:
-        """Apply the color fallback: pass markup through, or strip color in mono."""
+        """Apply the responsive fallbacks: fold glyphs to ASCII when unicode mode
+        is off, then strip color in mono mode. Every renderable goes through here."""
+        if not self.state.unicode:
+            markup = asciify(markup)
         return markup if self.state.color else mono(markup)
 
     def _set(self, selector: str, markup: str) -> None:
@@ -1017,13 +1020,13 @@ class MissionControlApp(App[int]):
         elif val == "refresh":
             self.call_later(self.action_refresh)
         elif val == "dossier":
-            self.call_later(self.action_dossier)
+            self.call_later(self._goto_then_async, "scout", self.action_dossier)
         elif val == "implement":
-            self.call_later(self.action_implement)
+            self.call_later(self._goto_then_async, "scout", self.action_implement)
         elif val == "evaluate":
-            self.call_later(self.action_evaluate)
+            self.call_later(self._goto_then_async, "scout", self.action_evaluate)
         elif val == "lab":
-            self.call_later(self.action_lab)
+            self.call_later(self._goto_then_async, "scout", self.action_lab)
         elif val == "switch_repo":
             self.call_later(self.action_switch_repo)
         elif val == "clear":
@@ -1119,14 +1122,15 @@ class MissionControlApp(App[int]):
         self._set("#mc-compass", f"[#24d6a8]scanning…[/] [#6e8aa1]{message.text}[/]")
 
     async def on_work_done(self, message: WorkDone) -> None:
-        self._scanning = False
         if message.kind == "scout":
             r = message.payload
             # Drop a stale result from a previous repo (a switch raced an
-            # in-flight scout) — never overwrite the new repo's state.
+            # in-flight scout) — never overwrite the new repo's state, and leave
+            # _scanning set so the new repo's still-running scout keeps the guard.
             if r.get("repo") and r["repo"] != self.state.repo:
                 self._refresh_chrome()
                 return
+            self._scanning = False
             self.state = self.state.with_(
                 verdicts=r["verdicts"], funnel=r["funnel"],
                 languages=r["languages"] or self.state.languages, sel=0)

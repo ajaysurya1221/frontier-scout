@@ -6,7 +6,7 @@ import asyncio
 from textual.widgets import Static
 
 from frontier_scout.tui3.app import MissionControlApp
-from frontier_scout.tui3.state import Verdict
+from frontier_scout.tui3.state import AppState, Verdict
 
 
 def _run(coro):
@@ -95,3 +95,43 @@ def test_detail_no_permission_map_for_dep():
             assert "dossier" in txt and "open" in txt, "deps must keep the Dossier/Open actions"
 
     _run(go())
+
+
+def test_permission_map_flags_real_dangerous_keys():
+    """Uses the REAL backend capability keys/statuses: credential/write 'likely'
+    must render red (they're in DANGEROUS_KEYS); read 'unlikely' stays muted."""
+    async def go():
+        app = MissionControlApp(demo=True)
+        async with app.run_test(size=(160, 50)) as pilot:
+            await pilot.pause()
+            v = _tool_verdict(permission_manifest={"capabilities": {
+                "credential": "likely", "write": "likely",
+                "read": "unlikely", "network": "possible"}})  # pragma: allowlist secret
+            app.state = app.state.with_(tab="scout", scope="all", verdicts=(v,), sel=0)
+            await app._render_pane()
+            await pilot.pause()
+            txt = _pane_text(app)
+            assert "credential[/] [#ff6b6b]likely" in txt, "credential:likely must render red"
+            assert "write[/] [#ff6b6b]likely" in txt, "write:likely must render red"
+            assert "read[/] [#6e8aa1]unlikely" in txt, "read:unlikely must render muted"
+
+    _run(go())
+
+
+def test_scope_chips_filter_by_derived_pack():
+    """ai-devtools & mcp chips work: pack is derived (MCP→mcp, else→ai-devtools)."""
+    mcp = Verdict.from_payload({
+        "tool_name": "x/mcp", "verdict": "trial", "fit": "high", "risk": "low",
+        "category": "MCP Server", "source_url": "", "what": "", "why_it_matters": "",
+        "fit_reasons": [], "concerns": [], "next_safe_step": ""})
+    fw = Verdict.from_payload({
+        "tool_name": "y/fw", "verdict": "adopt", "fit": "high", "risk": "low",
+        "category": "Agent Framework", "source_url": "", "what": "", "why_it_matters": "",
+        "fit_reasons": [], "concerns": [], "next_safe_step": ""})
+    assert mcp.pack == "mcp"
+    assert fw.pack == "ai-devtools"
+    st = AppState(verdicts=(mcp, fw))
+    assert [v.tool_name for v in st.with_(scope="mcp").scoped_verdicts] == ["x/mcp"]
+    assert [v.tool_name for v in st.with_(scope="ai-devtools").scoped_verdicts] == ["y/fw"]
+    assert len(st.with_(scope="all").scoped_verdicts) == 2
+

@@ -70,6 +70,25 @@ def test_stale_scout_result_ignored_after_switch():
     _run(go())
 
 
+def test_stale_scout_does_not_clear_scanning_guard():
+    """A stale scout result (different repo) must NOT clear `_scanning` — the new
+    repo's still-running scout owns the guard until it completes."""
+    from frontier_scout.tui3.messages import WorkDone
+    from frontier_scout.tui3.state import Funnel
+
+    async def go():
+        app = MissionControlApp(demo=True)
+        async with app.run_test(size=(160, 50)) as pilot:
+            await pilot.pause()
+            app._scanning = True  # simulate the new repo's scout in flight
+            app.post_message(WorkDone("scout", {
+                "repo": "/some/other/repo", "verdicts": (), "funnel": Funnel(), "languages": ()}))
+            await pilot.pause()
+            assert app._scanning is True, "stale scout result wrongly cleared the scanning guard"
+
+    _run(go())
+
+
 def test_switch_repo_triggers_rescout():
     async def go():
         app = MissionControlApp(demo=True)

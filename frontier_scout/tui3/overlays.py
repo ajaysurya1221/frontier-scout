@@ -78,13 +78,13 @@ class _Modal(ModalScreen):
 
 class HelpScreen(_Modal):
     def body(self) -> Iterable[Static]:
-        yield Static("[#24d6a8 b]KEYMAP[/]")
+        yield self._static("[#24d6a8 b]KEYMAP[/]")
         for k, label in KEYS:
-            yield Static(f"[#24d6a8 b]{k}[/]   [#6e8aa1]{label}[/]")
-        yield Static("\n[#24d6a8 b]GLOSSARY[/]")
+            yield self._static(f"[#24d6a8 b]{k}[/]   [#6e8aa1]{label}[/]")
+        yield self._static("\n[#24d6a8 b]GLOSSARY[/]")
         for term, desc in GLOSSARY:
-            yield Static(f"[#d9f7ff]{term}[/]  [#6e8aa1]{desc}[/]")
-        yield Static("\n[#6e8aa1]esc to close[/]")
+            yield self._static(f"[#d9f7ff]{term}[/]  [#6e8aa1]{desc}[/]")
+        yield self._static("\n[#6e8aa1]esc to close[/]")
 
 
 class ConfirmScreen(_Modal):
@@ -392,9 +392,10 @@ class NotificationsScreen(_Modal):
         return "\n".join(lines)
 
     def body(self) -> Iterable[Static]:
-        yield Static("[#24d6a8 b]NOTIFICATIONS[/]")
-        yield Static(self._list_markup(), id="notif-list")
-        yield Static("\n[#6e8aa1]c clear all · esc close[/]")
+        paint = getattr(self.app, "_paint", lambda m: m)
+        yield self._static("[#24d6a8 b]NOTIFICATIONS[/]")
+        yield Static(paint(self._list_markup()), id="notif-list")
+        yield self._static("\n[#6e8aa1]c clear all · esc close[/]")
 
     def action_clear_all(self) -> None:
         """Clear every notification (benign local DB write), then repaint empty.
@@ -407,7 +408,8 @@ class NotificationsScreen(_Modal):
         n = data.notifications_clear()
         # Repaint the list to the empty state in place (DuplicateIds-safe).
         try:
-            self.query_one("#notif-list", Static).update(self._list_markup([]))
+            paint = getattr(self.app, "_paint", lambda m: m)
+            self.query_one("#notif-list", Static).update(paint(self._list_markup([])))
         except Exception:  # noqa: BLE001 — refresh must never crash the modal
             pass
         # Toast: confirm the keypress landed (guard the no-op case).
@@ -616,7 +618,7 @@ class RepoSwitcherScreen(_Modal):
             "[#6e8aa1]Point Mission Control at another repo. Re-scouts on switch — "
             "verdicts are always relative to the repo you're in.[/]")
         line_map = {i: (lambda p=r["path"]: self._choose(p)) for i, r in enumerate(self._repos)}
-        yield LineClickStatic(self._list_markup(), line_map, id="repo-list")
+        yield LineClickStatic(self.app._paint(self._list_markup()), line_map, id="repo-list")
         yield self._static(
             "\n[#7aa6ff]◆ this surface previews the upcoming multi-repo workspace — "
             "see the handoff for the backend it needs.[/]\n"

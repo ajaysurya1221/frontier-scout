@@ -178,3 +178,21 @@ def test_select_sched_method():
             assert app.state.sched_sel == 2
 
     _run(go())
+
+
+def test_palette_tool_command_switches_to_scout():
+    """A palette tool command (e.g. Build dossier) run from a non-Scout tab must
+    first switch to Scout (not silently no-op)."""
+    async def go():
+        app = MissionControlApp(demo=True)
+        async with app.run_test(size=(160, 50)) as pilot:
+            await pilot.press("8")  # settings
+            await pilot.pause()
+            app.run_palette_action("act:dossier")
+            for _ in range(20):
+                await asyncio.sleep(0.05)
+                if app.state.tab == "scout":
+                    break
+            assert app.state.tab == "scout", "palette tool command did not switch to Scout"
+
+    _run(go())

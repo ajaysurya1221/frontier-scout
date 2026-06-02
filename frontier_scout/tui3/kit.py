@@ -52,6 +52,24 @@ def glyphs(unicode: bool = True) -> dict[str, str]:
     return UNI if unicode else ASCII
 
 
+# Fold every unicode glyph (plus a few extras used in static help/overlay text)
+# to its ASCII equivalent. Applied centrally in MissionControlApp._paint when
+# unicode mode is off, so stray glyphs (e.g. in modals) still degrade cleanly.
+_ASCIIFY = {
+    "█": "#", "░": ".", "●": "*", "○": "o", "◆": "<>", "→": "->", "←": "<",
+    "↑": "^", "↓": "v", "↔": "<>", "✓": "v", "✕": "x", "▸": ">", "›": ">",
+    "◉": "(o)", "·": ".", "▪": "-", "│": "|", "⏎": "ent", "⌘": "^", "…": "...",
+}
+
+
+def asciify(s: str) -> str:
+    """Fold unicode glyphs to ASCII (the unicode→ASCII fallback for stray glyphs)."""
+    for u, a in _ASCIIFY.items():
+        if u in s:
+            s = s.replace(u, a)
+    return s
+
+
 _TAG = re.compile(r"\[([^\[\]]*)\]")
 _STYLES = frozenset(
     {"b", "bold", "i", "italic", "u", "underline", "s", "strike",

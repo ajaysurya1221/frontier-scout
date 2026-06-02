@@ -44,6 +44,9 @@ _TONE = {
 }
 SCOPES = ["all", "ai-devtools", "mcp", "deps"]
 _ASKS = ["Is it safe to adopt now?", "What is the main risk?", "What is the next safe step?"]
+# Capability surfaces the Adoption Firewall treats as dangerous (mirrors
+# mcp_audit.DANGEROUS_KEYS). Real statuses: likely / possible / unlikely / unknown.
+_DANGEROUS_CAPS = {"write", "network", "browser", "shell", "credential", "unknown"}
 
 
 def _hex(tone: str) -> str:
@@ -224,8 +227,16 @@ def _detail(app: Any, gl: dict[str, str], *, side: bool) -> Vertical:
         box.compose_add_child(_S(app, "\n[#24d6a8 b]Permission map[/]"))
         cells = []
         for key, status in v.capabilities:
-            danger = status in ("certain", "likely") and key in ("shell", "secrets", "network")
-            tone = "#ff6b6b" if danger else ("#e3c26f" if status == "possible" else "#6e8aa1")
+            # Mirror the backend risk model: a dangerous surface that's likely →
+            # red; a dangerous surface that's possible, or anything merely likely →
+            # gold; else muted (unlikely / unknown).
+            dangerous = key in _DANGEROUS_CAPS
+            if dangerous and status == "likely":
+                tone = "#ff6b6b"
+            elif (dangerous and status == "possible") or status == "likely":
+                tone = "#e3c26f"
+            else:
+                tone = "#6e8aa1"
             cells.append(f"[#6e8aa1]{key}[/] [{tone}]{status}[/]")
         box.compose_add_child(_S(app, "  " + "  ".join(cells)))
 

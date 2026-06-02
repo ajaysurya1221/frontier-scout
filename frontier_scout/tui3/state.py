@@ -86,6 +86,13 @@ class Verdict:
             tuple((str(k), str(v)) for k, v in caps.items())
             if isinstance(caps, dict) and kind != "dep" else ()
         )
+        # Derive the scope-chip pack when the payload doesn't carry one (real scan
+        # payloads don't set a per-verdict pack): MCP servers → "mcp", every other
+        # tool → "ai-devtools" (the two specific Scout scope chips). Deps use kind.
+        pack = str(d.get("pack", ""))
+        if not pack and kind != "dep":
+            cat = str(d.get("category", "")).lower()
+            pack = "mcp" if "mcp" in cat else "ai-devtools"
         return cls(
             tool_name=str(d.get("tool_name", "—")),
             verdict=str(d.get("verdict", "assess")),
@@ -101,7 +108,7 @@ class Verdict:
             unknowns=_as_str_tuple(d.get("unknowns")),
             kind=kind,
             age=str(d.get("age", "")),
-            pack=str(d.get("pack", "")),
+            pack=pack,
             from_version=str(d.get("from_version", "")),
             to_version=str(d.get("to_version", "")),
             classification=str(d.get("classification", "")),
