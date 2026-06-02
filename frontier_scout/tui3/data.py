@@ -185,6 +185,32 @@ def providers() -> list[dict[str, Any]]:
     ]
 
 
+def provider_choices(current: str | None = None) -> list[dict[str, Any]]:
+    """Switchable providers with human labels + availability (for the switcher)."""
+    try:
+        from frontier_scout.providers import available_providers
+
+        avail = set(available_providers())
+    except Exception:  # noqa: BLE001 — the switcher must never crash
+        avail = set()
+    labels = {
+        "anthropic": ("Anthropic API", "set ANTHROPIC_API_KEY"),
+        "openai": ("OpenAI API", "set OPENAI_API_KEY"),
+        "openai-compatible": ("Custom endpoint (your gateway)", "set OPENAI_BASE_URL"),
+        "claude-cli": ("Claude (CLI subscription)", "log in to the claude CLI"),
+        "codex-cli": ("Codex (CLI subscription)", "log in to the codex CLI"),
+    }
+    cur = (current or "").lower()
+    out: list[dict[str, Any]] = []
+    for pid, (label, fix) in labels.items():
+        ok = pid in avail
+        out.append({
+            "id": pid, "label": label, "available": ok,
+            "hint": "" if ok else fix, "active": cur == pid,
+        })
+    return out
+
+
 def _unread_count() -> int:
     try:
         from frontier_scout import notifications

@@ -33,3 +33,28 @@ def test_detect_provider_none(monkeypatch):
     monkeypatch.setattr("frontier_scout.providers._has_claude_cli", lambda: False)
     monkeypatch.setattr("frontier_scout.providers._has_codex_cli", lambda: False)
     assert data._detect_provider(demo=False) == ("local", "none")
+
+
+from frontier_scout.tui3.overlays import ProviderSwitcherScreen
+
+
+def test_provider_choices_marks_active_and_availability(monkeypatch):
+    monkeypatch.setattr("frontier_scout.providers.available_providers",
+                        lambda: ["claude-cli"])
+    rows = data.provider_choices(current="claude-cli")
+    by_id = {r["id"]: r for r in rows}
+    assert by_id["claude-cli"]["available"] and by_id["claude-cli"]["active"]
+    assert not by_id["openai"]["available"]
+    assert by_id["openai"]["hint"]            # tells the user how to enable it
+    assert by_id["openai-compatible"]["label"] == "Custom endpoint (your gateway)"
+
+
+def test_switcher_only_selects_available():
+    choices = [
+        {"id": "anthropic", "label": "Anthropic API", "available": False, "hint": "set key", "active": False},
+        {"id": "claude-cli", "label": "Claude (CLI subscription)", "available": True, "hint": "", "active": True},
+    ]
+    scr = ProviderSwitcherScreen(choices)
+    assert scr._selectable() == [1]          # the unavailable row is skipped
+    assert scr._sel == 1                      # starts on the active/available row
+    assert "set key" in scr._list_markup()    # unavailable row shows its hint

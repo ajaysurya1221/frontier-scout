@@ -266,15 +266,17 @@ def _settings(app: Any) -> Vertical:
 
     # Provider — cheap env/which checks, safe inline on the render path.
     box.compose_add_child(_S(app, "\n[#24d6a8 b]Provider[/]"))
+    box.compose_add_child(_S(app, "[#6e8aa1]click a row or press [#24d6a8 b]P[/] to switch[/]"))
     active = str(getattr(app.state, "provider", "") or "").lower()
     for p in data.providers():
         present = p["present"]
         dot = f"[#24d6a8]{gl['dot']}[/]" if present else f"[#6e8aa1]{gl['ring']}[/]"
         bcol = "#24d6a8" if present else "#6e8aa1"
         mark = " [#24d6a8]· active[/]" if active and active in (p["id"].lower(), p["name"].lower()) else ""
-        box.compose_add_child(_S(
-            app,
-            f"{dot} [#d9f7ff]{p['name']}[/]  [{bcol}]{p['badge']}[/]  [#6e8aa1]{p['cost']}[/]{mark}"))
+        box.compose_add_child(ClickStatic(
+            app._paint(f"{dot} [#d9f7ff]{p['name']}[/]  [{bcol}]{p['badge']}[/]  [#6e8aa1]{p['cost']}[/]{mark}"),
+            app.action_switch_provider,
+        ))
         if p["detail"]:
             box.compose_add_child(_S(app, f"    [#6e8aa1]{p['detail']}[/]"))
 

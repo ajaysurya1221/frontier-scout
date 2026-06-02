@@ -59,6 +59,7 @@ class MissionControlApp(App[int]):
         Binding("r", "refresh", "refresh", show=False),
         Binding("p", "palette", "palette", show=False),
         Binding("w", "switch_repo", "switch repo", show=False),
+        Binding("P", "switch_provider", "switch provider", show=False),
         *[Binding(str(i + 1), f"goto_{t}", t, show=False) for i, (t, _, _) in enumerate(TABS)],
         Binding("j,down", "move(1)", "down", show=False),
         Binding("k,up", "move(-1)", "up", show=False),
@@ -996,6 +997,34 @@ class MissionControlApp(App[int]):
             self.notify(f"pointed at {self.state.repo_name} · re-scouting")
         except Exception:  # noqa: BLE001 — toast is best-effort feedback only
             pass
+
+    def action_switch_provider(self) -> None:
+        from frontier_scout.tui3.overlays import ProviderSwitcherScreen
+
+        self.push_screen(ProviderSwitcherScreen(data.provider_choices(self.state.provider)))
+
+    def switch_provider(self, name: str) -> None:
+        """Pin ``name`` for this session, persist it, drop the scout cache, re-scout."""
+        import os
+
+        from frontier_scout import preferences
+        from frontier_scout.providers import select
+
+        os.environ["FRONTIER_SCOUT_PROVIDER"] = name
+        try:
+            preferences.save_preferred_provider(name)
+        except Exception:  # noqa: BLE001 — persistence is best-effort
+            pass
+        select.reset_provider()  # next scan rebuilds with the new choice
+        self.state = self.state.with_(provider=name, provider_reason="preference")
+        self._refresh_chrome()
+        self.call_later(self._render)  # repaint the active pane (e.g. Settings "· active")
+        try:
+            self.notify(f"provider → {name} · re-scouting")
+        except Exception:  # noqa: BLE001
+            pass
+        self._scanning = False
+        self.run_scout(dry_run=self.state.demo)
 
     def run_palette_action(self, aid: str) -> None:
         kind, _, val = aid.partition(":")

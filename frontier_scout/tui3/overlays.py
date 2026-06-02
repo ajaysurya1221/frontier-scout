@@ -657,3 +657,76 @@ class RepoSwitcherScreen(_Modal):
     def _choose(self, path: str) -> None:
         self.app.pop_screen()
         self.app.switch_repo(path)
+
+
+class ProviderSwitcherScreen(_Modal):
+    """Switch the active LLM provider. j/k + ⏎ (and mouse). Persists the choice
+    and re-scouts. Unavailable providers are shown greyed with how to enable them."""
+
+    BINDINGS = [Binding("escape", "dismiss", "close", show=False)]
+
+    def __init__(self, choices: list[dict], *, first_run: bool = False) -> None:
+        super().__init__()
+        self._choices = choices
+        self._first_run = first_run
+        avail = self._selectable()
+        active = next((i for i, c in enumerate(choices) if c.get("active")), None)
+        self._sel = active if (active in avail) else (avail[0] if avail else 0)
+
+    def _selectable(self) -> list[int]:
+        return [i for i, c in enumerate(self._choices) if c.get("available")]
+
+    def body(self) -> Iterable[Static]:
+        yield self._static("[#24d6a8 b]Switch provider[/]")
+        intro = (
+            "More than one engine is available — pick one to start. Change it "
+            "anytime with [#24d6a8 b]P[/]."
+            if self._first_run
+            else "Pick the engine for scouting & judging. Remembered for next time."
+        )
+        yield self._static(f"[#6e8aa1]{intro}[/]")
+        line_map = {
+            i: (lambda n=c["id"]: self._choose(n))
+            for i, c in enumerate(self._choices) if c.get("available")
+        }
+        yield LineClickStatic(self.app._paint(self._list_markup()), line_map, id="prov-list")
+        yield self._static("\n[#6e8aa1]j/k move · ⏎ select · esc cancel[/]")
+
+    def _list_markup(self) -> str:
+        lines = []
+        for i, c in enumerate(self._choices):
+            mark = "[#24d6a8 b]▸ [/]" if i == self._sel else "  "
+            if c.get("available"):
+                act = " [#24d6a8]· active[/]" if c.get("active") else ""
+                lines.append(f"{mark}[#d9f7ff]{c['label']}[/]{act}")
+            else:
+                lines.append(f"  [#41566b]{c['label']} — {c['hint']}[/]")
+        return "\n".join(lines)
+
+    def _repaint(self) -> None:
+        try:
+            self.query_one("#prov-list", LineClickStatic).update(self.app._paint(self._list_markup()))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def on_key(self, event) -> None:  # noqa: ANN001 — Textual Key event
+        sel = self._selectable()
+        if not sel:
+            return
+        if event.key in ("j", "down"):
+            event.stop()
+            nxt = [i for i in sel if i > self._sel]
+            self._sel = nxt[0] if nxt else sel[-1]
+            self._repaint()
+        elif event.key in ("k", "up"):
+            event.stop()
+            prv = [i for i in sel if i < self._sel]
+            self._sel = prv[-1] if prv else sel[0]
+            self._repaint()
+        elif event.key == "enter":
+            event.stop()
+            self._choose(self._choices[self._sel]["id"])
+
+    def _choose(self, name: str) -> None:
+        self.app.pop_screen()
+        self.app.switch_provider(name)
