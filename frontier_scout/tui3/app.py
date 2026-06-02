@@ -123,6 +123,7 @@ class MissionControlApp(App[int]):
     async def on_mount(self) -> None:
         self.state = data.initial_state(self._repo, demo=self._demo)
         await self._render()
+        self._maybe_ask_provider()
 
     # ── responsive core ──────────────────────────────────────────────────────
     @property
@@ -1266,11 +1267,39 @@ class MissionControlApp(App[int]):
 
     def on_work_failed(self, message: WorkFailed) -> None:
         self._scanning = False
-        self._set("#mc-compass", f"[#ff6b6b]{message.kind} failed: {message.error}[/]")
+        self._set("#mc-compass", _failure_compass(message.kind, message.error))
+
+    def _maybe_ask_provider(self) -> None:
+        """First-run provider flow: prompt once when ambiguous, nudge when none."""
+        if self.state.demo:
+            return
+        from frontier_scout.providers import select
+
+        s = select.select(interactive=True)
+        if s.reason == "must_ask":
+            from frontier_scout.tui3.overlays import ProviderSwitcherScreen
+
+            self.push_screen(
+                ProviderSwitcherScreen(data.provider_choices(self.state.provider), first_run=True)
+            )
+        elif s.reason == "none":
+            self._set(
+                "#mc-compass",
+                "[#e3c26f]no provider connected[/] "
+                "[#6e8aa1]· press [#24d6a8 b]P[/] to set one up, or relaunch with --demo[/]",
+            )
 
 
 def _provider_reason_label(reason: str) -> str:
     return {"flag": " · pinned", "preference": " · pinned", "auto": " · auto"}.get(reason, "")
+
+
+def _failure_compass(kind: str, error: str) -> str:
+    hint = (
+        " [#6e8aa1]· press [#24d6a8 b]P[/] switch · [#24d6a8 b]r[/] retry · or --demo[/]"
+        if kind == "scout" else ""
+    )
+    return f"[#ff6b6b]{kind} failed: {error}[/]{hint}"
 
 
 def _dossier_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:

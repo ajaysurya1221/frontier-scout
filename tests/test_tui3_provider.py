@@ -58,3 +58,18 @@ def test_switcher_only_selects_available():
     assert scr._selectable() == [1]          # the unavailable row is skipped
     assert scr._sel == 1                      # starts on the active/available row
     assert "set key" in scr._list_markup()    # unavailable row shows its hint
+
+
+from frontier_scout.tui3.app import _failure_compass
+
+
+def test_failure_compass_offers_recovery_for_scout():
+    msg = _failure_compass("scout", "claude CLI timed out after 180s")
+    assert "timed out" in msg
+    assert "switch" in msg and "retry" in msg and "--demo" in msg
+
+
+def test_failure_compass_plain_for_other_kinds():
+    msg = _failure_compass("guard", "boom")
+    assert "boom" in msg
+    assert "retry" not in msg     # recovery affordance is scout-specific
