@@ -237,7 +237,7 @@ class MissionControlApp(App[int]):
             prov = self.state.provider
             if " " in prov:
                 prov = prov.split(" ", 1)[0].lower()
-            left += f"  [#6e8aa1]{g['dot']} {prov}[/]"
+            left += f"  [#6e8aa1]{g['dot']} {prov}{_provider_reason_label(self.state.provider_reason)}[/]"
         right = ""
         if not micro:
             right += f"[#6e8aa1]{self.state.funnel.scanned} src {g['pip']} {self.state.funnel.window}[/]  "
@@ -1238,6 +1238,10 @@ class MissionControlApp(App[int]):
     def on_work_failed(self, message: WorkFailed) -> None:
         self._scanning = False
         self._set("#mc-compass", f"[#ff6b6b]{message.kind} failed: {message.error}[/]")
+
+
+def _provider_reason_label(reason: str) -> str:
+    return {"flag": " · pinned", "preference": " · pinned", "auto": " · auto"}.get(reason, "")
 
 
 def _dossier_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:

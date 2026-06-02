@@ -82,11 +82,13 @@ def initial_state(repo: Path | None = None, *, demo: bool = False) -> AppState:
             languages = tuple(str(x) for x in ((payload.get("stack") or {}).get("languages") or []))
     except Exception:  # noqa: BLE001 — opening state must never crash
         pass
+    prov_name, prov_reason = _detect_provider(demo=demo)
     return AppState(
         repo=repo_path,
         repo_name=_repo_name(repo_path),
         languages=languages,
-        provider=_detect_provider(demo=demo),
+        provider=prov_name,
+        provider_reason=prov_reason,
         verdicts=verdicts,
         funnel=funnel,
         demo=demo,
@@ -143,19 +145,18 @@ def list_repos(current: str | None = None) -> list[dict[str, Any]]:
 
 
 # ── Providers ────────────────────────────────────────────────────────────────
-def _detect_provider(*, demo: bool) -> str:
+def _detect_provider(*, demo: bool) -> tuple[str, str]:
+    """Return (provider_name, reason) via the single selection ladder so the
+    header can never disagree with what a scan uses. Never crashes."""
     if demo:
-        return "local"
-    import os
-    import shutil
+        return ("local", "demo")
+    try:
+        from frontier_scout.providers import select
 
-    if os.environ.get("ANTHROPIC_API_KEY"):
-        return "anthropic"
-    if os.environ.get("OPENAI_API_KEY"):
-        return "openai"
-    if shutil.which("claude"):
-        return "claude-cli"
-    return "local"
+        s = select.select(interactive=False)
+        return ("local", "none") if s.reason == "none" else (s.name, s.reason)
+    except Exception:  # noqa: BLE001 — opening state must never crash
+        return ("local", "none")
 
 
 def providers() -> list[dict[str, Any]]:

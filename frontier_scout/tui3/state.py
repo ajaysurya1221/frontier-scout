@@ -146,6 +146,7 @@ class AppState:
     repo_name: str = "."
     languages: tuple[str, ...] = ()
     provider: str = "local"
+    provider_reason: str = ""   # "flag"|"preference"|"auto"|"demo"|"none"
     verdicts: tuple[Verdict, ...] = ()
     funnel: Funnel = field(default_factory=Funnel)
     tab: str = "scout"          # active tab id
