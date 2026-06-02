@@ -133,8 +133,25 @@ class _CLIProvider:
             return default
         return "" if raw.strip().lower() in ("", "default") else raw
 
-    def _command(self) -> list[str]:
+    def _command(self, model: str, effort: str) -> list[str]:
         raise NotImplementedError
+
+    @staticmethod
+    def _unwrap(stdout: str) -> str:
+        """Default: return stdout unchanged (codex prints the final message)."""
+        return stdout
+
+    def _effort(self, thinking: dict[str, Any] | None) -> str:
+        """Reasoning effort for this call. Only the judge passes ``thinking``.
+
+        ``{_env_prefix}_DEEP_EFFORT``: unset → "high"; "default"/"" → "" (omit);
+        else the given level (low|medium|high|xhigh|max)."""
+        if thinking is None:
+            return ""
+        raw = os.environ.get(f"{self._env_prefix}_DEEP_EFFORT")
+        if raw is None:
+            return "high"
+        return "" if raw.strip().lower() in ("", "default") else raw
 
     def create(
         self,
@@ -145,15 +162,16 @@ class _CLIProvider:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         tool_choice: dict[str, Any] | None = None,  # noqa: ARG002
-        thinking: dict[str, Any] | None = None,  # noqa: ARG002
+        thinking: dict[str, Any] | None = None,
         extra_body: dict[str, Any] | None = None,  # noqa: ARG002
     ) -> ProviderResponse:
         if not tools:
             raise ProviderError(f"{self.binary} backend requires a tool schema")
         prompt = _build_prompt(system, messages, tools[0])
+        effort = self._effort(thinking)
         try:
             proc = subprocess.run(
-                self._command(),
+                self._command(model, effort),
                 input=prompt,
                 capture_output=True,
                 text=True,
@@ -168,15 +186,17 @@ class _CLIProvider:
             raise ProviderError(
                 f"{self.binary} CLI exited {proc.returncode}: {proc.stderr[:400]}"
             )
-        payload = extract_json_object(proc.stdout)
+        payload = extract_json_object(self._unwrap(proc.stdout))
         return ProviderResponse(
             content=[ToolUseBlock(name=tools[0]["name"], input=payload)],
             usage=Usage(),
             model=self._model_id,
         )
 
-    def is_retryable(self, exc: BaseException) -> bool:  # noqa: ARG002
-        return False
+    def is_retryable(self, exc: BaseException) -> bool:
+        # A timed-out CLI is often a transient hang (slow cold-start, contention);
+        # give the retry wrapper one shot rather than failing the whole scan.
+        return isinstance(exc, ProviderError) and "timed out" in str(exc)
 
 
 class ClaudeCodeProvider(_CLIProvider):
@@ -187,8 +207,38 @@ class ClaudeCodeProvider(_CLIProvider):
     _fast_model_default = "sonnet"   # alias → latest Sonnet on the user's plan
     _deep_model_default = "opus"     # alias → latest Opus on the user's plan
 
-    def _command(self) -> list[str]:        # UNCHANGED — Task 5 rewrites this
-        return [self.binary, "-p"]
+    def _command(self, model: str, effort: str) -> list[str]:
+        # Hermetic: no MCP autoload, structured JSON out, no agentic tools.
+        # NOT --bare (it forces API-key-only auth and breaks OAuth subscribers).
+        cmd = [
+            self.binary, "-p",
+            "--strict-mcp-config", "--mcp-config", "{}",
+            "--output-format", "json",
+            "--disallowed-tools", "Bash Edit Write Read WebFetch WebSearch",
+        ]
+        if model:
+            cmd += ["--model", model]
+        if effort:
+            cmd += ["--effort", effort]
+        return cmd
+
+    @staticmethod
+    def _unwrap(stdout: str) -> str:
+        """Peel the `claude --output-format json` envelope to the model's text.
+
+        The envelope is ``{"type": "result", "result": "<assistant text>", ...}``
+        and the text is in ``.result``. Falls back to the raw stdout if the
+        output isn't that envelope OR if ``result`` isn't a string (e.g. an error
+        envelope) — in that case ``extract_json_object`` will raise a clear
+        ProviderError on the unexpected shape rather than us guessing.
+        """
+        try:
+            obj = json.loads(stdout)
+        except (json.JSONDecodeError, TypeError):
+            return stdout
+        if isinstance(obj, dict) and isinstance(obj.get("result"), str):
+            return obj["result"]
+        return stdout
 
 
 class CodexProvider(_CLIProvider):
@@ -199,5 +249,11 @@ class CodexProvider(_CLIProvider):
     _fast_model_default = ""   # codex has no cheaper tier we pin — inherit its own
     _deep_model_default = ""
 
-    def _command(self) -> list[str]:        # UNCHANGED — Task 5 rewrites this
-        return [self.binary, "exec", "-"]
+    def _command(self, model: str, effort: str) -> list[str]:
+        cmd = [self.binary, "exec", "-s", "read-only"]
+        if model:
+            cmd += ["-m", model]
+        if effort:
+            cmd += ["-c", f"model_reasoning_effort={effort}"]
+        cmd.append("-")  # read the prompt from stdin
+        return cmd

@@ -7,6 +7,7 @@ CLIs) lives outside the unit suite.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -418,3 +419,92 @@ def test_codex_cli_defaults_to_inherit(monkeypatch):
     p = CodexProvider()
     assert p.model(FAST) == ""
     assert p.model(DEEP) == ""
+
+
+# ---------------------------------------------------------------------------
+# CLI backends — Task 5: hermetic invocation, tiered effort, retryable timeout
+# ---------------------------------------------------------------------------
+
+def _fake_run(cap):
+    def _run(cmd, **kw):
+        cap["cmd"] = cmd
+        cap["input"] = kw.get("input")
+        return types.SimpleNamespace(returncode=0, stdout=cap["stdout"], stderr="")
+    return _run
+
+
+def test_claude_cli_command_is_hermetic_and_tiered(monkeypatch):
+    cap = {"stdout": '{"type":"result","result":"{\\"scores\\": []}"}'}
+    monkeypatch.setattr("frontier_scout.providers.cli_provider.subprocess.run", _fake_run(cap))
+    p = ClaudeCodeProvider()
+    resp = p.create(
+        model="sonnet", max_tokens=100, system="sys",
+        messages=[{"role": "user", "content": "go"}],
+        tools=[{"name": "score_items", "input_schema": {"type": "object"}}],
+    )
+    cmd = cap["cmd"]
+    assert cmd[:2] == ["claude", "-p"]
+    assert "--strict-mcp-config" in cmd
+    assert "--mcp-config" in cmd and "{}" in cmd
+    assert "--output-format" in cmd and "json" in cmd
+    assert "--bare" not in cmd
+    assert "--model" in cmd and "sonnet" in cmd
+    assert "--effort" not in cmd
+    assert first_tool_use(resp.content).input == {"scores": []}
+
+
+def test_claude_cli_judge_adds_effort(monkeypatch):
+    cap = {"stdout": '{"type":"result","result":"{\\"verdicts\\": []}"}'}
+    monkeypatch.setattr("frontier_scout.providers.cli_provider.subprocess.run", _fake_run(cap))
+    p = ClaudeCodeProvider()
+    p.create(
+        model="opus", max_tokens=100, system="sys",
+        messages=[{"role": "user", "content": "judge"}],
+        tools=[{"name": "judge", "input_schema": {"type": "object"}}],
+        thinking={"type": "adaptive"},
+    )
+    cmd = cap["cmd"]
+    assert "--effort" in cmd and "high" in cmd
+
+
+def test_codex_cli_command(monkeypatch):
+    cap = {"stdout": '{"verdicts": []}'}
+    monkeypatch.setattr("frontier_scout.providers.cli_provider.subprocess.run", _fake_run(cap))
+    p = CodexProvider()
+    p.create(
+        model="", max_tokens=100, system="sys",
+        messages=[{"role": "user", "content": "judge"}],
+        tools=[{"name": "judge", "input_schema": {"type": "object"}}],
+        thinking={"type": "adaptive"},
+    )
+    cmd = cap["cmd"]
+    assert cmd[:2] == ["codex", "exec"]
+    assert "read-only" in cmd
+    assert "-m" not in cmd
+    assert any(a.startswith("model_reasoning_effort=") for a in cmd)
+
+
+def test_cli_timeout_is_retryable(monkeypatch):
+    def _boom(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, 180)
+    monkeypatch.setattr("frontier_scout.providers.cli_provider.subprocess.run", _boom)
+    p = ClaudeCodeProvider()
+    with pytest.raises(ProviderError) as exc:
+        p.create(model="sonnet", max_tokens=1, system="s",
+                 messages=[{"role": "user", "content": "x"}],
+                 tools=[{"name": "t", "input_schema": {}}])
+    assert "timed out" in str(exc.value)
+    assert p.is_retryable(exc.value) is True
+
+
+def test_claude_unwrap_handles_envelope_and_fallbacks():
+    u = ClaudeCodeProvider._unwrap
+    # real envelope → inner result text
+    assert u('{"type":"result","result":"{\\"scores\\": []}"}') == '{"scores": []}'
+    # valid JSON that is NOT the envelope → returned unchanged
+    assert u('{"scores": []}') == '{"scores": []}'
+    # non-JSON stdout → returned unchanged
+    assert u("not json at all") == "not json at all"
+    # envelope with a non-str result → falls back to raw stdout
+    raw = '{"type":"result","result":{"nested":1}}'
+    assert u(raw) == raw
