@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 240" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Frontier Scout — the AI adoption radar. See new AI first, prove it fits your repo before you ship. Continuously scouts new releases and returns source-backed verdicts.">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0c1320"></stop><stop offset="1" stop-color="#070a11"></stop></linearGradient>
+    <radialGradient id="glow" cx="80%" cy="0%" r="62%"><stop offset="0" stop-color="#2d6cff" stop-opacity=".22"></stop><stop offset="1" stop-color="#2d6cff" stop-opacity="0"></stop></radialGradient>
+    <radialGradient id="glow2" cx="8%" cy="120%" r="55%"><stop offset="0" stop-color="#1fcf9f" stop-opacity=".12"></stop><stop offset="1" stop-color="#1fcf9f" stop-opacity="0"></stop></radialGradient>
+    <linearGradient id="acc" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5b8cff"></stop><stop offset="1" stop-color="#1fcf9f"></stop></linearGradient>
+    <radialGradient id="rfill" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#1fcf9f" stop-opacity=".16"></stop><stop offset="62%" stop-color="#1fcf9f" stop-opacity="0"></stop></radialGradient>
+    <linearGradient id="swp" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1fcf9f" stop-opacity=".55"></stop><stop offset="1" stop-color="#1fcf9f" stop-opacity="0"></stop></linearGradient>
+    <clipPath id="rc"><circle cx="612" cy="120" r="100"></circle></clipPath>
+    
+  </defs>
+
+  <rect width="760" height="240" fill="url(#bg)"></rect>
+  <rect width="760" height="240" fill="url(#glow)"></rect>
+  <rect width="760" height="240" fill="url(#glow2)"></rect>
+  <g stroke="#ffffff" stroke-opacity=".05">
+    <path d="M0 48H760M0 96H760M0 144H760M0 192H760"></path>
+    <path d="M48 0V240M96 0V240M144 0V240M192 0V240M240 0V240M288 0V240M336 0V240M384 0V240M432 0V240"></path>
+  </g>
+  <rect x=".5" y=".5" width="759" height="239" fill="none" stroke="#ffffff" stroke-opacity=".06"></rect>
+
+  
+  <g transform="translate(52,42)">
+    <circle cx="0" cy="0" r="12" fill="none" stroke="#1fcf9f" stroke-opacity=".55"></circle>
+    <circle cx="0" cy="0" r="7" fill="none" stroke="#1fcf9f" stroke-opacity=".3"></circle>
+    <circle cx="0" cy="0" r="2.2" fill="#1fcf9f"></circle>
+  </g>
+  <text x="74" y="49" class="d" font-size="20" letter-spacing="4" fill="#eaf1fb" font-family="Arial, &#34;Helvetica Neue&#34;, Helvetica, &#34;Segoe UI&#34;, system-ui, sans-serif">FRONTIER SCOUT</text>
+  <text x="74" y="70" class="m" font-size="11" letter-spacing="4" fill="#1fcf9f" font-family="&#34;SFMono-Regular&#34;, Consolas, &#34;Liberation Mono&#34;, Menlo, monospace">THE AI ADOPTION RADAR</text>
+
+  
+  <text x="40" y="116" class="d" font-size="31" fill="#eaf1fb" font-family="Arial, &#34;Helvetica Neue&#34;, Helvetica, &#34;Segoe UI&#34;, system-ui, sans-serif">See new AI <tspan fill="url(#acc)">first</tspan>.</text>
+  <text x="40" y="154" class="d" font-size="31" fill="#eaf1fb" font-family="Arial, &#34;Helvetica Neue&#34;, Helvetica, &#34;Segoe UI&#34;, system-ui, sans-serif">Prove it fits <tspan fill="url(#acc)">your repo</tspan>.</text>
+
+  
+  <g class="m" font-size="12">
+    <circle cx="44" cy="192" r="4" fill="#1fcf9f"></circle>
+    <text x="56" y="196" fill="#647a93" font-family="&#34;SFMono-Regular&#34;, Consolas, &#34;Liberation Mono&#34;, Menlo, monospace">SCANNING</text>
+    
+    <g opacity="0">
+      <text x="124" y="196" fill="#9fb2c9" font-family="&#34;SFMono-Regular&#34;, Consolas, &#34;Liberation Mono&#34;, Menlo, monospace">anthropics/skills</text>
+      <rect x="256" y="184" width="54" height="17" rx="8" fill="#1fcf9f" fill-opacity=".13" stroke="#1fcf9f" stroke-opacity=".4"></rect>
+      <text x="283" y="196" text-anchor="middle" class="b" font-size="11" fill="#1fcf9f" letter-spacing="1" font-family="Arial, &#34;Helvetica Neue&#34;, Helvetica, &#34;Segoe UI&#34;, system-ui, sans-serif">ADOPT</text>
+      
+    </g>
+    
+    <g opacity="0">
+      <text x="124" y="196" fill="#9fb2c9" font-family="&#34;SFMono-Regular&#34;, Consolas, &#34;Liberation Mono&#34;, Menlo, monospace">mcp/servers</text>
+      <rect x="214" y="184" width="50" height="17" rx="8" fill="#f0c66a" fill-opacity=".13" stroke="#f0c66a" stroke-opacity=".4"></rect>
+      <text x="239" y="196" text-anchor="middle" class="b" font-size="11" fill="#f0c66a" letter-spacing="1" font-family="Arial, &#34;Helvetica Neue&#34;, Helvetica, &#34;Segoe UI&#34;, system-ui, sans-serif">TRIAL</text>
+      
+    </g>
+    
+    <g opacity="0">
+      <text x="124" y="196" fill="#9fb2c9" font-family="&#34;SFMono-Regular&#34;, Consolas, &#34;Liberation Mono&#34;, Menlo, monospace">langchain-core 1.4.0</text>
+      <rect x="280" y="184" width="60" height="17" rx="8" fill="#4d82ff" fill-opacity=".13" stroke="#4d82ff" stroke-opacity=".4"></rect>
+      <text x="310" y="196" text-anchor="middle" class="b" font-size="11" fill="#5b8cff" letter-spacing="1" font-family="Arial, &#34;Helvetica Neue&#34;, Helvetica, &#34;Segoe UI&#34;, system-ui, sans-serif">ASSESS</text>
+      
+    </g>
+    
+    <g opacity="0">
+      <text x="124" y="196" fill="#9fb2c9" font-family="&#34;SFMono-Regular&#34;, Consolas, &#34;Liberation Mono&#34;, Menlo, monospace">CVE-2025-3914 patch</text>
+      <rect x="272" y="184" width="48" height="17" rx="8" fill="#d2453d" fill-opacity=".13" stroke="#d2453d" stroke-opacity=".45"></rect>
+      <text x="296" y="196" text-anchor="middle" class="b" font-size="11" fill="#e8766e" letter-spacing="1" font-family="Arial, &#34;Helvetica Neue&#34;, Helvetica, &#34;Segoe UI&#34;, system-ui, sans-serif">HOLD</text>
+      
+    </g>
+    
+    <g opacity="1">
+      <text x="124" y="196" fill="#9fb2c9" font-family="&#34;SFMono-Regular&#34;, Consolas, &#34;Liberation Mono&#34;, Menlo, monospace">Qwen3-Coder-30B</text>
+      <rect x="245" y="184" width="60" height="17" rx="8" fill="#4d82ff" fill-opacity=".13" stroke="#4d82ff" stroke-opacity=".4"></rect>
+      <text x="275" y="196" text-anchor="middle" class="b" font-size="11" fill="#5b8cff" letter-spacing="1" font-family="Arial, &#34;Helvetica Neue&#34;, Helvetica, &#34;Segoe UI&#34;, system-ui, sans-serif">ASSESS</text>
+      
+    </g>
+  </g>
+
+  
+  <g clip-path="url(#rc)">
+    <circle cx="612" cy="120" r="100" fill="#060a11"></circle>
+    <circle cx="612" cy="120" r="100" fill="url(#rfill)"></circle>
+    <g>
+      <path d="M612 120 L612 20 A100 100 0 0 1 686 53 Z" fill="url(#swp)"></path>
+      
+    </g>
+  </g>
+  <g fill="none" stroke="#ffffff" stroke-opacity=".1">
+    <circle cx="612" cy="120" r="100" stroke-opacity=".2"></circle>
+    <circle cx="612" cy="120" r="74"></circle><circle cx="612" cy="120" r="48"></circle><circle cx="612" cy="120" r="24"></circle>
+    <path d="M612 20V220M512 120H712"></path>
+  </g>
+  
+  <g>
+    <line x1="612" y1="120" x2="612" y2="20" stroke="#1fcf9f" stroke-opacity=".9" stroke-width="1.5"></line>
+    
+  </g>
+  <circle cx="612" cy="120" r="4" fill="#1fcf9f"></circle>
+
+  
+  
+  <g>
+    <circle cx="660" cy="66" r="9" fill="#1fcf9f" opacity="0"></circle>
+    <circle cx="660" cy="66" r="4.5" fill="#1fcf9f"></circle>
+  </g>
+  
+  <g>
+    <circle cx="690" cy="155" r="9" fill="#f0c66a" opacity="0"></circle>
+    <circle cx="690" cy="155" r="4.5" fill="#f0c66a"></circle>
+  </g>
+  
+  <g>
+    <circle cx="604" cy="177" r="9" fill="#4d82ff" opacity="0"></circle>
+    <circle cx="604" cy="177" r="4.5" fill="#4d82ff"></circle>
+  </g>
+  
+  <g>
+    <circle cx="538" cy="150" r="9" fill="#d2453d" opacity="0"></circle>
+    <circle cx="538" cy="150" r="4.5" fill="#d2453d"></circle>
+  </g>
+  
+  <g>
+    <circle cx="575" cy="65" r="9" fill="#4d82ff" opacity="0"></circle>
+    <circle cx="575" cy="65" r="4.5" fill="#4d82ff"></circle>
+  </g>
+
+  
+  <g transform="translate(566,16)">
+    <rect x="0" y="0" width="146" height="20" rx="10" fill="#0f1828" stroke="#ffffff" stroke-opacity=".1"></rect>
+    <circle cx="14" cy="10" r="3" fill="#1fcf9f"></circle>
+    <text x="24" y="14" class="m" font-size="10" letter-spacing=".5" fill="#9fb2c9" font-family="&#34;SFMono-Regular&#34;, Consolas, &#34;Liberation Mono&#34;, Menlo, monospace">SCANNING · 377 RELEASES</text>
+  </g>
+</svg>
