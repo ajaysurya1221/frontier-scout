@@ -5,9 +5,10 @@ back, and modals are visible on the first frame."""
 import asyncio
 
 from textual.geometry import Size
+from textual.widgets import Static
 
 from frontier_scout.tui3.app import MissionControlApp
-from frontier_scout.tui3.kit import breakpoint_for
+from frontier_scout.tui3.kit import asciify, breakpoint_for
 from frontier_scout.tui3.overlays import RepoSwitcherScreen
 
 
@@ -102,5 +103,32 @@ def test_repo_switcher_visible_on_first_frame():
             # Content is mounted (painted) on the first frame — not gated on a
             # transition/animation (handoff Bug #4).
             assert list(app.screen.query("#repo-list")), "modal content not present on frame 1"
+
+    _run(go())
+
+
+def test_asciify_folds_glyphs():
+    assert asciify("●") == "*"
+    assert asciify("▸ row") == "> row"
+    assert asciify("◆ x ⏎") == "<> x ent"
+    assert asciify("no glyphs here") == "no glyphs here"
+
+
+def test_overlays_ascii_mode_no_raw_unicode():
+    async def go():
+        app = MissionControlApp(demo=True)
+        async with app.run_test(size=(160, 50)) as pilot:
+            await pilot.pause()
+            await pilot.press("u")  # ASCII mode
+            await pilot.pause()
+            raw = ["●", "○", "▸", "◆", "⏎", "…", "→", "↑", "↓", "·"]
+            for opener in ["question_mark", "n", "w", "p"]:
+                await pilot.press(opener)
+                await pilot.pause()
+                txt = "".join(str(getattr(w, "content", "")) for w in app.screen.query(Static))
+                for g in raw:
+                    assert g not in txt, f"raw unicode {g!r} leaked in the {opener!r} overlay (ASCII mode)"
+                await pilot.press("escape")
+                await pilot.pause()
 
     _run(go())
