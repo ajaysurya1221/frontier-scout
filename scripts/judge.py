@@ -1,17 +1,18 @@
 """
-RLAIF Judge — Opus 4.7 with extended thinking, applied as a third pass over the
-Sonnet-generated verdicts before they're written to the local SQLite store.
+RLAIF Judge — the deep tier (a strong model with extended reasoning), applied as a
+third pass over the fast-tier verdicts before they're written to the local SQLite store.
 
-This is the precision lever. The Sonnet pass is a strong generator but occasionally
-over-labels maintenance releases as ADOPT or emits awareness-only items. The judge
-is a strict reviewer that vetoes those, adjusts tiers, and surfaces missed items.
+This is the precision lever. The fast-tier verdict pass is a strong generator but
+occasionally over-labels maintenance releases as ADOPT or emits awareness-only items.
+The judge is a strict reviewer that vetoes those, adjusts tiers, and surfaces missed
+items.
 
 The judge is gated by ``JUDGE_ENABLED`` in scout.run_scan() — cost-conscious
 users (~$0.20/scan) can skip it without losing the score + verdict + policy
 passes.
 
 Flow:
-    verdicts (Sonnet output) + scored_items (Sonnet score pass output)
+    verdicts (fast-tier output) + scored_items (fast-tier score pass output)
       → critique()
       → apply_judge_decisions()
       → final_verdicts + severity + readiness + judge_meta
@@ -50,7 +51,7 @@ def critique(
     stack_profile: dict | None = None,
 ) -> tuple[dict[str, Any], float]:
     """
-    Run the Opus judge pass over the draft verdicts.
+    Run the deep-tier judge pass over the draft verdicts.
 
     Args:
         verdicts: drafts emitted by ``scout.generate_verdicts``.
@@ -100,7 +101,7 @@ def critique(
     pool_block = "\n\n".join(pool_lines) if pool_lines else "(no scored items above 5)"
 
     user_message = (
-        "Below are the DRAFT VERDICTS produced by the Sonnet verdict pass, followed "
+        "Below are the DRAFT VERDICTS produced by the fast-tier verdict pass, followed "
         "by the SCORED ITEM POOL (top 30 by score) the verdict-gen picked from. "
         "Apply the JUDGE RUBRIC in the system prompt. Be strict.\n\n"
         f"━━━ DRAFT VERDICTS ({len(verdicts)}) ━━━\n{drafts_block}\n\n"

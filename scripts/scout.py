@@ -9,9 +9,9 @@ Pipeline:
     fetch (parallel)
       → dedupe by content hash
       → drop tools the user has seen via ``seen_check``
-      → Sonnet score pass (0–10 + category)
-      → Sonnet verdict pass (structured tool use)
-      → optional Opus judge pass (gated by ``JUDGE_ENABLED``)
+      → fast-tier score pass (0–10 + category)
+      → fast-tier verdict pass (structured tool use)
+      → optional deep-tier judge pass (gated by ``JUDGE_ENABLED``)
       → deterministic policy validators
       → ``output_writer`` callback (typically: persist to SQLite)
 

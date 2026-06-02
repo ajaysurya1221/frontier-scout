@@ -614,10 +614,12 @@ The demo is offline and free. These numbers show the expected shape of a live we
 | Component | Demo estimate |
 |---|---:|
 | Source fetch + dedupe | $0.00 |
-| Sonnet score pass | $0.15 |
-| Sonnet verdict pass | $0.04 |
-| Optional Opus judge | $0.12 |
+| Scout score pass (fast tier) | $0.15 |
+| Scout verdict pass (fast tier) | $0.04 |
+| Optional judge pass (deep tier) | $0.12 |
 | **Total** | **${total:.2f}** |
+
+Exact models depend on the active provider (see the provider switcher / Settings).
 
 Default posture: BYO API key, local files, no hosted service. A weekly scan should sit comfortably in a small personal Anthropic budget.
 """
