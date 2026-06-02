@@ -127,9 +127,15 @@ class ConfirmScreen(_Modal):
             yield self._static(line)
         paint = getattr(self.app, "_paint", lambda m: m)
         yield ClickStatic(
-            paint(f"\n[#0b1117 on #24d6a8 b] {self._confirm_key} [/] [#24d6a8]{self._confirm_label}[/]"),
-            self.action_confirm, id="confirm-yes")
-        yield ClickStatic(paint("[#6e8aa1]esc cancel[/]"), self.action_dismiss, id="confirm-no")
+            paint(
+                f"\n[#0b1117 on #24d6a8 b] {self._confirm_key} [/] [#24d6a8]{self._confirm_label}[/]"
+            ),
+            self.action_confirm,
+            id="confirm-yes",
+        )
+        yield ClickStatic(
+            paint("[#6e8aa1]esc cancel[/]"), self.action_dismiss, id="confirm-no"
+        )
 
     def on_key(self, event) -> None:  # noqa: ANN001 — Textual Key event
         """Honour a non-default confirm key (the class binding covers ``y``)."""
@@ -175,11 +181,17 @@ class TypedConfirmScreen(_Modal):
         yield self._static(f"[#24d6a8 b]{self._title}[/]")
         for line in self._lines:
             yield self._static(line)
-        yield Input(placeholder=f"type '{self._token}' to confirm", id="typed-confirm-input")
+        yield Input(
+            placeholder=f"type '{self._token}' to confirm", id="typed-confirm-input"
+        )
         yield Static("", id="typed-confirm-error")
         paint = getattr(self.app, "_paint", lambda m: m)
         yield self._static("\n[#6e8aa1]enter confirm[/]")
-        yield ClickStatic(paint("[#6e8aa1]esc cancel[/]"), self.action_dismiss, id="typed-confirm-cancel")
+        yield ClickStatic(
+            paint("[#6e8aa1]esc cancel[/]"),
+            self.action_dismiss,
+            id="typed-confirm-cancel",
+        )
 
     def on_mount(self) -> None:
         # Focus the input so the user can type immediately.
@@ -536,12 +548,10 @@ class CommandPalette(_Modal):
                 grp = f"[#6e8aa1]{group:<{_GROUP_W}}[/]"
                 key_col = f"  [#6e8aa1]{key}[/]" if key else ""
                 if idx == self._i:
-                    lines.append(
-                        f"[#24d6a8 b]▸[/] {grp}  [#d9f7ff]{label}[/]{key_col}"
-                    )
+                    lines.append(f"[#24d6a8 b]▸[/] {grp}  [#d9f7ff]{label}[/]{key_col}")
                 else:
                     lines.append(f"  {grp}  [#a9bccd]{label}[/]{key_col}")
-                line_map[idx] = (lambda a=aid: self._run(a))
+                line_map[idx] = lambda a=aid: self._run(a)
             markup = "\n".join(lines)
         try:
             w = self.query_one("#cp-results", LineClickStatic)
@@ -610,19 +620,27 @@ class RepoSwitcherScreen(_Modal):
     def __init__(self, repos: list[dict], current: str) -> None:
         super().__init__()
         self._repos = repos
-        self._sel = next((i for i, r in enumerate(repos) if r.get("path") == current), 0)
+        self._sel = next(
+            (i for i, r in enumerate(repos) if r.get("path") == current), 0
+        )
 
     def body(self) -> Iterable[Static]:
         yield self._static("[#24d6a8 b]Switch repo[/]")
         yield self._static(
             "[#6e8aa1]Point Mission Control at another repo. Re-scouts on switch — "
-            "verdicts are always relative to the repo you're in.[/]")
-        line_map = {i: (lambda p=r["path"]: self._choose(p)) for i, r in enumerate(self._repos)}
-        yield LineClickStatic(self.app._paint(self._list_markup()), line_map, id="repo-list")
+            "verdicts are always relative to the repo you're in.[/]"
+        )
+        line_map = {
+            i: (lambda p=r["path"]: self._choose(p)) for i, r in enumerate(self._repos)
+        }
+        yield LineClickStatic(
+            self.app._paint(self._list_markup()), line_map, id="repo-list"
+        )
         yield self._static(
             "\n[#7aa6ff]◆ this surface previews the upcoming multi-repo workspace — "
             "see the handoff for the backend it needs.[/]\n"
-            "[#6e8aa1]j/k move · ⏎ switch · esc cancel[/]")
+            "[#6e8aa1]j/k move · ⏎ switch · esc cancel[/]"
+        )
 
     def _list_markup(self) -> str:
         if not self._repos:
@@ -630,12 +648,16 @@ class RepoSwitcherScreen(_Modal):
         lines = []
         for i, r in enumerate(self._repos):
             mark = "[#24d6a8 b]▸ [/]" if i == self._sel else "  "
-            lines.append(f"{mark}[#d9f7ff]{r.get('name', '?')}[/]  [#6e8aa1]{r.get('path', '')}[/]")
+            lines.append(
+                f"{mark}[#d9f7ff]{r.get('name', '?')}[/]  [#6e8aa1]{r.get('path', '')}[/]"
+            )
         return "\n".join(lines)
 
     def _repaint(self) -> None:
         try:
-            self.query_one("#repo-list", LineClickStatic).update(self.app._paint(self._list_markup()))
+            self.query_one("#repo-list", LineClickStatic).update(
+                self.app._paint(self._list_markup())
+            )
         except Exception:  # noqa: BLE001
             pass
 
@@ -687,9 +709,12 @@ class ProviderSwitcherScreen(_Modal):
         yield self._static(f"[#6e8aa1]{intro}[/]")
         line_map = {
             i: (lambda n=c["id"]: self._choose(n))
-            for i, c in enumerate(self._choices) if c.get("available")
+            for i, c in enumerate(self._choices)
+            if c.get("available")
         }
-        yield LineClickStatic(self.app._paint(self._list_markup()), line_map, id="prov-list")
+        yield LineClickStatic(
+            self.app._paint(self._list_markup()), line_map, id="prov-list"
+        )
         yield self._static("\n[#6e8aa1]j/k move · ⏎ select · esc cancel[/]")
 
     def _list_markup(self) -> str:
@@ -705,7 +730,9 @@ class ProviderSwitcherScreen(_Modal):
 
     def _repaint(self) -> None:
         try:
-            self.query_one("#prov-list", LineClickStatic).update(self.app._paint(self._list_markup()))
+            self.query_one("#prov-list", LineClickStatic).update(
+                self.app._paint(self._list_markup())
+            )
         except Exception:  # noqa: BLE001
             pass
 

@@ -23,7 +23,14 @@ from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import Static
 
 from frontier_scout.tui3 import data
-from frontier_scout.tui3.kit import MIN_COLS, MIN_ROWS, asciify, breakpoint_for, glyphs, mono
+from frontier_scout.tui3.kit import (
+    MIN_COLS,
+    MIN_ROWS,
+    asciify,
+    breakpoint_for,
+    glyphs,
+    mono,
+)
 from frontier_scout.tui3.messages import Progress, TuiReporter, WorkDone, WorkFailed
 from frontier_scout.tui3.state import AppState
 from frontier_scout.tui3.widgets import ClickStatic
@@ -60,7 +67,10 @@ class MissionControlApp(App[int]):
         Binding("p", "palette", "palette", show=False),
         Binding("w", "switch_repo", "switch repo", show=False),
         Binding("P", "switch_provider", "switch provider", show=False),
-        *[Binding(str(i + 1), f"goto_{t}", t, show=False) for i, (t, _, _) in enumerate(TABS)],
+        *[
+            Binding(str(i + 1), f"goto_{t}", t, show=False)
+            for i, (t, _, _) in enumerate(TABS)
+        ],
         Binding("j,down", "move(1)", "down", show=False),
         Binding("k,up", "move(-1)", "up", show=False),
         Binding("right", "scope(1)", "scope", show=False),
@@ -109,13 +119,19 @@ class MissionControlApp(App[int]):
                 yield Static("", classes="rail-brand", id="rail-brand")
                 for tid, _label, _short in TABS:
                     yield ClickStatic(
-                        "", lambda t=tid: self.call_later(self._goto, t),
-                        id=f"rail-{tid}", classes="rtab")
+                        "",
+                        lambda t=tid: self.call_later(self._goto, t),
+                        id=f"rail-{tid}",
+                        classes="rtab",
+                    )
             with Horizontal(id="mc-tabstrip"):
                 for tid, _label, _short in TABS:
                     yield ClickStatic(
-                        "", lambda t=tid: self.call_later(self._goto, t),
-                        id=f"strip-{tid}", classes="ts")
+                        "",
+                        lambda t=tid: self.call_later(self._goto, t),
+                        id=f"strip-{tid}",
+                        classes="ts",
+                    )
             yield VerticalScroll(id="mc-main")
             yield Static(id="mc-floor")
         yield Static(id="mc-compass")
@@ -243,7 +259,9 @@ class MissionControlApp(App[int]):
         right = ""
         if not micro:
             right += f"[#6e8aa1]{self.state.funnel.scanned} src {g['pip']} {self.state.funnel.window}[/]  "
-        bell = f"[#24d6a8]{g['dot']}[/]" + (f"[#ff6b6b] {self.state.unread}[/]" if self.state.unread else "")
+        bell = f"[#24d6a8]{g['dot']}[/]" + (
+            f"[#ff6b6b] {self.state.unread}[/]" if self.state.unread else ""
+        )
         pad = max(1, cols - _vis_len(left) - _vis_len(right) - _vis_len(bell) - 2)
         return left + " " * pad + right + bell
 
@@ -253,12 +271,25 @@ class MissionControlApp(App[int]):
         if bp == "micro":
             hints = [("1-8", "tabs"), ("?", "help"), ("q", "quit")]
         elif bp == "narrow":
-            hints = [("1-8", "tabs"), ("j/k", "move"), ("s", "scout"), ("?", "help"), ("q", "quit")]
+            hints = [
+                ("1-8", "tabs"),
+                ("j/k", "move"),
+                ("s", "scout"),
+                ("?", "help"),
+                ("q", "quit"),
+            ]
         else:
             hints = [
-                ("1-8", "tabs"), (f"j/k {g['ud']}", "move"), (g["enter"], "open"),
-                (g["lr"], "swipe"), ("a", "ask"), ("s", "scout"),
-                (f"{g['cmd']}K", "palette"), ("u/c", "ascii/mono"), ("?", "help"), ("q", "quit"),
+                ("1-8", "tabs"),
+                (f"j/k {g['ud']}", "move"),
+                (g["enter"], "open"),
+                (g["lr"], "swipe"),
+                ("a", "ask"),
+                ("s", "scout"),
+                (f"{g['cmd']}K", "palette"),
+                ("u/c", "ascii/mono"),
+                ("?", "help"),
+                ("q", "quit"),
             ]
         # Tab-contextual hint: the Reports tab's primary/open actions (⏎ render ·
         # o open). Skipped at micro width, where the compass already drops hints.
@@ -272,8 +303,10 @@ class MissionControlApp(App[int]):
         # already-trimmed micro compass) so the line stays readable.
         elif self.state.tab == "schedule" and bp != "micro":
             sched_hints = [
-                ("j/k", "select"), (g["enter"], "run"),
-                ("t", "toggle"), ("del", "remove"),
+                ("j/k", "select"),
+                (g["enter"], "run"),
+                ("t", "toggle"),
+                ("del", "remove"),
             ]
             if bp != "narrow":
                 sched_hints += [("N", "new"), ("E", "edit")]
@@ -310,11 +343,13 @@ class MissionControlApp(App[int]):
                 rcell = f"{i + 1} {label}{btxt}"
             self._set_cell(
                 f"#rail-{tid}",
-                f"[#d9f7ff b on #10202a]{rcell}[/]" if on else f"[#6e8aa1]{rcell}[/]")
+                f"[#d9f7ff b on #10202a]{rcell}[/]" if on else f"[#6e8aa1]{rcell}[/]",
+            )
             scell = f"{i + 1}" if bp.numeric_tabs else f"{i + 1}{short}"
             self._set_cell(
                 f"#strip-{tid}",
-                f"[#24d6a8 b]{scell}[/]" if on else f"[#6e8aa1]{scell}[/]")
+                f"[#24d6a8 b]{scell}[/]" if on else f"[#6e8aa1]{scell}[/]",
+            )
 
     def _set_cell(self, selector: str, markup: str) -> None:
         try:
@@ -327,8 +362,12 @@ class MissionControlApp(App[int]):
         cols, rows = self._term_size
         ok_w = cols >= MIN_COLS
         ok_h = rows >= MIN_ROWS
-        wmark = ("[#24d6a8]" + g["check"] if ok_w else "[#ff6b6b]" + g["cross"]) + f" width {cols}/{MIN_COLS}[/]"
-        hmark = ("[#24d6a8]" + g["check"] if ok_h else "[#ff6b6b]" + g["cross"]) + f" height {rows}/{MIN_ROWS}[/]"
+        wmark = (
+            "[#24d6a8]" + g["check"] if ok_w else "[#ff6b6b]" + g["cross"]
+        ) + f" width {cols}/{MIN_COLS}[/]"
+        hmark = (
+            "[#24d6a8]" + g["check"] if ok_h else "[#ff6b6b]" + g["cross"]
+        ) + f" height {rows}/{MIN_ROWS}[/]"
         return (
             f"[#e3c26f]{g['diamond']}[/]\n"
             f"[#d9f7ff b]TERMINAL TOO SMALL[/]\n\n"
@@ -361,15 +400,32 @@ class MissionControlApp(App[int]):
                 self._refresh_worker("settings")
             self._refresh_chrome()
 
-    async def action_goto_scout(self) -> None: await self._goto("scout")
-    async def action_goto_schedule(self) -> None: await self._goto("schedule")
-    async def action_goto_receipts(self) -> None: await self._goto("receipts")
-    async def action_goto_guard(self) -> None: await self._goto("guard")
-    async def action_goto_packs(self) -> None: await self._goto("packs")
-    async def action_goto_deps(self) -> None: await self._goto("deps")
-    async def action_goto_reports(self) -> None: await self._goto("reports")
-    async def action_goto_settings(self) -> None: await self._goto("settings")
-    async def action_guard_shortcut(self) -> None: await self._goto("guard")
+    async def action_goto_scout(self) -> None:
+        await self._goto("scout")
+
+    async def action_goto_schedule(self) -> None:
+        await self._goto("schedule")
+
+    async def action_goto_receipts(self) -> None:
+        await self._goto("receipts")
+
+    async def action_goto_guard(self) -> None:
+        await self._goto("guard")
+
+    async def action_goto_packs(self) -> None:
+        await self._goto("packs")
+
+    async def action_goto_deps(self) -> None:
+        await self._goto("deps")
+
+    async def action_goto_reports(self) -> None:
+        await self._goto("reports")
+
+    async def action_goto_settings(self) -> None:
+        await self._goto("settings")
+
+    async def action_guard_shortcut(self) -> None:
+        await self._goto("guard")
 
     def _select(self, i: int) -> None:
         """Select a verdict by scoped index — click parity for j/k."""
@@ -485,6 +541,7 @@ class MissionControlApp(App[int]):
         gate decision was already made by ``_schedule_primary``; this method
         never re-decides it.
         """
+
         def _run() -> None:
             try:
                 payload = data.schedule_run(schedule_id, dry_run=dry_run)
@@ -601,12 +658,20 @@ class MissionControlApp(App[int]):
             repo = str(result.get("repo") or "—")
             cron = str(result.get("cron") or fields.get("cron_expr") or "")
             live_note = "live scan" if result.get("live") else "dry-run"
-            self.push_screen(ResultScreen(
-                "Schedule created",
-                [f"[#d9f7ff]{repo}[/]",
-                 f"[#6e8aa1]{cron}[/]",
-                 (f"[#e3c26f]{live_note}[/]" if result.get("live")
-                  else f"[#24d6a8]{live_note}[/]")]))
+            self.push_screen(
+                ResultScreen(
+                    "Schedule created",
+                    [
+                        f"[#d9f7ff]{repo}[/]",
+                        f"[#6e8aa1]{cron}[/]",
+                        (
+                            f"[#e3c26f]{live_note}[/]"
+                            if result.get("live")
+                            else f"[#24d6a8]{live_note}[/]"
+                        ),
+                    ],
+                )
+            )
         else:
             reason = str(result.get("reason") or "Could not create the schedule.")
             self.push_screen(ResultScreen("Schedule", [f"[#ff6b6b]{reason}[/]"]))
@@ -659,12 +724,20 @@ class MissionControlApp(App[int]):
                 self.call_later(self._render_pane)
             repo = str(result.get("repo") or "—")
             live_note = "live scan" if fields.get("live") else "dry-run"
-            self.push_screen(ResultScreen(
-                "Schedule updated",
-                [f"[#d9f7ff]{repo}[/]",
-                 f"[#6e8aa1]{fields.get('cron_expr') or ''}[/]",
-                 (f"[#e3c26f]{live_note}[/]" if fields.get("live")
-                  else f"[#24d6a8]{live_note}[/]")]))
+            self.push_screen(
+                ResultScreen(
+                    "Schedule updated",
+                    [
+                        f"[#d9f7ff]{repo}[/]",
+                        f"[#6e8aa1]{fields.get('cron_expr') or ''}[/]",
+                        (
+                            f"[#e3c26f]{live_note}[/]"
+                            if fields.get("live")
+                            else f"[#24d6a8]{live_note}[/]"
+                        ),
+                    ],
+                )
+            )
         else:
             reason = str(result.get("reason") or "Could not update the schedule.")
             self.push_screen(ResultScreen("Schedule", [f"[#ff6b6b]{reason}[/]"]))
@@ -698,6 +771,7 @@ class MissionControlApp(App[int]):
         been rendered yet). FREE — ``data.report_render`` only re-renders stored
         data; no LLM, no network, no spend.
         """
+
         def _run() -> None:
             try:
                 payload = data.report_render(self.state.repo)
@@ -745,6 +819,7 @@ class MissionControlApp(App[int]):
         True`` is only ever reached AFTER the discover gate's confirm. FREE — no
         API spend, no LLM either way.
         """
+
         def _run() -> None:
             try:
                 payload = data.packs_refresh(discover=discover)
@@ -807,9 +882,7 @@ class MissionControlApp(App[int]):
         def _on_confirm() -> None:
             self._implement_worker(verdict, dry_run=demo)
 
-        self.push_screen(
-            ConfirmScreen(f"Implement & test {tool}", lines, _on_confirm)
-        )
+        self.push_screen(ConfirmScreen(f"Implement & test {tool}", lines, _on_confirm))
 
     def _implement_worker(self, verdict: Any, *, dry_run: bool) -> None:
         def _run() -> None:
@@ -844,8 +917,12 @@ class MissionControlApp(App[int]):
             self._evaluate_worker(verdict)
 
         self.push_screen(
-            ConfirmScreen(f"Evaluate {verdict.tool_name}", lines, _on_confirm,
-                          confirm_label="evaluate")
+            ConfirmScreen(
+                f"Evaluate {verdict.tool_name}",
+                lines,
+                _on_confirm,
+                confirm_label="evaluate",
+            )
         )
 
     def _evaluate_worker(self, verdict: Any) -> None:
@@ -878,8 +955,9 @@ class MissionControlApp(App[int]):
             self._lab_worker(verdict)
 
         self.push_screen(
-            ConfirmScreen(f"Lab {verdict.tool_name}", lines, _on_confirm,
-                          confirm_label="lab")
+            ConfirmScreen(
+                f"Lab {verdict.tool_name}", lines, _on_confirm, confirm_label="lab"
+            )
         )
 
     def _lab_worker(self, verdict: Any) -> None:
@@ -984,8 +1062,11 @@ class MissionControlApp(App[int]):
         """
         fresh = data.initial_state(Path(path), demo=self.state.demo)
         self.state = fresh.with_(
-            tab=self.state.tab, scope="all", sel=0,
-            color=self.state.color, unicode=self.state.unicode,
+            tab=self.state.tab,
+            scope="all",
+            sel=0,
+            color=self.state.color,
+            unicode=self.state.unicode,
         )
         self._refresh_nav()
         self.call_later(self._render)
@@ -1002,7 +1083,9 @@ class MissionControlApp(App[int]):
     def action_switch_provider(self) -> None:
         from frontier_scout.tui3.overlays import ProviderSwitcherScreen
 
-        self.push_screen(ProviderSwitcherScreen(data.provider_choices(self.state.provider)))
+        self.push_screen(
+            ProviderSwitcherScreen(data.provider_choices(self.state.provider))
+        )
 
     def switch_provider(self, name: str) -> None:
         """Pin ``name`` for this session, persist it, drop the scout cache, re-scout."""
@@ -1019,7 +1102,9 @@ class MissionControlApp(App[int]):
         select.reset_provider()  # next scan rebuilds with the new choice
         self.state = self.state.with_(provider=name, provider_reason="preference")
         self._refresh_chrome()
-        self.call_later(self._render)  # repaint the active pane (e.g. Settings "· active")
+        self.call_later(
+            self._render
+        )  # repaint the active pane (e.g. Settings "· active")
         try:
             self.notify(f"provider → {name} · re-scouting")
         except Exception:  # noqa: BLE001
@@ -1041,7 +1126,9 @@ class MissionControlApp(App[int]):
             self.call_later(self._goto_then_async, "reports", self.action_open_target)
         elif aid == "packs:refresh":
             self.call_later(
-                self._goto_then, "packs", lambda: self._packs_refresh_worker(discover=False)
+                self._goto_then,
+                "packs",
+                lambda: self._packs_refresh_worker(discover=False),
             )
         elif aid == "schedule:new":
             self.call_later(self._goto_then_async, "schedule", self.action_new_schedule)
@@ -1139,7 +1226,9 @@ class MissionControlApp(App[int]):
         def _run() -> None:
             reporter = TuiReporter(self, "scout")
             try:
-                result = data.run_scan(repo, dry_run=dry_run, scope=scope, reporter=reporter)
+                result = data.run_scan(
+                    repo, dry_run=dry_run, scope=scope, reporter=reporter
+                )
                 # Tag with the repo we scanned so a result that lands after a
                 # repo switch can be detected as stale and dropped.
                 self.post_message(WorkDone("scout", {**result, "repo": repo}))
@@ -1162,8 +1251,11 @@ class MissionControlApp(App[int]):
                 return
             self._scanning = False
             self.state = self.state.with_(
-                verdicts=r["verdicts"], funnel=r["funnel"],
-                languages=r["languages"] or self.state.languages, sel=0)
+                verdicts=r["verdicts"],
+                funnel=r["funnel"],
+                languages=r["languages"] or self.state.languages,
+                sel=0,
+            )
             self._refresh_nav()
             if self.state.tab == "scout":
                 await self._render_pane()
@@ -1239,19 +1331,26 @@ class MissionControlApp(App[int]):
                 cost = float(p.get("cost") or 0.0)
                 note = (
                     "[#24d6a8]Dry-run — seeded sample, no spend, no network.[/]"
-                    if dry else
-                    "[#e3c26f]Live scout — judged against the provider.[/]"
+                    if dry
+                    else "[#e3c26f]Live scout — judged against the provider.[/]"
                 )
                 title = "Scheduled scout" + (" (dry-run)" if dry else "")
-                self.push_screen(ResultScreen(
-                    title,
-                    [f"[#d9f7ff]{repo}[/]",
-                     f"[#6e8aa1]{verdicts} verdicts[/]",
-                     f"[#6e8aa1]${cost:.2f}[/]",
-                     note]))
+                self.push_screen(
+                    ResultScreen(
+                        title,
+                        [
+                            f"[#d9f7ff]{repo}[/]",
+                            f"[#6e8aa1]{verdicts} verdicts[/]",
+                            f"[#6e8aa1]${cost:.2f}[/]",
+                            note,
+                        ],
+                    )
+                )
             else:
                 reason = str(p.get("reason") or "Could not run the schedule.")
-                self.push_screen(ResultScreen("Schedule run", [f"[#ff6b6b]{reason}[/]"]))
+                self.push_screen(
+                    ResultScreen("Schedule run", [f"[#ff6b6b]{reason}[/]"])
+                )
             # last_run may have changed — re-render so the pane reflects it.
             if self.state.tab == "schedule":
                 await self._render_pane()
@@ -1280,7 +1379,9 @@ class MissionControlApp(App[int]):
             from frontier_scout.tui3.overlays import ProviderSwitcherScreen
 
             self.push_screen(
-                ProviderSwitcherScreen(data.provider_choices(self.state.provider), first_run=True)
+                ProviderSwitcherScreen(
+                    data.provider_choices(self.state.provider), first_run=True
+                )
             )
         elif s.reason == "none":
             self._set(
@@ -1291,13 +1392,16 @@ class MissionControlApp(App[int]):
 
 
 def _provider_reason_label(reason: str) -> str:
-    return {"flag": " · pinned", "preference": " · pinned", "auto": " · auto"}.get(reason, "")
+    return {"flag": " · pinned", "preference": " · pinned", "auto": " · auto"}.get(
+        reason, ""
+    )
 
 
 def _failure_compass(kind: str, error: str) -> str:
     hint = (
         " [#6e8aa1]· press [#24d6a8 b]P[/] switch · [#24d6a8 b]r[/] retry · or --demo[/]"
-        if kind == "scout" else ""
+        if kind == "scout"
+        else ""
     )
     return f"[#ff6b6b]{kind} failed: {error}[/]{hint}"
 
@@ -1346,8 +1450,13 @@ def _implement_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
     """Format a projected implement dict into ResultScreen title + markup lines."""
     p = payload or {}
     status = str(p.get("status") or "error")
-    color = {"passed": "#24d6a8", "dry_run": "#7aa6ff", "prepared": "#7aa6ff",
-             "failed": "#e3c26f", "error": "#ff6b6b"}.get(status, "#a9bccd")
+    color = {
+        "passed": "#24d6a8",
+        "dry_run": "#7aa6ff",
+        "prepared": "#7aa6ff",
+        "failed": "#e3c26f",
+        "error": "#ff6b6b",
+    }.get(status, "#a9bccd")
     title = "Implement & test"
     lines: list[str] = [f"[#6e8aa1]status[/] [{color} b]{status.upper()}[/]"]
     if p.get("summary"):
@@ -1421,8 +1530,12 @@ def _lab_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:
             lines.append(f"[#6e8aa1]{_escape_markup(str(err))}[/]")
         return title, lines
     status = str(p.get("status") or "")
-    color = {"passed": "#24d6a8", "skipped": "#7aa6ff", "failed": "#e3c26f",
-             "error": "#ff6b6b"}.get(status, "#a9bccd")
+    color = {
+        "passed": "#24d6a8",
+        "skipped": "#7aa6ff",
+        "failed": "#e3c26f",
+        "error": "#ff6b6b",
+    }.get(status, "#a9bccd")
     lines: list[str] = [f"[#6e8aa1]status[/] [{color} b]{status.upper() or '−'}[/]"]
     if p.get("runtime"):
         lines.append(f"[#6e8aa1]runtime[/] [#a9bccd]{p['runtime']}[/]")

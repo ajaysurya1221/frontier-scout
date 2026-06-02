@@ -79,7 +79,9 @@ def initial_state(repo: Path | None = None, *, demo: bool = False) -> AppState:
         if payload:
             verdicts = _verdicts_from_payload(payload)
             funnel = Funnel.from_payload(payload)
-            languages = tuple(str(x) for x in ((payload.get("stack") or {}).get("languages") or []))
+            languages = tuple(
+                str(x) for x in ((payload.get("stack") or {}).get("languages") or [])
+            )
     except Exception:  # noqa: BLE001 — opening state must never crash
         pass
     prov_name, prov_reason = _detect_provider(demo=demo)
@@ -96,18 +98,26 @@ def initial_state(repo: Path | None = None, *, demo: bool = False) -> AppState:
     )
 
 
-def run_scan(repo: str, *, dry_run: bool, scope: str, reporter: Any = None) -> dict[str, Any]:
+def run_scan(
+    repo: str, *, dry_run: bool, scope: str, reporter: Any = None
+) -> dict[str, Any]:
     """Run a real scout scan (caller is on a worker). Returns projected pieces."""
     from frontier_scout.scout import run_scan as _run
 
     pack = None if scope in ("all", "deps") else scope
     payload = _run(
-        repo=Path(repo), dry_run=dry_run, persist=not dry_run, pack=pack, reporter=reporter
+        repo=Path(repo),
+        dry_run=dry_run,
+        persist=not dry_run,
+        pack=pack,
+        reporter=reporter,
     )
     return {
         "verdicts": _verdicts_from_payload(payload),
         "funnel": Funnel.from_payload(payload),
-        "languages": tuple(str(x) for x in ((payload.get("stack") or {}).get("languages") or [])),
+        "languages": tuple(
+            str(x) for x in ((payload.get("stack") or {}).get("languages") or [])
+        ),
     }
 
 
@@ -168,20 +178,46 @@ def providers() -> list[dict[str, Any]]:
     cc = bool(shutil.which("claude"))
     cx = bool(shutil.which("codex"))
     return [
-        {"id": "anthropic", "name": "Anthropic API", "present": a,
-         "badge": "key present" if a else "no key", "cost": "~$0.34 / scan",
-         "detail": "ANTHROPIC_API_KEY " + ("found" if a else "not set")},
-        {"id": "claude-cli", "name": "Claude Code CLI", "present": cc,
-         "badge": "detected" if cc else "not found", "cost": "$0 marginal",
-         "detail": "`claude` " + ("on PATH" if cc else "not on PATH")},
-        {"id": "openai", "name": "OpenAI API", "present": o,
-         "badge": "configured" if o else "not configured", "cost": "~$0.05 / scan",
-         "detail": "OPENAI_API_KEY " + ("found" if o else "not set")},
-        {"id": "codex-cli", "name": "Codex CLI", "present": cx,
-         "badge": "detected" if cx else "not found", "cost": "$0 marginal",
-         "detail": "`codex` " + ("on PATH" if cx else "not on PATH")},
-        {"id": "local", "name": "Local · offline", "present": True, "badge": "always on",
-         "cost": "free", "detail": "Bundled fixtures, no network"},
+        {
+            "id": "anthropic",
+            "name": "Anthropic API",
+            "present": a,
+            "badge": "key present" if a else "no key",
+            "cost": "~$0.34 / scan",
+            "detail": "ANTHROPIC_API_KEY " + ("found" if a else "not set"),
+        },
+        {
+            "id": "claude-cli",
+            "name": "Claude Code CLI",
+            "present": cc,
+            "badge": "detected" if cc else "not found",
+            "cost": "$0 marginal",
+            "detail": "`claude` " + ("on PATH" if cc else "not on PATH"),
+        },
+        {
+            "id": "openai",
+            "name": "OpenAI API",
+            "present": o,
+            "badge": "configured" if o else "not configured",
+            "cost": "~$0.05 / scan",
+            "detail": "OPENAI_API_KEY " + ("found" if o else "not set"),
+        },
+        {
+            "id": "codex-cli",
+            "name": "Codex CLI",
+            "present": cx,
+            "badge": "detected" if cx else "not found",
+            "cost": "$0 marginal",
+            "detail": "`codex` " + ("on PATH" if cx else "not on PATH"),
+        },
+        {
+            "id": "local",
+            "name": "Local · offline",
+            "present": True,
+            "badge": "always on",
+            "cost": "free",
+            "detail": "Bundled fixtures, no network",
+        },
     ]
 
 
@@ -204,10 +240,15 @@ def provider_choices(current: str | None = None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for pid, (label, fix) in labels.items():
         ok = pid in avail
-        out.append({
-            "id": pid, "label": label, "available": ok,
-            "hint": "" if ok else fix, "active": cur == pid,
-        })
+        out.append(
+            {
+                "id": pid,
+                "label": label,
+                "available": ok,
+                "hint": "" if ok else fix,
+                "active": cur == pid,
+            }
+        )
     return out
 
 
@@ -226,8 +267,12 @@ def notifications_list() -> list[dict[str, Any]]:
 
         rows = notifications.list_notifications(False) or []
         return [
-            {"text": str(_g(n, "text") or _g(n, "message")), "repo": str(_g(n, "repo")),
-             "when": str(_g(n, "when") or _g(n, "created_at")), "read": bool(_g(n, "read", False))}
+            {
+                "text": str(_g(n, "text") or _g(n, "message")),
+                "repo": str(_g(n, "repo")),
+                "when": str(_g(n, "when") or _g(n, "created_at")),
+                "read": bool(_g(n, "read", False)),
+            }
             for n in rows
         ]
     except Exception:  # noqa: BLE001
@@ -257,12 +302,17 @@ def schedules() -> list[dict[str, Any]]:
 
         rows = scheduling.load_schedules() or []
         return [
-            {"id": str(_g(s, "id")), "repo": str(_g(s, "repo")),
-             "cron_expr": str(_g(s, "cron_expr")), "human": _humanize_cron(str(_g(s, "cron_expr"))),
-             "notification": str(_g(s, "notification", "system")),
-             "live": bool(_g(s, "live", False)), "disabled": bool(_g(s, "disabled", False)),
-             "last_run": str(_g(s, "last_run", "never") or "never"),
-             "last_verdict_count": int(_g(s, "last_verdict_count", 0) or 0)}
+            {
+                "id": str(_g(s, "id")),
+                "repo": str(_g(s, "repo")),
+                "cron_expr": str(_g(s, "cron_expr")),
+                "human": _humanize_cron(str(_g(s, "cron_expr"))),
+                "notification": str(_g(s, "notification", "system")),
+                "live": bool(_g(s, "live", False)),
+                "disabled": bool(_g(s, "disabled", False)),
+                "last_run": str(_g(s, "last_run", "never") or "never"),
+                "last_verdict_count": int(_g(s, "last_verdict_count", 0) or 0),
+            }
             for s in rows
         ]
     except Exception:  # noqa: BLE001
@@ -300,8 +350,11 @@ def schedule_toggle(schedule_id: str) -> dict[str, Any]:
             if str(_g(s, "id")) == str(schedule_id):
                 s.disabled = not bool(_g(s, "disabled", False))
                 scheduling.save_schedules(rows)
-                return {"ok": True, "disabled": bool(s.disabled),
-                        "repo": _repo_name(_g(s, "repo", ""))}
+                return {
+                    "ok": True,
+                    "disabled": bool(s.disabled),
+                    "repo": _repo_name(_g(s, "repo", "")),
+                }
         return {"ok": False, "reason": "schedule not found"}
     except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
         return {"ok": False, "reason": str(exc)}
@@ -361,14 +414,17 @@ def schedule_run(schedule_id: str, *, dry_run: bool) -> dict[str, Any]:
         # failure here is swallowed — it must never abort a completed run.
         try:
             result_dir = scheduling.runs_dir() / str(_g(sched, "id", "run"))
-            scheduling.record_run(
-                sched, result_dir=result_dir, verdict_count=verdicts
-            )
+            scheduling.record_run(sched, result_dir=result_dir, verdict_count=verdicts)
         except Exception:  # noqa: BLE001 — record_run is best-effort only
             pass
 
-        return {"ok": True, "repo": _repo_name(repo), "verdicts": verdicts,
-                "cost": cost, "dry_run": dry_run}
+        return {
+            "ok": True,
+            "repo": _repo_name(repo),
+            "verdicts": verdicts,
+            "cost": cost,
+            "dry_run": dry_run,
+        }
     except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
         return {"ok": False, "reason": str(exc)}
 
@@ -393,7 +449,12 @@ def schedule_create(
         scheduling.add_schedule(
             repo, cron_expr=cron_expr, notification=notification, live=bool(live)
         )
-        return {"ok": True, "repo": _repo_name(repo), "cron": cron_expr, "live": bool(live)}
+        return {
+            "ok": True,
+            "repo": _repo_name(repo),
+            "cron": cron_expr,
+            "live": bool(live),
+        }
     except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
         return {"ok": False, "reason": str(exc)}
 
@@ -434,11 +495,16 @@ def receipts(limit: int = 50) -> list[dict[str, Any]]:
 
         rows = store.list_trial_summaries(limit) or []
         return [
-            {"tool_name": str(_g(r, "tool_name")),
-             "kind": str(_g(r, "kind", _g(r, "requested_action", "trial"))),
-             "status": str(_g(r, "status", "—")), "runtime": str(_g(r, "runtime", "")),
-             "when": str(_g(r, "when", _g(r, "finished_at", _g(r, "created_at", "")))),
-             "note": str(_g(r, "note", _g(r, "summary", "")))}
+            {
+                "tool_name": str(_g(r, "tool_name")),
+                "kind": str(_g(r, "kind", _g(r, "requested_action", "trial"))),
+                "status": str(_g(r, "status", "—")),
+                "runtime": str(_g(r, "runtime", "")),
+                "when": str(
+                    _g(r, "when", _g(r, "finished_at", _g(r, "created_at", "")))
+                ),
+                "note": str(_g(r, "note", _g(r, "summary", ""))),
+            }
             for r in rows
         ]
     except Exception:  # noqa: BLE001
@@ -452,14 +518,22 @@ def guard(repo: str, *, strict: bool) -> dict[str, Any]:
 
         findings = run_guard(Path(repo), strict=strict) or []
         rows = [
-            {"severity": str(_g(f, "severity", "low")), "rule": str(_g(f, "rule_id", "")),
-             "tool": str(_g(f, "tool_name", "")), "detail": str(_g(f, "message", ""))}
+            {
+                "severity": str(_g(f, "severity", "low")),
+                "rule": str(_g(f, "rule_id", "")),
+                "tool": str(_g(f, "tool_name", "")),
+                "detail": str(_g(f, "message", "")),
+            }
             for f in findings
         ]
         high = sum(1 for r in rows if r["severity"] == "high")
         med = sum(1 for r in rows if r["severity"] == "medium")
-        return {"findings": rows, "high": high, "medium": med,
-                "fail": high > 0 or (strict and med > 0)}
+        return {
+            "findings": rows,
+            "high": high,
+            "medium": med,
+            "fail": high > 0 or (strict and med > 0),
+        }
     except Exception:  # noqa: BLE001
         return {"findings": [], "high": 0, "medium": 0, "fail": False}
 
@@ -472,12 +546,15 @@ def packs(languages: tuple[str, ...] = ()) -> list[dict[str, Any]]:
         rows = packs_mod.pack_summary_rows() or []
         out = []
         for r in rows:
-            out.append({
-                "slug": str(_g(r, "slug")), "name": str(_g(r, "display_name", _g(r, "slug"))),
-                "seeds": int(_g(r, "seed_count", 0) or 0),
-                "sources": int(_g(r, "source_count", 0) or 0),
-                "desc": str(_g(r, "description", "")),
-            })
+            out.append(
+                {
+                    "slug": str(_g(r, "slug")),
+                    "name": str(_g(r, "display_name", _g(r, "slug"))),
+                    "seeds": int(_g(r, "seed_count", 0) or 0),
+                    "sources": int(_g(r, "source_count", 0) or 0),
+                    "desc": str(_g(r, "description", "")),
+                }
+            )
         return out
     except Exception:  # noqa: BLE001
         return []
@@ -531,18 +608,27 @@ def dependencies(repo: str) -> list[dict[str, Any]]:
         from frontier_scout.dependencies import run_dependency_scan
 
         result = run_dependency_scan(Path(repo), persist=False)
-        findings = result.get("findings", []) if isinstance(result, dict) else (
-            _g(result, "findings", []) or [])
+        findings = (
+            result.get("findings", [])
+            if isinstance(result, dict)
+            else (_g(result, "findings", []) or [])
+        )
         out = []
         for d in findings:
             why = _g(d, "why_fit", None)
-            why_text = (why[0] if isinstance(why, list) and why else str(_g(d, "why", "")))
-            out.append({
-                "tool_name": str(_g(d, "package_name", _g(d, "tool_name", ""))),
-                "from_version": str(_g(d, "from_version", "")),
-                "to_version": str(_g(d, "to_version", "")),
-                "classification": str(_g(d, "classification", "")),
-                "why": str(why_text), "verdict": str(_g(d, "verdict", "assess"))})
+            why_text = (
+                why[0] if isinstance(why, list) and why else str(_g(d, "why", ""))
+            )
+            out.append(
+                {
+                    "tool_name": str(_g(d, "package_name", _g(d, "tool_name", ""))),
+                    "from_version": str(_g(d, "from_version", "")),
+                    "to_version": str(_g(d, "to_version", "")),
+                    "classification": str(_g(d, "classification", "")),
+                    "why": str(why_text),
+                    "verdict": str(_g(d, "verdict", "assess")),
+                }
+            )
         return out
     except Exception:  # noqa: BLE001
         return []
@@ -563,8 +649,12 @@ def doctor() -> list[dict[str, Any]]:
         from frontier_scout.doctor import run_doctor
 
         return [
-            {"name": str(_g(c, "name")), "status": str(_g(c, "status", "ok")),
-             "detail": str(_g(c, "detail", "")), "fix": str(_g(c, "fix", ""))}
+            {
+                "name": str(_g(c, "name")),
+                "status": str(_g(c, "status", "ok")),
+                "detail": str(_g(c, "detail", "")),
+                "fix": str(_g(c, "fix", "")),
+            }
             for c in (run_doctor() or [])
         ]
     except Exception:  # noqa: BLE001
@@ -656,13 +746,21 @@ def implement(verdict: Verdict, repo: str, *, dry_run: bool) -> dict[str, Any]:
             "error": str(_g(d, "error", "")),
         }
     except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
-        return {"status": "error", "summary": "", "files": [], "diff": "",
-                "test_output": "", "error": str(exc)}
+        return {
+            "status": "error",
+            "summary": "",
+            "files": [],
+            "diff": "",
+            "test_output": "",
+            "error": str(exc),
+        }
 
 
 # ── Offline Ask (deterministic; never calls a provider — decision D3) ────────
 def ask_offline(v: Verdict, question: str, repo_name: str) -> str:
-    parts = [f"{v.tool_name} is an {v.verdict.upper()} for {repo_name} — fit {v.fit}, risk {v.risk}."]
+    parts = [
+        f"{v.tool_name} is an {v.verdict.upper()} for {repo_name} — fit {v.fit}, risk {v.risk}."
+    ]
     if v.fit_reasons:
         parts.append(v.fit_reasons[0])
     if v.concerns:
@@ -695,9 +793,7 @@ def evaluate(verdict: Verdict, repo: str) -> dict[str, Any]:
         risk = str(_g(v, "risk", ""))
         trust = str(_g(v, "source_trust", ""))
         tool = str(_g(v, "tool_name", _g(verdict, "tool_name", "")))
-        summary = (
-            f"{tool}: fit {fit or '−'}, risk {risk or '−'}, source trust {trust or '−'}."
-        )
+        summary = f"{tool}: fit {fit or '−'}, risk {risk or '−'}, source trust {trust or '−'}."
         return {
             "ok": True,
             "tool_name": tool,
@@ -711,8 +807,12 @@ def evaluate(verdict: Verdict, repo: str) -> dict[str, Any]:
             "evidence": [str(x) for x in (_g(v, "evidence", ()) or ())],
         }
     except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
-        return {"ok": False, "tool_name": str(_g(verdict, "tool_name", "")),
-                "summary": "evaluation failed", "error": str(exc)}
+        return {
+            "ok": False,
+            "tool_name": str(_g(verdict, "tool_name", "")),
+            "summary": "evaluation failed",
+            "error": str(exc),
+        }
 
 
 def lab(verdict: Verdict, repo: str) -> dict[str, Any]:
@@ -742,8 +842,13 @@ def lab(verdict: Verdict, repo: str) -> dict[str, Any]:
             "exit_code": _g(d, "exit_code", None),
         }
     except Exception as exc:  # noqa: BLE001 — actions must never crash the UI
-        return {"ok": False, "tool_name": str(_g(verdict, "tool_name", "")),
-                "status": "error", "detail": "trial failed", "error": str(exc)}
+        return {
+            "ok": False,
+            "tool_name": str(_g(verdict, "tool_name", "")),
+            "status": "error",
+            "detail": "trial failed",
+            "error": str(exc),
+        }
 
 
 def clear_history(repo: str) -> int:

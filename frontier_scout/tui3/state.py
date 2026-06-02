@@ -34,18 +34,18 @@ class Concern:
 @dataclass(frozen=True)
 class Verdict:
     tool_name: str
-    verdict: str            # adopt | trial | assess | hold
-    fit: str                # high | medium | low
-    risk: str               # high | medium | low
+    verdict: str  # adopt | trial | assess | hold
+    fit: str  # high | medium | low
+    risk: str  # high | medium | low
     category: str
     source_url: str
-    what: str               # one-line summary
+    what: str  # one-line summary
     why_it_matters: str
     fit_reasons: tuple[str, ...]
     concerns: tuple[Concern, ...]
     next_safe_step: str
     unknowns: tuple[str, ...] = ()
-    kind: str = "tool"      # tool | dep
+    kind: str = "tool"  # tool | dep
     age: str = ""
     pack: str = ""
     # dependency-only
@@ -62,8 +62,10 @@ class Verdict:
         """Short source host, e.g. github / pypi / huggingface."""
         url = self.source_url or ""
         for host, label in (
-            ("github.com", "github"), ("pypi.org", "pypi"),
-            ("huggingface.co", "huggingface"), ("npmjs", "npm"),
+            ("github.com", "github"),
+            ("pypi.org", "pypi"),
+            ("huggingface.co", "huggingface"),
+            ("npmjs", "npm"),
         ):
             if host in url:
                 return label
@@ -84,7 +86,8 @@ class Verdict:
         caps = manifest.get("capabilities") if isinstance(manifest, dict) else None
         capabilities = (
             tuple((str(k), str(v)) for k, v in caps.items())
-            if isinstance(caps, dict) and kind != "dep" else ()
+            if isinstance(caps, dict) and kind != "dep"
+            else ()
         )
         # Derive the scope-chip pack when the payload doesn't carry one (real scan
         # payloads don't set a per-verdict pack): MCP servers → "mcp", every other
@@ -146,13 +149,13 @@ class AppState:
     repo_name: str = "."
     languages: tuple[str, ...] = ()
     provider: str = "local"
-    provider_reason: str = ""   # "flag"|"preference"|"auto"|"demo"|"none"
+    provider_reason: str = ""  # "flag"|"preference"|"auto"|"demo"|"none"
     verdicts: tuple[Verdict, ...] = ()
     funnel: Funnel = field(default_factory=Funnel)
-    tab: str = "scout"          # active tab id
-    sel: int = 0                # selected verdict index
-    sched_sel: int = 0          # selected schedule index (Schedule tab)
-    scope: str = "all"          # all | ai-devtools | mcp | deps
+    tab: str = "scout"  # active tab id
+    sel: int = 0  # selected verdict index
+    sched_sel: int = 0  # selected schedule index (Schedule tab)
+    scope: str = "all"  # all | ai-devtools | mcp | deps
     unicode: bool = True
     color: bool = True
     demo: bool = False

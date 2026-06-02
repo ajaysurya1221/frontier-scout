@@ -1,4 +1,5 @@
 """Provider preference persistence — name only, never secrets."""
+
 from __future__ import annotations
 
 import pytest

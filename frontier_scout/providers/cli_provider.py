@@ -75,7 +75,9 @@ def extract_json_object(text: str) -> dict[str, Any]:
                 try:
                     return json.loads(blob)
                 except json.JSONDecodeError as exc:
-                    raise ProviderError(f"CLI output was not valid JSON: {exc}") from exc
+                    raise ProviderError(
+                        f"CLI output was not valid JSON: {exc}"
+                    ) from exc
     raise ProviderError("CLI output had an unbalanced JSON object")
 
 
@@ -181,7 +183,9 @@ class _CLIProvider:
         except FileNotFoundError as exc:
             raise ProviderError(f"{self.binary} CLI not found on PATH") from exc
         except subprocess.TimeoutExpired as exc:
-            raise ProviderError(f"{self.binary} CLI timed out after {_TIMEOUT}s") from exc
+            raise ProviderError(
+                f"{self.binary} CLI timed out after {_TIMEOUT}s"
+            ) from exc
         if proc.returncode != 0:
             raise ProviderError(
                 f"{self.binary} CLI exited {proc.returncode}: {proc.stderr[:400]}"
@@ -204,17 +208,22 @@ class ClaudeCodeProvider(_CLIProvider):
     binary = "claude"
     _model_id = "claude-code-cli"
     _env_prefix = "FRONTIER_SCOUT_CLAUDE_CLI"
-    _fast_model_default = "sonnet"   # alias → latest Sonnet on the user's plan
-    _deep_model_default = "opus"     # alias → latest Opus on the user's plan
+    _fast_model_default = "sonnet"  # alias → latest Sonnet on the user's plan
+    _deep_model_default = "opus"  # alias → latest Opus on the user's plan
 
     def _command(self, model: str, effort: str) -> list[str]:
         # Hermetic: no MCP autoload, structured JSON out, no agentic tools.
         # NOT --bare (it forces API-key-only auth and breaks OAuth subscribers).
         cmd = [
-            self.binary, "-p",
-            "--strict-mcp-config", "--mcp-config", "{}",
-            "--output-format", "json",
-            "--disallowed-tools", "Bash Edit Write Read WebFetch WebSearch",
+            self.binary,
+            "-p",
+            "--strict-mcp-config",
+            "--mcp-config",
+            "{}",
+            "--output-format",
+            "json",
+            "--disallowed-tools",
+            "Bash Edit Write Read WebFetch WebSearch",
         ]
         if model:
             cmd += ["--model", model]
@@ -246,7 +255,7 @@ class CodexProvider(_CLIProvider):
     binary = "codex"
     _model_id = "codex-cli"
     _env_prefix = "FRONTIER_SCOUT_CODEX_CLI"
-    _fast_model_default = ""   # codex has no cheaper tier we pin — inherit its own
+    _fast_model_default = ""  # codex has no cheaper tier we pin — inherit its own
     _deep_model_default = ""
 
     def _command(self, model: str, effort: str) -> list[str]:

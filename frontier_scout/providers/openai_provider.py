@@ -169,7 +169,9 @@ class OpenAIProvider:
                     f"OpenAI tool call {fn.name!r} returned non-JSON arguments: {exc}"
                 ) from exc
             content.append(
-                ToolUseBlock(name=fn.name, input=parsed, id=getattr(call, "id", "toolu"))
+                ToolUseBlock(
+                    name=fn.name, input=parsed, id=getattr(call, "id", "toolu")
+                )
             )
         elif message is not None and getattr(message, "content", None):
             content.append(TextBlock(text=message.content))
@@ -242,7 +244,9 @@ class OpenAICompatibleProvider(OpenAIProvider):
         return self._client
 
     def model(self, tier: str) -> str:
-        fast = os.environ.get("FRONTIER_SCOUT_OPENAI_COMPAT_FAST_MODEL", _COMPAT_DEFAULT_FAST)
+        fast = os.environ.get(
+            "FRONTIER_SCOUT_OPENAI_COMPAT_FAST_MODEL", _COMPAT_DEFAULT_FAST
+        )
         if tier == "deep":
             return os.environ.get("FRONTIER_SCOUT_OPENAI_COMPAT_DEEP_MODEL", fast)
         return fast

@@ -9,6 +9,7 @@ When >1 provider is available, no preference is saved, and the caller is
 interactive (the TUI), ``select()`` returns ``must_ask`` so the UI can prompt
 once and remember. Headless callers never get ``must_ask``.
 """
+
 from __future__ import annotations
 
 import os
@@ -22,7 +23,7 @@ from .base import LLMProvider
 
 @dataclass(frozen=True)
 class Selection:
-    name: str   # "" when reason is "must_ask" or "none"
+    name: str  # "" when reason is "must_ask" or "none"
     reason: str  # "flag" | "preference" | "auto" | "must_ask" | "none"
 
 
@@ -35,7 +36,11 @@ def select(*, cli_override: str | None = None, interactive: bool = False) -> Sel
     canonical ``ProviderUnavailable`` if it is unknown or unusable. This keeps
     one validation path and one error message.
     """
-    pinned = (cli_override or os.environ.get("FRONTIER_SCOUT_PROVIDER") or "").strip().lower()
+    pinned = (
+        (cli_override or os.environ.get("FRONTIER_SCOUT_PROVIDER") or "")
+        .strip()
+        .lower()
+    )
     if pinned:
         return Selection(pinned, "flag")
     avail = available_providers()

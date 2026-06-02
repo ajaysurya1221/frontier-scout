@@ -136,7 +136,9 @@ def critique(
         messages=[{"role": "user", "content": user_message}],
         extra_body={"output_config": {"effort": "high"}},
     )
-    cost += log_call("scout-judge", getattr(resp, "model", None) or model_id, resp.usage)
+    cost += log_call(
+        "scout-judge", getattr(resp, "model", None) or model_id, resp.usage
+    )
     cache_read = getattr(resp.usage, "cache_read_input_tokens", 0) or 0
     print(
         f"  Judge pass 1 (thinking): {resp.usage.input_tokens} in + "
@@ -149,7 +151,9 @@ def critique(
 
     if tool_use is None:
         # Fallback: no thinking, force the tool call. Cheaper + reliable.
-        print("  ⚠️  Judge attempt 1 emitted no tool call — retrying without thinking, forced tool_choice")
+        print(
+            "  ⚠️  Judge attempt 1 emitted no tool call — retrying without thinking, forced tool_choice"
+        )
         used_fallback = True
         resp2 = call_with_retry(
             provider,
@@ -234,25 +238,28 @@ def apply_judge_decisions(
         if idx is None or not (0 <= idx < len(scored_items)):
             continue
         item = scored_items[idx]
-        final.append({
-            "tool_name": m.get("tool_name") or (item.get("title") or "")[:80],
-            "verdict": m.get("suggested_tier", "assess"),
-            "category": m.get("category") or item.get("category", "dev_tool"),
-            "risk": m.get("risk", "medium"),
-            "fit": m.get("fit"),
-            "what": m.get("what") or (item.get("summary") or "")[:200],
-            "why_it_matters": m.get("why_it_matters", ""),
-            "adoption_cost": m.get("adoption_cost", "Not estimated"),
-            "next_action": m.get("next_action") or f"evaluate <{m.get('tool_name', 'tool')}>",
-            "source_url": item.get("url", ""),
-            "severity": m.get("severity", "high"),
-            "readiness": int(m.get("readiness", 3)),
-            # Carry topic tags from the source item so future taste-model
-            # layers (v0.3) can attribute ratings to topics.
-            "tags": list(item.get("tags") or []),
-            "_judge_reason": "promoted from missed pool",
-            "_promoted_by_judge": True,
-        })
+        final.append(
+            {
+                "tool_name": m.get("tool_name") or (item.get("title") or "")[:80],
+                "verdict": m.get("suggested_tier", "assess"),
+                "category": m.get("category") or item.get("category", "dev_tool"),
+                "risk": m.get("risk", "medium"),
+                "fit": m.get("fit"),
+                "what": m.get("what") or (item.get("summary") or "")[:200],
+                "why_it_matters": m.get("why_it_matters", ""),
+                "adoption_cost": m.get("adoption_cost", "Not estimated"),
+                "next_action": m.get("next_action")
+                or f"evaluate <{m.get('tool_name', 'tool')}>",
+                "source_url": item.get("url", ""),
+                "severity": m.get("severity", "high"),
+                "readiness": int(m.get("readiness", 3)),
+                # Carry topic tags from the source item so future taste-model
+                # layers (v0.3) can attribute ratings to topics.
+                "tags": list(item.get("tags") or []),
+                "_judge_reason": "promoted from missed pool",
+                "_promoted_by_judge": True,
+            }
+        )
 
     return final
 
@@ -286,7 +293,7 @@ def _fail_closed_result(verdicts: list[dict]) -> dict:
         "missed": [],
         "quality_self_rating": "low",
         "judge_summary": (
-            "JUDGE FAILED — Opus did not emit a structured tool call. All drafts "
+            "JUDGE FAILED — the judge model did not emit a structured tool call. All drafts "
             "vetoed (fail-closed). Operator: inspect the run, re-trigger if a "
             "provider hiccup is suspected."
         ),

@@ -5,6 +5,7 @@ Stored in the existing Frontier Scout home dir (``FRONTIER_SCOUT_HOME`` /
 A missing or corrupt file degrades to "no preference" so selection always
 falls through to auto-detect rather than crashing.
 """
+
 from __future__ import annotations
 
 import json
