@@ -390,3 +390,31 @@ def test_cost_tracker_known_and_unknown_models():
     unknown = _cost("some-future-model", usage)
     assert unknown > 0.0
     assert unknown >= _cost("claude-opus-4-7", usage)
+
+
+# ---------------------------------------------------------------------------
+# CLI backends — tiered model()
+# ---------------------------------------------------------------------------
+
+
+def test_claude_cli_tier_models(monkeypatch):
+    for v in ("FRONTIER_SCOUT_CLAUDE_CLI_FAST_MODEL", "FRONTIER_SCOUT_CLAUDE_CLI_DEEP_MODEL"):
+        monkeypatch.delenv(v, raising=False)
+    p = ClaudeCodeProvider()
+    assert p.model(FAST) == "sonnet"
+    assert p.model(DEEP) == "opus"
+
+
+def test_claude_cli_model_override_and_sentinel(monkeypatch):
+    monkeypatch.setenv("FRONTIER_SCOUT_CLAUDE_CLI_DEEP_MODEL", "opus-4-1")
+    assert ClaudeCodeProvider().model(DEEP) == "opus-4-1"
+    monkeypatch.setenv("FRONTIER_SCOUT_CLAUDE_CLI_FAST_MODEL", "default")
+    assert ClaudeCodeProvider().model(FAST) == ""  # sentinel → inherit CLI default
+
+
+def test_codex_cli_defaults_to_inherit(monkeypatch):
+    for v in ("FRONTIER_SCOUT_CODEX_CLI_FAST_MODEL", "FRONTIER_SCOUT_CODEX_CLI_DEEP_MODEL"):
+        monkeypatch.delenv(v, raising=False)
+    p = CodexProvider()
+    assert p.model(FAST) == ""
+    assert p.model(DEEP) == ""

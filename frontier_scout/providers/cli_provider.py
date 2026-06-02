@@ -21,7 +21,7 @@ import shutil
 import subprocess
 from typing import Any
 
-from .base import ProviderError, ProviderResponse, ToolUseBlock, Usage
+from .base import DEEP, ProviderError, ProviderResponse, ToolUseBlock, Usage
 
 _TIMEOUT = int(os.environ.get("FRONTIER_SCOUT_CLI_TIMEOUT", "180"))
 
@@ -108,6 +108,11 @@ class _CLIProvider:
     binary = ""
     _model_id = "cli"
 
+    # Per-tier model defaults; subclasses set the env prefix + tier defaults.
+    _env_prefix = "FRONTIER_SCOUT_CLI"
+    _fast_model_default = ""
+    _deep_model_default = ""
+
     def __init__(self, binary: str | None = None) -> None:
         if binary:
             self.binary = binary
@@ -115,8 +120,18 @@ class _CLIProvider:
     def available(self) -> bool:
         return shutil.which(self.binary) is not None
 
-    def model(self, tier: str) -> str:  # noqa: ARG002 — CLI uses its own model
-        return self._model_id
+    def model(self, tier: str) -> str:
+        """Model id to pass via --model/-m for ``tier``.
+
+        Three-state env knob ``{_env_prefix}_{FAST|DEEP}_MODEL``: unset → our
+        tier default; "default"/"" → "" (omit the flag, inherit the CLI's own
+        configured model); any other value → that value.
+        """
+        default = self._deep_model_default if tier == DEEP else self._fast_model_default
+        raw = os.environ.get(f"{self._env_prefix}_{tier.upper()}_MODEL")
+        if raw is None:
+            return default
+        return "" if raw.strip().lower() in ("", "default") else raw
 
     def _command(self) -> list[str]:
         raise NotImplementedError
@@ -168,8 +183,11 @@ class ClaudeCodeProvider(_CLIProvider):
     name = "claude-cli"
     binary = "claude"
     _model_id = "claude-code-cli"
+    _env_prefix = "FRONTIER_SCOUT_CLAUDE_CLI"
+    _fast_model_default = "sonnet"   # alias → latest Sonnet on the user's plan
+    _deep_model_default = "opus"     # alias → latest Opus on the user's plan
 
-    def _command(self) -> list[str]:
+    def _command(self) -> list[str]:        # UNCHANGED — Task 5 rewrites this
         return [self.binary, "-p"]
 
 
@@ -177,6 +195,9 @@ class CodexProvider(_CLIProvider):
     name = "codex-cli"
     binary = "codex"
     _model_id = "codex-cli"
+    _env_prefix = "FRONTIER_SCOUT_CODEX_CLI"
+    _fast_model_default = ""   # codex has no cheaper tier we pin — inherit its own
+    _deep_model_default = ""
 
-    def _command(self) -> list[str]:
+    def _command(self) -> list[str]:        # UNCHANGED — Task 5 rewrites this
         return [self.binary, "exec", "-"]
