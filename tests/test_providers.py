@@ -42,7 +42,7 @@ if SCRIPTS not in sys.path:
 
 
 def _clear_provider_env(monkeypatch):
-    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "FRONTIER_SCOUT_PROVIDER"):
+    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENAI_BASE_URL", "FRONTIER_SCOUT_PROVIDER"):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -508,3 +508,61 @@ def test_claude_unwrap_handles_envelope_and_fallbacks():
     # envelope with a non-str result → falls back to raw stdout
     raw = '{"type":"result","result":{"nested":1}}'
     assert u(raw) == raw
+
+
+# ---------------------------------------------------------------------------
+# OpenAICompatibleProvider — Task 6
+# ---------------------------------------------------------------------------
+
+from frontier_scout.providers import available_providers as _avail
+from frontier_scout.providers.openai_provider import OpenAICompatibleProvider
+
+
+def test_openai_compatible_tier_models(monkeypatch):
+    for v in ("FRONTIER_SCOUT_OPENAI_COMPAT_FAST_MODEL",
+              "FRONTIER_SCOUT_OPENAI_COMPAT_DEEP_MODEL"):
+        monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("FRONTIER_SCOUT_OPENAI_COMPAT_FAST_MODEL", "local-small")
+    p = OpenAICompatibleProvider()
+    assert p.model(FAST) == "local-small"
+    # DEEP unset → falls back to FAST (single-tier collapse, never crashes)
+    assert p.model(DEEP) == "local-small"
+
+
+def test_openai_compatible_passes_base_url(monkeypatch):
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:4000/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-x")  # pragma: allowlist secret
+    captured = {}
+
+    class _OpenAIMod:
+        def OpenAI(self, **kw):  # noqa: N802
+            captured.update(kw)
+            return "client"
+
+    monkeypatch.setitem(__import__("sys").modules, "openai", _OpenAIMod())
+    p = OpenAICompatibleProvider()
+    _ = p.client
+    assert captured["base_url"] == "http://localhost:4000/v1"
+
+
+def test_base_url_swaps_openai_for_compatible(monkeypatch):
+    for var in ("ANTHROPIC_API_KEY", "FRONTIER_SCOUT_PROVIDER"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr("frontier_scout.providers._has_claude_cli", lambda: False)
+    monkeypatch.setattr("frontier_scout.providers._has_codex_cli", lambda: False)
+    monkeypatch.setenv("OPENAI_API_KEY", "y")  # pragma: allowlist secret
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    assert "openai" in _avail() and "openai-compatible" not in _avail()
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:4000/v1")
+    out = _avail()
+    assert "openai-compatible" in out and "openai" not in out  # mutually exclusive
+
+
+def test_pinned_openai_with_base_url_resolves_compatible(monkeypatch):
+    _clear_provider_env(monkeypatch)
+    monkeypatch.setattr("frontier_scout.providers._has_claude_cli", lambda: False)
+    monkeypatch.setattr("frontier_scout.providers._has_codex_cli", lambda: False)
+    monkeypatch.setenv("OPENAI_API_KEY", "y")  # pragma: allowlist secret
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:4000/v1")
+    monkeypatch.setenv("FRONTIER_SCOUT_PROVIDER", "openai")
+    assert resolve_provider().name == "openai-compatible"

@@ -205,3 +205,44 @@ class OpenAIProvider:
             if code in {408, 409, 429} or (isinstance(code, int) and 500 <= code < 600):
                 return True
         return False
+
+
+_COMPAT_DEFAULT_FAST = ""  # no built-in default — driven by the user's endpoint
+
+
+class OpenAICompatibleProvider(OpenAIProvider):
+    """OpenAI-compatible endpoint (LiteLLM/Bifrost/vLLM/Ollama/OpenLLM/…).
+
+    Identical to :class:`OpenAIProvider` except the client is pointed at
+    ``OPENAI_BASE_URL`` (or ``FRONTIER_SCOUT_OPENAI_BASE_URL``). Reaching the
+    whole gateway ecosystem costs us one ``base_url`` — no extra dependency.
+    """
+
+    name = "openai-compatible"
+
+    def __init__(self, api_key: str | None = None, base_url: str | None = None) -> None:
+        super().__init__(
+            api_key=api_key
+            or os.environ.get("FRONTIER_SCOUT_OPENAI_COMPAT_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or "not-needed"  # many local servers accept any key
+        )
+        self._base_url = (
+            base_url
+            or os.environ.get("FRONTIER_SCOUT_OPENAI_BASE_URL")
+            or os.environ.get("OPENAI_BASE_URL")
+        )
+
+    @property
+    def client(self) -> Any:
+        if self._client is None:
+            import openai
+
+            self._client = openai.OpenAI(api_key=self._api_key, base_url=self._base_url)
+        return self._client
+
+    def model(self, tier: str) -> str:
+        fast = os.environ.get("FRONTIER_SCOUT_OPENAI_COMPAT_FAST_MODEL", _COMPAT_DEFAULT_FAST)
+        if tier == "deep":
+            return os.environ.get("FRONTIER_SCOUT_OPENAI_COMPAT_DEEP_MODEL", fast)
+        return fast
