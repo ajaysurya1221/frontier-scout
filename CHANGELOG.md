@@ -4,6 +4,52 @@
 
 - No unreleased changes yet.
 
+## 1.6.1 - 2026-06-02
+
+### Fixed (post-release audit)
+
+- **Permission map flags the real dangerous capabilities.** It now mirrors the
+  backend's `DANGEROUS_KEYS` (`write/network/browser/shell/credential/unknown`)
+  and real statuses (`likely/possible/unlikely/unknown`); it previously used the
+  prototype's `shell/secrets/network` keys, so `credential`/`write` likely-dangerous
+  surfaces rendered muted instead of red.
+- **`ai-devtools` & `mcp` scope chips filter correctly.** Each verdict's `pack` is
+  now derived (MCP servers → `mcp`, other tools → `ai-devtools`); the two chips were
+  previously always empty.
+- **Repo-switch race.** A scout result from a previous repo no longer clears the
+  in-flight scout guard or overwrites the new repo's state.
+- **Palette tool commands** (Build dossier / Implement / Evaluate / Lab) switch to
+  the Scout tab first instead of silently no-opping when run from another tab.
+- **Unicode→ASCII fallback now reaches overlays.** Help, Notifications, the command
+  palette and the repo switcher fold glyphs to ASCII (via a central `_paint` step)
+  in ASCII mode instead of leaking raw unicode; stray `·`/`…` literals fold too.
+
+## 1.6.0 - 2026-06-02
+
+### Mission Control v2 — full mouse parity, Permission map, repo switcher
+
+The tui3 dashboard now matches the v2 design prototype, with every interaction
+reachable by both keyboard and mouse. `frontier_scout/tui3/` only — no backend
+or CLI changes.
+
+- **Full mouse↔keyboard parity.** Every key now has a click that reaches the
+  identical action: tabs (rail + tabstrip), verdict rows (click selects,
+  double-click opens the dossier), scope chips, the scout affordance, the
+  Deps/Guard/Settings scan buttons, schedule rows + run/toggle/edit/remove
+  chips, gate confirm/cancel, and command-palette rows. One action, two triggers.
+- **`r` scans on Deps, Guard and Settings** from both the `r` key and a visible
+  scan button (with an `r scan` / `r re-run` compass hint), through the same worker.
+- **Permission map** on the Scout detail — capability surfaces
+  (filesystem / network / shell / secrets) with certain/likely/possible/unlikely
+  tones, projected from the real scan permission manifest (shown only when present;
+  dependency upgrades carry none, matching the design).
+- **Repo switcher** (`w`, the command palette, or a click) — a `j/k`+⏎ list that
+  re-inits and re-scouts the chosen repo; an honest preview of the upcoming
+  multi-repo workspace (never a label-only change).
+- **Hardening** — robust first-paint sizing (never flashes the "terminal too
+  small" floor), repaint-in-place lists (no DuplicateIds), and color/mono +
+  unicode/ascii fallbacks across every new widget.
+
 ## 1.5.2 - 2026-06-01
 
 ### Fixed

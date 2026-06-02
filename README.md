@@ -247,8 +247,9 @@ Set `JUDGE_ENABLED=false` to skip the judge for the cheapest run on any provider
 - [x] **`v1.0.0`** — Mission Control: every CLI capability gets a TUI surface, scout-first landing
 - [x] **`v1.1.0`** — Global setup wizard, cron automation, notifications, Go / Rust / Ruby coverage
 - [x] **`v1.4.0`** — Universal LLM provider, RLAIF fit-grounding loop, honest per-provider costs
-- [x] **`v1.5.2`** — Mission Control complete: 8-tab keyboard command center + command palette
-- [ ] **`v1.6`** — Streaming subprocess output in Trials, multi-repo workspace, launchd / Task Scheduler
+- [x] **`v1.5.0`** — Mission Control complete: 8-tab keyboard command center + command palette
+- [x] **`v1.6.0`** — Mission Control v2: full mouse↔keyboard parity, Permission map, repo switcher
+- [ ] **`v1.7`** — Streaming subprocess output in Trials, multi-repo workspace, launchd / Task Scheduler
 
 </td></tr>
 </table>

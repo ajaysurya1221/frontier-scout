@@ -13,11 +13,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
 from frontier_scout.tui3 import data
 from frontier_scout.tui3.kit import bar, glyphs
+from frontier_scout.tui3.widgets import ClickStatic
 
 
 def build_pane(app: Any, tab: str) -> Vertical:
@@ -32,6 +33,18 @@ def _S(app: Any, markup: str, **kw: Any) -> Static:
 
 def _head(app: Any, title: str, sub: str) -> Static:
     return _S(app, f"[#24d6a8 b]{title}[/]\n[#6e8aa1]{sub}[/]")
+
+
+def _scan_btn(app: Any, tab: str, label: str) -> ClickStatic:
+    """Primary scan/run button. Clicking it fires the SAME worker the `r` key
+    fires (action_refresh → _refresh_worker) — one worker, two triggers (§5)."""
+    markup = f"\n[#0b1117 on #24d6a8 b] r [/] [#24d6a8]{label}[/]"
+    return ClickStatic(
+        app._paint(markup),
+        lambda: app._refresh_worker(tab),
+        id=f"cap-scan-{tab}",
+        classes="cap-scan-btn",
+    )
 
 
 def _scout(app: Any) -> Vertical:
@@ -58,15 +71,29 @@ def _schedule(app: Any) -> Vertical:
         live = "[#e3c26f]live scan[/]" if s["live"] else "[#24d6a8]dry-run[/]"
         repo = s["repo"].split("/")[-1]
         marker = f"[#24d6a8]{gl['tri']}[/] " if i == sel else "  "
-        box.compose_add_child(_S(
-            app,
-            f"\n{marker}{sw}  [#d9f7ff]{repo}[/]  {live}  [#6e8aa1]notify: {s['notification']}[/]"))
+        box.compose_add_child(ClickStatic(
+            app._paint(
+                f"\n{marker}{sw}  [#d9f7ff]{repo}[/]  {live}  [#6e8aa1]notify: {s['notification']}[/]"),
+            lambda i=i: app._select_sched(i)))
         plural = "" if s["last_verdict_count"] == 1 else "s"
         box.compose_add_child(_S(
             app,
             f"  [#6e8aa1]{gl['dot']} {s['human']}[/] [#6e8aa1 i]{s['cron_expr']}[/]\n"
             f"  [#6e8aa1]last run {s['last_run']} {gl['pip']} "
             f"{s['last_verdict_count']} verdict{plural}[/]"))
+        # Per-row clickable action chips — each selects this row, then runs the
+        # SAME action the schedule keybindings use (§5 mouse parity).
+        acts = Horizontal(classes="sched-actions")
+        for _lbl, _act in (
+            (f"{gl['enter']} run", "action_primary"),
+            ("t toggle", "action_toggle_schedule"),
+            ("E edit", "action_edit_schedule"),
+            ("del remove", "action_remove_schedule"),
+        ):
+            acts.compose_add_child(ClickStatic(
+                app._paint(f"  [#24d6a8 b]{_lbl}[/]"),
+                lambda i=i, a=_act: (app._select_sched(i), app.call_later(getattr(app, a)))))
+        box.compose_add_child(acts)
     box.compose_add_child(_S(
         app,
         f"\n[#e3c26f]{gl['diamond']} one-time crontab install[/]\n"
@@ -114,7 +141,9 @@ def _guard(app: Any) -> Vertical:
     if gd is None:
         box.compose_add_child(_S(
             app, "\n[#6e8aa1]No guard run yet. Press [#24d6a8 b]r[/] to run the adoption firewall.[/]"))
+        box.compose_add_child(_scan_btn(app, "guard", "run guard"))
         return box
+    box.compose_add_child(_scan_btn(app, "guard", "re-run"))
     if gd["fail"]:
         summary = (f"[#ff6b6b]{gl['cross']} exit 1[/] "
                    f"[#6e8aa1]— {gd['high']} high, {gd['medium']} medium[/]")
@@ -166,7 +195,9 @@ def _deps(app: Any) -> Vertical:
     if rows is None:
         box.compose_add_child(_S(
             app, "\n[#6e8aa1]No dependency scan yet. Press [#24d6a8 b]r[/] to scan your manifests.[/]"))
+        box.compose_add_child(_scan_btn(app, "deps", "scan dependencies"))
         return box
+    box.compose_add_child(_scan_btn(app, "deps", "re-scan"))
     if rows == ():
         box.compose_add_child(_S(app, "\n[#6e8aa1]No dependency findings.[/]"))
         return box
@@ -230,6 +261,8 @@ def _settings(app: Any) -> Vertical:
         app, "Settings",
         "Providers, security posture, the repo profile that personalizes your "
         "scout, and self-diagnostics."))
+    if app.state.settings_cache is not None:
+        box.compose_add_child(_scan_btn(app, "settings", "reload diagnostics"))
 
     # Provider — cheap env/which checks, safe inline on the render path.
     box.compose_add_child(_S(app, "\n[#24d6a8 b]Provider[/]"))
@@ -265,7 +298,8 @@ def _settings(app: Any) -> Vertical:
     cache = app.state.settings_cache
     if cache is None:
         box.compose_add_child(_S(
-            app, "\n[#6e8aa1]Press [#24d6a8 b]r[/] to load policy, repo profile, and doctor.[/]"))
+            app, "\n[#6e8aa1]Press [#24d6a8 b]r[/] to load policy and doctor.[/]"))
+        box.compose_add_child(_scan_btn(app, "settings", "load diagnostics"))
         return box
 
     # Policy (read-only — the REAL Policy model fields; edit via the CLI).

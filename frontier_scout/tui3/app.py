@@ -19,13 +19,14 @@ from typing import Any
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, VerticalScroll
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import Static
 
 from frontier_scout.tui3 import data
-from frontier_scout.tui3.kit import MIN_COLS, MIN_ROWS, breakpoint_for, glyphs, mono
+from frontier_scout.tui3.kit import MIN_COLS, MIN_ROWS, asciify, breakpoint_for, glyphs, mono
 from frontier_scout.tui3.messages import Progress, TuiReporter, WorkDone, WorkFailed
 from frontier_scout.tui3.state import AppState
+from frontier_scout.tui3.widgets import ClickStatic
 
 # Tab registry: (id, label, short). Incident dropped (no backend) — decision D1.
 TABS: list[tuple[str, str, str]] = [
@@ -57,6 +58,7 @@ class MissionControlApp(App[int]):
         Binding("g", "guard_shortcut", "guard", show=False),
         Binding("r", "refresh", "refresh", show=False),
         Binding("p", "palette", "palette", show=False),
+        Binding("w", "switch_repo", "switch repo", show=False),
         *[Binding(str(i + 1), f"goto_{t}", t, show=False) for i, (t, _, _) in enumerate(TABS)],
         Binding("j,down", "move(1)", "down", show=False),
         Binding("k,up", "move(-1)", "up", show=False),
@@ -97,8 +99,22 @@ class MissionControlApp(App[int]):
     def compose(self) -> ComposeResult:
         yield Static(id="mc-header")
         with Container(id="mc-body"):
-            yield Static(id="mc-rail")
-            yield Static(id="mc-tabstrip")
+            # Rail/tabstrip are per-tab ClickStatic cells (one clickable widget
+            # per tab — handoff §5), repainted in place on reflow (never remounted,
+            # so no DuplicateIds — Bug #3). Both are composed once; display is
+            # toggled by breakpoint. Each cell click routes to the same _goto the
+            # number keys use.
+            with Vertical(id="mc-rail"):
+                yield Static("", classes="rail-brand", id="rail-brand")
+                for tid, _label, _short in TABS:
+                    yield ClickStatic(
+                        "", lambda t=tid: self.call_later(self._goto, t),
+                        id=f"rail-{tid}", classes="rtab")
+            with Horizontal(id="mc-tabstrip"):
+                for tid, _label, _short in TABS:
+                    yield ClickStatic(
+                        "", lambda t=tid: self.call_later(self._goto, t),
+                        id=f"strip-{tid}", classes="ts")
             yield VerticalScroll(id="mc-main")
             yield Static(id="mc-floor")
         yield Static(id="mc-compass")
@@ -115,7 +131,17 @@ class MissionControlApp(App[int]):
         if self._size_override is not None:
             return self._size_override
         sz = self.size
-        return max(1, sz.width), max(1, sz.height)
+        w, h = sz.width, sz.height
+        if w <= 1 or h <= 1:
+            # Container not laid out yet (e.g. the very first paint before the
+            # first Resize event). Fall back to the real terminal size from the
+            # driver, never to the "too small" floor (handoff measurement note).
+            try:
+                cs = self.console.size
+                w, h = cs.width, cs.height
+            except Exception:  # noqa: BLE001
+                w, h = 80, 24
+        return max(1, w), max(1, h)
 
     async def on_resize(self, event: Any = None) -> None:
         size = getattr(event, "size", None)
@@ -139,8 +165,8 @@ class MissionControlApp(App[int]):
 
         try:
             body = self.query_one("#mc-body", Container)
-            rail = self.query_one("#mc-rail", Static)
-            strip = self.query_one("#mc-tabstrip", Static)
+            rail = self.query_one("#mc-rail", Vertical)
+            strip = self.query_one("#mc-tabstrip", Horizontal)
             main = self.query_one("#mc-main", VerticalScroll)
             floor = self.query_one("#mc-floor", Static)
         except Exception:  # noqa: BLE001 — pre-mount
@@ -162,11 +188,8 @@ class MissionControlApp(App[int]):
             self._refresh_chrome()
             return
 
-        if bp.rail:
-            rail.set_class(bp.rail_compact, "compact")
-            rail.update(self._paint(self._rail_text(compact=bp.rail_compact)))
-        else:
-            strip.update(self._paint(self._tabstrip_text(numeric=bp.numeric_tabs)))
+        rail.set_class(bp.rail_compact, "compact")
+        self._paint_nav()
 
         await self._render_pane()
         self._refresh_chrome()
@@ -184,15 +207,14 @@ class MissionControlApp(App[int]):
         self._set("#mc-compass", self._compass_text())
 
     def _refresh_nav(self) -> None:
-        """Update rail/tabstrip markup in place (e.g. after a tab change)."""
-        bp = breakpoint_for(*self._term_size)
-        if bp.rail:
-            self._set("#mc-rail", self._rail_text(compact=bp.rail_compact))
-        else:
-            self._set("#mc-tabstrip", self._tabstrip_text(numeric=bp.numeric_tabs))
+        """Repaint rail + tabstrip cells in place (e.g. after a tab change)."""
+        self._paint_nav()
 
     def _paint(self, markup: str) -> str:
-        """Apply the color fallback: pass markup through, or strip color in mono."""
+        """Apply the responsive fallbacks: fold glyphs to ASCII when unicode mode
+        is off, then strip color in mono mode. Every renderable goes through here."""
+        if not self.state.unicode:
+            markup = asciify(markup)
         return markup if self.state.color else mono(markup)
 
     def _set(self, selector: str, markup: str) -> None:
@@ -254,6 +276,12 @@ class MissionControlApp(App[int]):
             if bp != "narrow":
                 sched_hints += [("N", "new"), ("E", "edit")]
             hints = [*sched_hints, *hints]
+        # Deps/Guard: surface the r-scan affordance in the compass so the "Press
+        # r" empty-state has a live keymap echo (prototype fs2-app.jsx:147-148).
+        elif self.state.tab == "deps" and bp != "micro":
+            hints = [("r", "scan"), *hints]
+        elif self.state.tab == "guard" and bp != "micro":
+            hints = [("r", "re-run"), *hints]
         parts = " ".join(f"[#24d6a8 b]{k}[/][#6e8aa1] {label}[/]" for k, label in hints)
         if self._scanning:
             tail = "[#24d6a8]scanning…[/]"
@@ -263,30 +291,34 @@ class MissionControlApp(App[int]):
         pad = max(1, cols - _vis_len(parts) - _vis_len(tail) - 2)
         return parts + " " * pad + tail
 
-    def _rail_text(self, *, compact: bool) -> str:
+    def _paint_nav(self) -> None:
+        """Repaint the per-tab rail + tabstrip cells in place (no remount)."""
+        bp = breakpoint_for(*self._term_size)
         g = glyphs(self.state.unicode)
-        lines = [g["radar_core"] if compact else f"{g['radar_core']} [#d9f7ff b]scout[/]", ""]
-        for i, (tid, label, _short) in enumerate(TABS):
+        compact = bp.rail_compact
+        brand = g["radar_core"] if compact else f"{g['radar_core']} [#d9f7ff b]scout[/]"
+        self._set("#rail-brand", brand)
+        for i, (tid, label, short) in enumerate(TABS):
             on = tid == self.state.tab
-            badge = self._badge(tid)
             if compact:
-                cell = f"{i + 1}"
+                rcell = f"{i + 1}"
             else:
+                badge = self._badge(tid)
                 btxt = f"  {badge}" if badge else ""
-                cell = f"{i + 1} {label}{btxt}"
-            if on:
-                lines.append(f"[#d9f7ff b on #10202a]{cell}[/]")
-            else:
-                lines.append(f"[#6e8aa1]{cell}[/]")
-        return "\n".join(lines)
+                rcell = f"{i + 1} {label}{btxt}"
+            self._set_cell(
+                f"#rail-{tid}",
+                f"[#d9f7ff b on #10202a]{rcell}[/]" if on else f"[#6e8aa1]{rcell}[/]")
+            scell = f"{i + 1}" if bp.numeric_tabs else f"{i + 1}{short}"
+            self._set_cell(
+                f"#strip-{tid}",
+                f"[#24d6a8 b]{scell}[/]" if on else f"[#6e8aa1]{scell}[/]")
 
-    def _tabstrip_text(self, *, numeric: bool) -> str:
-        cells = []
-        for i, (tid, _label, short) in enumerate(TABS):
-            on = tid == self.state.tab
-            cell = f"{i + 1}" if numeric else f"{i + 1}{short}"
-            cells.append(f"[#24d6a8 b]{cell}[/]" if on else f"[#6e8aa1]{cell}[/]")
-        return "  ".join(cells)
+    def _set_cell(self, selector: str, markup: str) -> None:
+        try:
+            self.query_one(selector, ClickStatic).update(self._paint(markup))
+        except Exception:  # noqa: BLE001 — widget may not be mounted yet
+            pass
 
     def _floor_text(self) -> str:
         g = glyphs(self.state.unicode)
@@ -336,6 +368,22 @@ class MissionControlApp(App[int]):
     async def action_goto_reports(self) -> None: await self._goto("reports")
     async def action_goto_settings(self) -> None: await self._goto("settings")
     async def action_guard_shortcut(self) -> None: await self._goto("guard")
+
+    def _select(self, i: int) -> None:
+        """Select a verdict by scoped index — click parity for j/k."""
+        self.state = self.state.with_(sel=i)
+        self.call_later(self._render_pane)
+
+    def _set_scope(self, scope: str) -> None:
+        """Set the scout scope — click parity for ←/→."""
+        if scope != self.state.scope:
+            self.state = self.state.with_(scope=scope, sel=0)
+            self.call_later(self._render_pane)
+
+    def _select_sched(self, i: int) -> None:
+        """Select a schedule row by index — click parity for j/k on schedule."""
+        self.state = self.state.with_(sched_sel=i)
+        self.call_later(self._render_pane)
 
     async def action_move(self, delta: int) -> None:
         if self.state.tab == "scout" and self.state.verdicts:
@@ -920,6 +968,35 @@ class MissionControlApp(App[int]):
 
         self.push_screen(CommandPalette())
 
+    def action_switch_repo(self) -> None:
+        from frontier_scout.tui3.overlays import RepoSwitcherScreen
+
+        repos = data.list_repos(self.state.repo)
+        self.push_screen(RepoSwitcherScreen(repos, self.state.repo))
+
+    def switch_repo(self, path: str) -> None:
+        """Re-init state for ``path`` (preserving UI prefs), then re-scout (§9).
+
+        Verdicts/funnel/languages/profile all become relative to the new repo —
+        an honest switch, never a label-only change.
+        """
+        fresh = data.initial_state(Path(path), demo=self.state.demo)
+        self.state = fresh.with_(
+            tab=self.state.tab, scope="all", sel=0,
+            color=self.state.color, unicode=self.state.unicode,
+        )
+        self._refresh_nav()
+        self.call_later(self._render)
+        # Clear any in-flight scout guard so the new repo's scout always starts;
+        # the exclusive "scout" group cancels the prior worker, and stale results
+        # are dropped by the repo tag in on_work_done.
+        self._scanning = False
+        self.run_scout(dry_run=self.state.demo)
+        try:
+            self.notify(f"pointed at {self.state.repo_name} · re-scouting")
+        except Exception:  # noqa: BLE001 — toast is best-effort feedback only
+            pass
+
     def run_palette_action(self, aid: str) -> None:
         kind, _, val = aid.partition(":")
         if kind == "tab":
@@ -943,13 +1020,15 @@ class MissionControlApp(App[int]):
         elif val == "refresh":
             self.call_later(self.action_refresh)
         elif val == "dossier":
-            self.call_later(self.action_dossier)
+            self.call_later(self._goto_then_async, "scout", self.action_dossier)
         elif val == "implement":
-            self.call_later(self.action_implement)
+            self.call_later(self._goto_then_async, "scout", self.action_implement)
         elif val == "evaluate":
-            self.call_later(self.action_evaluate)
+            self.call_later(self._goto_then_async, "scout", self.action_evaluate)
         elif val == "lab":
-            self.call_later(self.action_lab)
+            self.call_later(self._goto_then_async, "scout", self.action_lab)
+        elif val == "switch_repo":
+            self.call_later(self.action_switch_repo)
         elif val == "clear":
             self.call_later(self.action_clear_history)
         elif val == "reconfigure":
@@ -1024,12 +1103,16 @@ class MissionControlApp(App[int]):
         # @work assumes the wrapped callable is a method (self = args[0]); on a
         # zero-arg nested function it raises IndexError. run_worker(thread=True)
         # has the same off-thread semantics without that assumption.
+        repo = self.state.repo
+        scope = self.state.scope
+
         def _run() -> None:
             reporter = TuiReporter(self, "scout")
             try:
-                result = data.run_scan(
-                    self.state.repo, dry_run=dry_run, scope=self.state.scope, reporter=reporter)
-                self.post_message(WorkDone("scout", result))
+                result = data.run_scan(repo, dry_run=dry_run, scope=scope, reporter=reporter)
+                # Tag with the repo we scanned so a result that lands after a
+                # repo switch can be detected as stale and dropped.
+                self.post_message(WorkDone("scout", {**result, "repo": repo}))
             except Exception as exc:  # noqa: BLE001
                 self.post_message(WorkFailed("scout", str(exc)))
 
@@ -1039,9 +1122,15 @@ class MissionControlApp(App[int]):
         self._set("#mc-compass", f"[#24d6a8]scanning…[/] [#6e8aa1]{message.text}[/]")
 
     async def on_work_done(self, message: WorkDone) -> None:
-        self._scanning = False
         if message.kind == "scout":
             r = message.payload
+            # Drop a stale result from a previous repo (a switch raced an
+            # in-flight scout) — never overwrite the new repo's state, and leave
+            # _scanning set so the new repo's still-running scout keeps the guard.
+            if r.get("repo") and r["repo"] != self.state.repo:
+                self._refresh_chrome()
+                return
+            self._scanning = False
             self.state = self.state.with_(
                 verdicts=r["verdicts"], funnel=r["funnel"],
                 languages=r["languages"] or self.state.languages, sel=0)

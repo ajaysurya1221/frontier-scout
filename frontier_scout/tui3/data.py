@@ -109,6 +109,39 @@ def run_scan(repo: str, *, dry_run: bool, scope: str, reporter: Any = None) -> d
     }
 
 
+def list_repos(current: str | None = None) -> list[dict[str, Any]]:
+    """Known repos for the switcher: schedule repos + the current repo, deduped.
+
+    Source of truth is ``scheduling.load_schedules()`` (each Schedule.repo); we
+    fold in ``current`` so there is always at least one entry. No backend
+    ``list_repos`` exists — this is the only no-new-API path (handoff §9). Each
+    entry: ``{"name", "path"}``.
+    """
+    seen: dict[str, dict[str, Any]] = {}
+
+    def _add(raw: Any) -> None:
+        if not raw:
+            return
+        try:
+            p = str(Path(str(raw)).expanduser().resolve())
+        except Exception:  # noqa: BLE001
+            p = str(raw)
+        seen.setdefault(p, {"name": _repo_name(p), "path": p})
+
+    _add(current)
+    try:
+        from frontier_scout import scheduling
+
+        for s in scheduling.load_schedules() or []:
+            raw = getattr(s, "repo", None)
+            if raw is None and isinstance(s, dict):
+                raw = s.get("repo")
+            _add(raw)
+    except Exception:  # noqa: BLE001 — the switcher must never crash
+        pass
+    return list(seen.values())
+
+
 # ── Providers ────────────────────────────────────────────────────────────────
 def _detect_provider(*, demo: bool) -> str:
     if demo:
