@@ -465,9 +465,9 @@ class ClaudeCodeProvider(_CLIProvider):
     _env_prefix = "FRONTIER_SCOUT_CLAUDE_CLI"
     _fast_model_default = "sonnet"   # alias → latest Sonnet on the user's plan
     _deep_model_default = "opus"     # alias → latest Opus on the user's plan
-
-    def _command(self, model: str, effort: str) -> list[str]:
-        ...  # implemented in Task 5
+    # Leave the existing `def _command(self)` method UNTOUCHED in this task —
+    # Task 5 rewrites create() + _command together so the signature change and
+    # its only caller change land in the same commit (suite stays green here).
 
 
 class CodexProvider(_CLIProvider):
@@ -477,9 +477,7 @@ class CodexProvider(_CLIProvider):
     _env_prefix = "FRONTIER_SCOUT_CODEX_CLI"
     _fast_model_default = ""   # codex has no cheaper tier we pin — inherit its own
     _deep_model_default = ""
-
-    def _command(self, model: str, effort: str) -> list[str]:
-        ...  # implemented in Task 5
+    # (existing `def _command(self)` unchanged here — Task 5 rewrites it.)
 ```
 
 - [ ] **Step 4: Run to verify it passes**
