@@ -180,7 +180,7 @@ def test_r_loads_on_settings():
                 await pilot.pause()
                 assert app.state.tab == "settings"
                 assert app.state.settings_cache is not None, "auto-load did not populate settings_cache"
-                first = doc.calls
+                first_doc, first_pol, first_prof = doc.calls, pol.calls, prof.calls
 
                 app.state = app.state.with_(settings_cache=None)
                 await app._render_pane()
@@ -193,6 +193,8 @@ def test_r_loads_on_settings():
                 await asyncio.sleep(0.4)
                 await pilot.pause()
                 assert app.state.settings_cache is not None, "`r` did not repopulate settings_cache"
-                assert doc.calls > first, "`r` did not call the settings loaders again"
+                assert doc.calls > first_doc, "`r` did not re-run the doctor loader"
+                assert pol.calls > first_pol, "`r` did not re-run the policy loader"
+                assert prof.calls > first_prof, "`r` did not re-run the repo_profile loader"
 
     _run(go())

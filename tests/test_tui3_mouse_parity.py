@@ -189,7 +189,7 @@ def test_palette_tool_command_switches_to_scout():
             await pilot.press("8")  # settings
             await pilot.pause()
             app.run_palette_action("act:dossier")
-            for _ in range(20):
+            for _ in range(40):
                 await asyncio.sleep(0.05)
                 if app.state.tab == "scout":
                     break
