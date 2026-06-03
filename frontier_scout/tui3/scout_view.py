@@ -230,6 +230,15 @@ def _cell_markup(
     displayed = items[:_DOT_MAX]
     overflow = count - _DOT_MAX if count > _DOT_MAX else 0
 
+    # Determine whether this cell holds the selected verdict.
+    cell_indices = {i for i, _ in items}
+    is_selected = sel in cell_indices
+
+    # Corner lock frame — reinforcement when this cell holds the selection.
+    # Single-line cells use inline framing: corner_tl … content … corner_br.
+    # Toned mint for normal cells, red for the danger corner (low fit / high risk).
+    frame_tone = _hex("red") if (is_selected and hold_corner) else _hex("mint")
+
     # Build dot string — selected dot uses radar_core glyph.
     parts: list[str] = []
     if count > 3:
@@ -247,7 +256,15 @@ def _cell_markup(
     if overflow:
         parts.append(f"[{_hex('muted')}]+{overflow}[/]")
 
-    return app._paint("".join(parts))
+    content = "".join(parts)
+    if is_selected:
+        # Wrap content with corner glyphs (inline: ⌜<content>⌟ style).
+        # All glyphs route through gl so ascii mode gets '+'.
+        tl = gl["corner_tl"]
+        br = gl["corner_br"]
+        content = f"[{frame_tone}]{tl}[/]{content}[{frame_tone}]{br}[/]"
+
+    return app._paint(content)
 
 
 def _adoption_matrix(app: Any, gl: dict[str, str], verdicts: tuple) -> Vertical:

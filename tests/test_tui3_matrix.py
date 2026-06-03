@@ -282,3 +282,84 @@ def test_matrix_click_select_updates_state():
             assert app.state.sel == 2
 
     asyncio.run(go())
+
+
+# ── 4. _cell_markup selected-cell corner lock frame ───────────────────────────
+
+def test_cell_markup_frames_selected_cell():
+    """Selected cell gets corner glyphs; unselected cell does not."""
+    from frontier_scout.tui3 import scout_view
+    from frontier_scout.tui3.kit import glyphs, asciify
+
+    class _FakeState:
+        unicode = True
+
+    class _FakeApp:
+        state = _FakeState()
+
+        def _paint(self, m: str) -> str:
+            return m
+
+    v = _v("x", "adopt", "high", "low")
+    items = [(0, v)]
+    gl = glyphs(True)
+
+    # Cell holds the selected verdict (sel=0 is among item indices).
+    md = scout_view._cell_markup(_FakeApp(), gl, items, 0, "high", "low")
+    assert gl["corner_tl"] in md, "corner_tl missing in selected cell"
+    assert gl["corner_br"] in md, "corner_br missing in selected cell"
+    # ASCII degradation: asciify(md) must contain at least two '+' from the corners.
+    assert asciify(md).count("+") >= 2, "ASCII corners (+) missing after asciify"
+
+    # Cell does NOT hold the selection (sel=1 is not in items).
+    md2 = scout_view._cell_markup(_FakeApp(), gl, items, 1, "high", "low")
+    assert gl["corner_tl"] not in md2, "corner_tl must not appear in unselected cell"
+    assert gl["corner_br"] not in md2, "corner_br must not appear in unselected cell"
+
+
+def test_cell_markup_danger_corner_uses_red():
+    """Danger corner (fit=low, risk=high) frames selected cell in red."""
+    from frontier_scout.tui3 import scout_view
+    from frontier_scout.tui3.kit import glyphs
+
+    class _FakeState:
+        unicode = True
+
+    class _FakeApp:
+        state = _FakeState()
+
+        def _paint(self, m: str) -> str:
+            return m
+
+    v = _v("dangerous", "hold", "low", "high")
+    items = [(0, v)]
+    gl = glyphs(True)
+
+    md = scout_view._cell_markup(_FakeApp(), gl, items, 0, "low", "high")
+    red_hex = "#ff6b6b"
+    assert gl["corner_tl"] in md, "corner_tl missing in danger selected cell"
+    assert red_hex in md, f"danger corner frame should use red ({red_hex})"
+
+
+def test_cell_markup_normal_corner_uses_mint():
+    """Normal selected cell (not danger corner) frames in mint."""
+    from frontier_scout.tui3 import scout_view
+    from frontier_scout.tui3.kit import glyphs
+
+    class _FakeState:
+        unicode = True
+
+    class _FakeApp:
+        state = _FakeState()
+
+        def _paint(self, m: str) -> str:
+            return m
+
+    v = _v("good", "adopt", "high", "low")
+    items = [(0, v)]
+    gl = glyphs(True)
+
+    md = scout_view._cell_markup(_FakeApp(), gl, items, 0, "high", "low")
+    mint_hex = "#24d6a8"
+    assert gl["corner_tl"] in md, "corner_tl missing in selected cell"
+    assert mint_hex in md, f"normal corner frame should use mint ({mint_hex})"
