@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 
+- **Mission Control v5 (TUI redesign).** The Scout home gains an **Adoption Matrix** — a fit×risk cell grid of clickable, list-linked verdicts (Tier Ledger fallback on narrow). Every meter is rebuilt as a **segmented gauge** (discrete pips, so it reads as N-of-M at every fill — never a featureless block) driving fit/risk, the permission map, dependency evidence, and pack counts. The local **architecture profile** is now surfaced in Settings (archetype dial · AI-tooling buckets · dependency-evidence gauges · top imports — derived metadata only, never source). Provider selection reads as a **cost-aware engine selector**: a two-line switcher (cost + detection reason + the exact fix for unavailable engines), doubling as the first-run picker, plus a tightened header badge. Color↔mono and unicode↔ascii throughout; nothing spends or scans on the render path.
 - Richer local architecture profile — the scout/judge prompt now receives AI-tooling categories, resolved dependency versions, top imports, and a project archetype (previously only languages + frameworks reached the prompt, due to a producer/consumer schema drift in stack_from_profile ↔ render_stack_profile). Deterministic, local, no source content sent.
 
 ## 1.7.0 - 2026-06-03
