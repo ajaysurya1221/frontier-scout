@@ -59,8 +59,12 @@ class ScoutProfile(BaseModel):
     dependencies: list[DependencySpec] = Field(default_factory=list)
     risk_flags: list[str] = Field(default_factory=list)
     adoption_constraints: list[str] = Field(default_factory=list)
-    ignored_paths: list[str] = Field(default_factory=lambda: [".env.local", ".env", ".git"])
-    import_evidence: ImportEvidenceSummary = Field(default_factory=ImportEvidenceSummary)
+    ignored_paths: list[str] = Field(
+        default_factory=lambda: [".env.local", ".env", ".git"]
+    )
+    import_evidence: ImportEvidenceSummary = Field(
+        default_factory=ImportEvidenceSummary
+    )
     archetype: str = "unknown"
 
 
@@ -208,7 +212,10 @@ _PY_AI_RULES: dict[str, tuple[str, str]] = {
     "vllm": ("ai_tooling", "vllm"),
     "google": ("ai_tooling", "google-genai"),  # google.generativeai, google.adk
     "vertexai": ("ai_tooling", "vertex-ai"),
-    "boto3": ("ai_tooling", "bedrock-or-aws"),  # weak signal; bedrock usage often via boto3
+    "boto3": (
+        "ai_tooling",
+        "bedrock-or-aws",
+    ),  # weak signal; bedrock usage often via boto3
     "neo4j": ("ai_tooling", "neo4j"),
     "pinecone": ("ai_tooling", "pinecone"),
     "weaviate": ("ai_tooling", "weaviate"),
@@ -313,32 +320,84 @@ _PYPI_IMPORT_ALIAS: dict[str, str] = {
 }
 
 
-_WEB_FRAMEWORKS: frozenset[str] = frozenset({
-    "fastapi", "django", "flask", "starlette", "express", "fastify", "nestjs",
-    "next", "vue", "svelte", "rails", "sinatra", "rack", "gin", "echo", "fiber",
-    "actix-web", "axum", "rocket",
-})
-_AGENT_TOOLING: frozenset[str] = frozenset({
-    "langgraph", "crewai", "autogen", "mcp", "mastra", "langchain", "instructor", "dspy",
-})
-_ML_TOOLING: frozenset[str] = frozenset({
-    "transformers", "sentence-transformers", "vllm", "candle", "rust-bert",
-})
+_WEB_FRAMEWORKS: frozenset[str] = frozenset(
+    {
+        "fastapi",
+        "django",
+        "flask",
+        "starlette",
+        "express",
+        "fastify",
+        "nestjs",
+        "next",
+        "vue",
+        "svelte",
+        "rails",
+        "sinatra",
+        "rack",
+        "gin",
+        "echo",
+        "fiber",
+        "actix-web",
+        "axum",
+        "rocket",
+    }
+)
+_AGENT_TOOLING: frozenset[str] = frozenset(
+    {
+        "langgraph",
+        "crewai",
+        "autogen",
+        "mcp",
+        "mastra",
+        "langchain",
+        "instructor",
+        "dspy",
+    }
+)
+_ML_TOOLING: frozenset[str] = frozenset(
+    {
+        "transformers",
+        "sentence-transformers",
+        "vllm",
+        "candle",
+        "rust-bert",
+    }
+)
 
 
 _AI_CATEGORY: dict[str, str] = {
-    "openai": "llm-sdk", "anthropic": "llm-sdk", "google-genai": "llm-sdk",
-    "vertex-ai": "llm-sdk", "bedrock-or-aws": "llm-sdk", "vercel-ai-sdk": "llm-sdk",
-    "langchain": "orchestration", "llamaindex": "orchestration", "haystack": "orchestration",
-    "langgraph": "agent-framework", "crewai": "agent-framework", "autogen": "agent-framework",
-    "mastra": "agent-framework", "dspy": "agent-framework", "mcp": "agent-framework",
-    "qdrant": "vector-store", "pinecone": "vector-store", "weaviate": "vector-store",
+    "openai": "llm-sdk",
+    "anthropic": "llm-sdk",
+    "google-genai": "llm-sdk",
+    "vertex-ai": "llm-sdk",
+    "bedrock-or-aws": "llm-sdk",
+    "vercel-ai-sdk": "llm-sdk",
+    "langchain": "orchestration",
+    "llamaindex": "orchestration",
+    "haystack": "orchestration",
+    "langgraph": "agent-framework",
+    "crewai": "agent-framework",
+    "autogen": "agent-framework",
+    "mastra": "agent-framework",
+    "dspy": "agent-framework",
+    "mcp": "agent-framework",
+    "qdrant": "vector-store",
+    "pinecone": "vector-store",
+    "weaviate": "vector-store",
     "chromadb": "vector-store",
-    "ragas": "eval", "deepeval": "eval", "braintrust": "eval", "langsmith": "eval",
+    "ragas": "eval",
+    "deepeval": "eval",
+    "braintrust": "eval",
+    "langsmith": "eval",
     "phoenix": "eval",
-    "litellm": "gateway", "openrouter": "gateway",
-    "vllm": "inference", "ollama": "inference", "candle": "inference",
-    "transformers": "ml", "sentence-transformers": "embeddings",
+    "litellm": "gateway",
+    "openrouter": "gateway",
+    "vllm": "inference",
+    "ollama": "inference",
+    "candle": "inference",
+    "transformers": "ml",
+    "sentence-transformers": "embeddings",
     "instructor": "structured-output",
 }
 
@@ -490,7 +549,9 @@ def build_scout_profile(repo: Path, *, scan_imports: bool = True) -> ScoutProfil
                 rust_imports=evidence.rust_imports,
                 ruby_imports=evidence.ruby_imports,
             )
-            _annotate_dependency_evidence(profile, evidence.python_imports, evidence.js_imports)
+            _annotate_dependency_evidence(
+                profile, evidence.python_imports, evidence.js_imports
+            )
 
     if profile.agent_configs:
         _add(profile.risk_flags, "agent-config-present")
@@ -498,9 +559,13 @@ def build_scout_profile(repo: Path, *, scan_imports: bool = True) -> ScoutProfil
             "Require receipts for new MCP, shell, browser, network, or write capabilities."
         )
     if profile.containers:
-        profile.adoption_constraints.append("Prefer sandbox trials that run outside the working tree.")
+        profile.adoption_constraints.append(
+            "Prefer sandbox trials that run outside the working tree."
+        )
     if not profile.adoption_constraints:
-        profile.adoption_constraints.append("Start with report-only evaluation before installing AI tooling.")
+        profile.adoption_constraints.append(
+            "Start with report-only evaluation before installing AI tooling."
+        )
 
     profile.archetype = derive_archetype(profile)
     return profile
@@ -538,7 +603,9 @@ def stack_from_profile(profile: ScoutProfile) -> dict[str, Any]:
     }
 
 
-def _top_imports_for_stack(ev: ImportEvidenceSummary, n: int = 8) -> dict[str, list[str]]:
+def _top_imports_for_stack(
+    ev: ImportEvidenceSummary, n: int = 8
+) -> dict[str, list[str]]:
     """Compact per-language top import names, sorted by count desc then name."""
     out: dict[str, list[str]] = {}
     for lang, items in (
@@ -590,14 +657,22 @@ def _read_package_json(path: Path, profile: ScoutProfile, *, repo: Path) -> None
         # Weak signals from manifest-only mode (kept so --no-imports still tags something).
         if low in {"next", "react", "vue", "svelte", "express", "fastify"}:
             _add(profile.frameworks, low)
-        if low in {"langchain", "llamaindex", "ai", "@modelcontextprotocol/sdk", "@mastra/core"}:
+        if low in {
+            "langchain",
+            "llamaindex",
+            "ai",
+            "@modelcontextprotocol/sdk",
+            "@mastra/core",
+        }:
             _add(profile.frameworks, low)
             _add(profile.ai_tooling, low)
         if "mcp" in low or "agent" in low or "openai" in low or "anthropic" in low:
             _add(profile.ai_tooling, low)
 
 
-def _read_python_manifest(manifest_dir: Path, profile: ScoutProfile, *, repo: Path) -> None:
+def _read_python_manifest(
+    manifest_dir: Path, profile: ScoutProfile, *, repo: Path
+) -> None:
     candidates = [
         manifest_dir / "pyproject.toml",
         manifest_dir / "requirements.txt",
@@ -621,7 +696,14 @@ def _read_python_manifest(manifest_dir: Path, profile: ScoutProfile, *, repo: Pa
     for marker in ("fastapi", "django", "flask", "pydantic", "pytest"):
         if marker in low:
             _add(profile.frameworks, marker)
-    for marker in ("langchain", "llamaindex", "openai", "anthropic", "mcp", "browser-use"):
+    for marker in (
+        "langchain",
+        "llamaindex",
+        "openai",
+        "anthropic",
+        "mcp",
+        "browser-use",
+    ):
         if marker in low:
             _add(profile.ai_tooling, marker)
     resolved = _read_python_lock_versions(manifest_dir)
@@ -644,12 +726,16 @@ def _add(items: list[str], value: str) -> None:
 
 def _add_dependency(profile: ScoutProfile, dependency: DependencySpec) -> None:
     key = (dependency.ecosystem, dependency.name.lower(), dependency.manifest_path)
-    existing = {(d.ecosystem, d.name.lower(), d.manifest_path) for d in profile.dependencies}
+    existing = {
+        (d.ecosystem, d.name.lower(), d.manifest_path) for d in profile.dependencies
+    }
     if key not in existing:
         profile.dependencies.append(dependency)
 
 
-def _parse_requirements_txt(text: str, manifest_path: str, profile: ScoutProfile) -> None:
+def _parse_requirements_txt(
+    text: str, manifest_path: str, profile: ScoutProfile
+) -> None:
     for raw_line in text.splitlines():
         line = raw_line.split("#", 1)[0].strip()
         if not line or line.startswith(("-", "git+", "http://", "https://")):
@@ -697,7 +783,9 @@ def _parse_pyproject(text: str, manifest_path: str, profile: ScoutProfile) -> No
         )
 
 
-def _add_python_requirement(raw_req: str, manifest_path: str, profile: ScoutProfile) -> None:
+def _add_python_requirement(
+    raw_req: str, manifest_path: str, profile: ScoutProfile
+) -> None:
     try:
         req = Requirement(raw_req)
     except InvalidRequirement:

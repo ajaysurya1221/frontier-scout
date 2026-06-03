@@ -1,4 +1,5 @@
 """Richer local architecture profile — deterministic, no source."""
+
 from __future__ import annotations
 
 import sys
@@ -8,7 +9,16 @@ SCRIPTS = str(Path(__file__).resolve().parent.parent / "scripts")
 if SCRIPTS not in sys.path:
     sys.path.insert(0, SCRIPTS)
 
-from frontier_scout.profile import ScoutProfile, derive_archetype
+from frontier_scout.profile import (  # noqa: E402
+    DependencySpec,
+    ImportEvidenceSummary,
+    ScoutProfile,
+    ai_categories,
+    build_scout_profile,
+    derive_archetype,
+    stack_from_profile,
+)
+from prompts import render_stack_profile  # noqa: E402  # scripts/ on sys.path  # fmt: skip
 
 
 def _p(**kw) -> ScoutProfile:
@@ -35,12 +45,13 @@ def test_archetype_library_and_unknown():
 
 
 def test_archetype_web_beats_agent():
-    assert derive_archetype(_p(frameworks=["django"], agent_configs=["CLAUDE.md"])) == "web-service"
+    assert (
+        derive_archetype(_p(frameworks=["django"], agent_configs=["CLAUDE.md"]))
+        == "web-service"
+    )
 
 
-from frontier_scout.profile import build_scout_profile
-
-UV_LOCK = '''
+UV_LOCK = """
 version = 1
 [[package]]
 name = "fastapi"
@@ -48,13 +59,13 @@ version = "0.110.1"
 [[package]]
 name = "anthropic"
 version = "0.39.0"
-'''
+"""
 
-PYPROJECT = '''
+PYPROJECT = """
 [project]
 name = "demo"
 dependencies = ["fastapi", "anthropic>=0.3"]
-'''
+"""
 
 
 def test_python_lock_versions_resolved(tmp_path):
@@ -72,11 +83,17 @@ def test_python_lock_absent_is_safe(tmp_path):
     assert {d.name.lower() for d in profile.dependencies} >= {"fastapi", "anthropic"}
 
 
-from frontier_scout.profile import ai_categories
-
-
 def test_ai_categories_grouping():
-    p = _p(ai_tooling=["anthropic", "langgraph", "qdrant", "ragas", "litellm", "weirdthing"])
+    p = _p(
+        ai_tooling=[
+            "anthropic",
+            "langgraph",
+            "qdrant",
+            "ragas",
+            "litellm",
+            "weirdthing",
+        ]
+    )
     cats = ai_categories(p)
     assert cats["llm-sdk"] == ["anthropic"]
     assert cats["agent-framework"] == ["langgraph"]
@@ -84,9 +101,6 @@ def test_ai_categories_grouping():
     assert cats["eval"] == ["ragas"]
     assert cats["gateway"] == ["litellm"]
     assert cats["other"] == ["weirdthing"]  # unknown tag → "other", never dropped
-
-
-from frontier_scout.profile import DependencySpec, ImportEvidenceSummary, stack_from_profile
 
 
 def test_stack_from_profile_carries_rich_signal():
@@ -99,32 +113,45 @@ def test_stack_from_profile_carries_rich_signal():
     )
     p.archetype = "web-service"
     p.dependencies = [
-        DependencySpec(name="fastapi", ecosystem="pypi", resolved_version="0.110.1",
-                       manifest_path="pyproject.toml", evidence_imports=12),
-        DependencySpec(name="anthropic", ecosystem="pypi", specifier=">=0.3",
-                       manifest_path="pyproject.toml", evidence_imports=5),
+        DependencySpec(
+            name="fastapi",
+            ecosystem="pypi",
+            resolved_version="0.110.1",
+            manifest_path="pyproject.toml",
+            evidence_imports=12,
+        ),
+        DependencySpec(
+            name="anthropic",
+            ecosystem="pypi",
+            specifier=">=0.3",
+            manifest_path="pyproject.toml",
+            evidence_imports=5,
+        ),
     ]
-    p.import_evidence = ImportEvidenceSummary(top_python=[("anthropic", 5), ("fastapi", 12)])
+    p.import_evidence = ImportEvidenceSummary(
+        top_python=[("anthropic", 5), ("fastapi", 12)]
+    )
     stack = stack_from_profile(p)
     assert stack["languages"] == ["python"]
     assert "fastapi" in stack["frameworks"]
     assert stack["ai_tooling"] == ["anthropic", "qdrant"]
     assert stack["archetype"] == "web-service"
     assert stack["ai_categories"]["vector-store"] == ["qdrant"]
-    assert {"name": "fastapi", "ecosystem": "pypi", "version": "0.110.1"} in stack["dependencies"]
+    assert {"name": "fastapi", "ecosystem": "pypi", "version": "0.110.1"} in stack[
+        "dependencies"
+    ]
     assert stack["top_imports"]["python"][:2] == ["fastapi", "anthropic"]
 
 
 def test_stack_from_profile_bounds_dependencies():
     p = _p()
     p.dependencies = [
-        DependencySpec(name=f"dep{i}", ecosystem="pypi", manifest_path="r.txt", evidence_imports=i)
+        DependencySpec(
+            name=f"dep{i}", ecosystem="pypi", manifest_path="r.txt", evidence_imports=i
+        )
         for i in range(40)
     ]
     assert len(stack_from_profile(p)["dependencies"]) == 15
-
-
-from prompts import render_stack_profile  # scripts/ is on sys.path (top of file)
 
 
 def test_render_brief_includes_rich_signal():
@@ -135,7 +162,9 @@ def test_render_brief_includes_rich_signal():
         "agent_configs": ["CLAUDE.md"],
         "archetype": "web-service",
         "ai_categories": {"llm-sdk": ["anthropic"], "vector-store": ["qdrant"]},
-        "dependencies": [{"name": "fastapi", "ecosystem": "pypi", "version": "0.110.1"}],
+        "dependencies": [
+            {"name": "fastapi", "ecosystem": "pypi", "version": "0.110.1"}
+        ],
         "top_imports": {"python": ["fastapi", "anthropic"]},
     }
     out = render_stack_profile(stack)
@@ -152,7 +181,11 @@ def test_render_none_and_empty_stubs_unchanged():
 
 
 def test_render_redacts_secret_shaped_value():
-    stack = {"dependencies": [{"name": "sk-ant-" + "A" * 30, "ecosystem": "pypi", "version": "1"}]}
+    stack = {
+        "dependencies": [
+            {"name": "sk-ant-" + "A" * 30, "ecosystem": "pypi", "version": "1"}
+        ]
+    }
     out = render_stack_profile(stack)
     assert "sk-ant-" not in out
     assert "‹redacted›" in out
