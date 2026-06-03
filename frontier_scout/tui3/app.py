@@ -1380,6 +1380,10 @@ class MissionControlApp(App[int]):
         self._scanning = False
         if message.kind in ("guard", "deps", "settings"):
             self._cap_scanning = None
+            # Rebuild the pane so the cap-scan spinner clears (the WorkDone path
+            # re-renders; the failure path must too, or the spinner sticks).
+            if self.state.tab == message.kind:
+                self.call_later(self._render_pane)
         self._set("#mc-compass", _failure_compass(message.kind, message.error))
 
     def _maybe_ask_provider(self) -> None:
