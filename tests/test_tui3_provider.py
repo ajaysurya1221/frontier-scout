@@ -21,7 +21,7 @@ def test_appstate_has_provider_reason():
     [
         ("flag", " · pinned"),
         ("preference", " · pinned"),
-        ("auto", " · auto"),
+        ("auto", " · detected"),
         ("demo", ""),
         ("none", ""),
         ("must_ask", ""),

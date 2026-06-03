@@ -1402,9 +1402,13 @@ class MissionControlApp(App[int]):
 
 
 def _provider_reason_label(reason: str) -> str:
-    return {"flag": " · pinned", "preference": " · pinned", "auto": " · auto"}.get(
-        reason, ""
-    )
+    # Human form of Selection.reason for the header badge (handoff §3): auto =
+    # detected, flag/preference = pinned. Mirrors the switcher pill's wording.
+    return {
+        "flag": " · pinned",
+        "preference": " · pinned",
+        "auto": " · detected",
+    }.get(reason, "")
 
 
 def _failure_compass(kind: str, error: str) -> str:
