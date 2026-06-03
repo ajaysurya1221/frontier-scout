@@ -1424,12 +1424,20 @@ def _provider_reason_label(reason: str) -> str:
 
 
 def _failure_compass(kind: str, error: str) -> str:
-    hint = (
-        " [#6e8aa1]· press [#24d6a8 b]P[/] switch · [#24d6a8 b]r[/] retry · or --demo[/]"
-        if kind == "scout"
-        else ""
-    )
-    return f"[#ff6b6b]{kind} failed: {error}[/]{hint}"
+    if kind == "scout":
+        gl = glyphs(True)
+        cross = gl["cross"]           # ✕  (folds to "x" via asciify)
+        pip = gl["seg_off"] * 5       # ▱▱▱▱▱  (folds to "-----" via asciify)
+        motif = f"[#ff6b6b]{cross}[/] [#3d5566]{pip}[/]"
+        ladder = (
+            " [#6e8aa1]"
+            f"[#24d6a8 b]r[/] retry · "
+            f"[#24d6a8 b]P[/] switch · "
+            f"[#24d6a8 b]·[/] --demo"
+            "[/]"
+        )
+        return f"{motif} [#ff6b6b]{kind} failed: {error}[/]{ladder}"
+    return f"[#ff6b6b]{kind} failed: {error}[/]"
 
 
 def _dossier_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:

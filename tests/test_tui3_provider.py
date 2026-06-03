@@ -95,6 +95,14 @@ def test_failure_compass_plain_for_other_kinds():
     assert "retry" not in msg  # recovery affordance is scout-specific
 
 
+def test_failure_compass_v6_signal_lost_ladder():
+    from frontier_scout.tui3.app import _failure_compass
+    msg = _failure_compass("scout", "claude CLI timed out after 180s")
+    assert "✕" in msg or "x" in msg            # signal-lost mark
+    assert "▱" in msg or "-" in msg            # unlit pip run
+    assert "switch" in msg and "retry" in msg and "--demo" in msg   # keyed ladder
+
+
 def test_switcher_two_line_cost_rows():
     """Cost-aware two-line rows: cost + detail for available, 'fix: <hint>' for
     unavailable, and an 'active · <reason>' pill on the active engine."""
