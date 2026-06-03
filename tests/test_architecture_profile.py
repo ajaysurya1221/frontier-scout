@@ -70,3 +70,17 @@ def test_python_lock_absent_is_safe(tmp_path):
     (tmp_path / "pyproject.toml").write_text(PYPROJECT)
     profile = build_scout_profile(tmp_path, scan_imports=False)
     assert {d.name.lower() for d in profile.dependencies} >= {"fastapi", "anthropic"}
+
+
+from frontier_scout.profile import ai_categories
+
+
+def test_ai_categories_grouping():
+    p = _p(ai_tooling=["anthropic", "langgraph", "qdrant", "ragas", "litellm", "weirdthing"])
+    cats = ai_categories(p)
+    assert cats["llm-sdk"] == ["anthropic"]
+    assert cats["agent-framework"] == ["langgraph"]
+    assert cats["vector-store"] == ["qdrant"]
+    assert cats["eval"] == ["ragas"]
+    assert cats["gateway"] == ["litellm"]
+    assert cats["other"] == ["weirdthing"]  # unknown tag → "other", never dropped

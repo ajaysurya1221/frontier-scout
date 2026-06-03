@@ -214,6 +214,12 @@ _PY_AI_RULES: dict[str, tuple[str, str]] = {
     "weaviate": ("ai_tooling", "weaviate"),
     "qdrant_client": ("ai_tooling", "qdrant"),
     "chromadb": ("ai_tooling", "chromadb"),
+    "ragas": ("ai_tooling", "ragas"),
+    "deepeval": ("ai_tooling", "deepeval"),
+    "braintrust": ("ai_tooling", "braintrust"),
+    "langsmith": ("ai_tooling", "langsmith"),
+    "phoenix": ("ai_tooling", "phoenix"),
+    "openrouter": ("ai_tooling", "openrouter"),
 }
 
 _GO_FRAMEWORK_RULES: dict[str, tuple[str, str]] = {
@@ -318,6 +324,37 @@ _AGENT_TOOLING: frozenset[str] = frozenset({
 _ML_TOOLING: frozenset[str] = frozenset({
     "transformers", "sentence-transformers", "vllm", "candle", "rust-bert",
 })
+
+
+_AI_CATEGORY: dict[str, str] = {
+    "openai": "llm-sdk", "anthropic": "llm-sdk", "google-genai": "llm-sdk",
+    "vertex-ai": "llm-sdk", "bedrock-or-aws": "llm-sdk", "vercel-ai-sdk": "llm-sdk",
+    "langchain": "orchestration", "llamaindex": "orchestration", "haystack": "orchestration",
+    "langgraph": "agent-framework", "crewai": "agent-framework", "autogen": "agent-framework",
+    "mastra": "agent-framework", "dspy": "agent-framework", "mcp": "agent-framework",
+    "qdrant": "vector-store", "pinecone": "vector-store", "weaviate": "vector-store",
+    "chromadb": "vector-store", "neo4j": "vector-store",
+    "ragas": "eval", "deepeval": "eval", "braintrust": "eval", "langsmith": "eval",
+    "phoenix": "eval",
+    "litellm": "gateway", "openrouter": "gateway",
+    "vllm": "inference", "ollama": "inference", "candle": "inference",
+    "transformers": "ml", "sentence-transformers": "embeddings",
+    "instructor": "structured-output",
+}
+
+
+def ai_categories(profile: ScoutProfile) -> dict[str, list[str]]:
+    """Group ``ai_tooling`` tags into decision buckets for the scout brief.
+
+    Unknown tags fall into ``"other"`` — never silently dropped.
+    """
+    buckets: dict[str, list[str]] = {}
+    for tag in profile.ai_tooling:
+        bucket = _AI_CATEGORY.get(tag.lower(), "other")
+        names = buckets.setdefault(bucket, [])
+        if tag not in names:
+            names.append(tag)
+    return buckets
 
 
 def derive_archetype(profile: ScoutProfile) -> str:
