@@ -18,7 +18,7 @@ from textual.widgets import Static
 
 from frontier_scout.tui3 import data
 from frontier_scout.tui3.kit import bar, breakpoint_for, glyphs
-from frontier_scout.tui3.widgets import ClickStatic
+from frontier_scout.tui3.widgets import ClickStatic, ScanSpinner
 
 # Archetype dial — the four canonical archetypes (profile.derive_archetype also
 # emits "unknown" as the no-signal fallback; the dial lights none in that case).
@@ -209,6 +209,9 @@ def _guard(app: Any) -> Vertical:
             "exit codes, never modifies your repo.",
         )
     )
+    if getattr(app, "_cap_scanning", None) == "guard":
+        box.compose_add_child(ScanSpinner("running the adoption firewall"))
+        return box
     if gd is None:
         box.compose_add_child(
             _S(
@@ -285,6 +288,9 @@ def _deps(app: Any) -> Vertical:
             "the upgrade works.",
         )
     )
+    if getattr(app, "_cap_scanning", None) == "deps":
+        box.compose_add_child(ScanSpinner("scanning your manifests"))
+        return box
     if rows is None:
         box.compose_add_child(
             _S(
@@ -468,6 +474,9 @@ def _settings(app: Any) -> Vertical:
         )
 
     cache = app.state.settings_cache
+    if getattr(app, "_cap_scanning", None) == "settings":
+        box.compose_add_child(ScanSpinner("loading policy, repo profile and doctor checks"))
+        return box
     if cache is None:
         box.compose_add_child(
             _S(app, "\n[#6e8aa1]Press [#24d6a8 b]r[/] to load policy and doctor.[/]")

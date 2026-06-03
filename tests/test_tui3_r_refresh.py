@@ -380,3 +380,19 @@ def test_provider_switcher_first_run_framing():
             assert "fix: set OPENAI_API_KEY" in txt
 
     _run(go())
+
+
+def test_cap_tab_shows_spinner_while_scanning():
+    from frontier_scout.tui3.widgets import ScanSpinner
+    async def go():
+        app = MissionControlApp(demo=True)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            await pilot.press("4")          # Guard
+            await pilot.pause()
+            app._cap_scanning = "guard"     # simulate worker-in-flight
+            app.state = app.state.with_(guard_cache=None)
+            await app._render_pane()
+            await pilot.pause()
+            assert app.query(ScanSpinner), "no ScanSpinner on a scanning cap tab"
+    _run(go())
