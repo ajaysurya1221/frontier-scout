@@ -262,23 +262,25 @@ def _adoption_matrix(app: Any, gl: dict[str, str], verdicts: tuple) -> Vertical:
         f"{gl['pip']}[/] [{_hex('mint')} b]{n}[/]",
     ))
 
-    # ── risk axis header ───────────────────────────────────────────────────────
-    risk_header = (
-        f"[{_hex('muted')}]{'fit ':>5}[/]  "
-        + "  ".join(
-            f"[{_hex('muted')}]{_RISK_LABELS[r]:<6}[/]"
-            for r in RISKS
-        )
+    # ── risk axis header (widget columns, aligned 1:1 with the cell rows) ──────
+    head_row = Horizontal(classes="scout-matrix-row")
+    head_row.compose_add_child(
+        _S(app, f"[{_hex('muted')}]fit[/]", classes="scout-matrix-axis")
     )
-    box.compose_add_child(_S(app, risk_header))
+    for r in RISKS:
+        head_row.compose_add_child(
+            _S(app, f"[{_hex('muted')}]{_RISK_LABELS[r]}[/]", classes="scout-matrix-cell")
+        )
+    box.compose_add_child(head_row)
 
     # ── 3 rows of cells ───────────────────────────────────────────────────────
     for fit in FITS:
         row_w = Horizontal(classes="scout-matrix-row")
-        # fit axis label
+        # fit axis label — same fixed-width gutter as the header row
         row_w.compose_add_child(_S(
             app,
-            f"[{_hex('muted')}]{_FIT_LABELS[fit]}[/]  ",
+            f"[{_hex('muted')}]{_FIT_LABELS[fit]}[/]",
+            classes="scout-matrix-axis",
         ))
         for risk in RISKS:
             items = cells[(fit, risk)]
