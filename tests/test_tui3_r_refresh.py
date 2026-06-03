@@ -279,11 +279,12 @@ _ARCH_PROFILE = {
 }
 
 
-def _settings_text(profile):
+def _settings_text(profile, size=(130, 40)):
     """Boot, open Settings (auto-load uses stubbed data), return the pane text.
 
     Stubs the three data functions the settings worker calls so nothing scans
-    the real cwd, hits the network, or spends.
+    the real cwd, hits the network, or spends. ``size`` selects the breakpoint
+    (wide ≥116 cols → two columns; smaller → the stacked reflow branch).
     """
 
     async def go():
@@ -293,7 +294,7 @@ def _settings_text(profile):
             policy=_Stub(_POLICY),
             doctor=_Stub(_DOCTOR),
         ):
-            async with app.run_test(size=(130, 40)) as pilot:  # wide → two columns
+            async with app.run_test(size=size) as pilot:
                 await pilot.pause()
                 await pilot.press("8")  # Settings tab → auto-load worker
                 await pilot.pause()
@@ -332,3 +333,12 @@ def test_settings_architecture_empty_ai_tooling_note():
     txt = _settings_text(profile)
     assert "No AI tooling detected" in txt, txt
     assert "universal merit" in txt
+
+
+def test_settings_architecture_stacked_on_narrow():
+    """On a sub-wide width the two columns stack (else branch) and still render."""
+    txt = _settings_text(_ARCH_PROFILE, size=(100, 40))  # mid → stacked
+    assert "Architecture" in txt, txt
+    assert "web-service" in txt
+    assert "llm-sdk" in txt and "anthropic" in txt
+    assert "key dependencies" in txt and "fastapi" in txt
