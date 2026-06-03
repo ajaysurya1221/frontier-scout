@@ -2,19 +2,24 @@
 
 Renders the Scout dashboard as a breakpoint-aware tree of painted Statics:
 
-  hero/funnel band · scan bar (scope chips) · master verdict list ·
-  reasoning detail · offline Ask
+  hero/funnel band · scan bar (scope chips) · Adoption Matrix (wide) or
+  Tier Ledger (mid/narrow/micro) · master verdict list · reasoning detail ·
+  offline Ask
 
 Reflow by the active Breakpoint:
-  wide  → hero + scanbar + (list | detail) side by side  (master_detail)
-  mid   → hero + scanbar + list + detail stacked under the selection
-  narrow→ scanbar + compact list + stacked detail (no hero band)
+  wide  → hero + matrix + scanbar + (list | detail) side by side
+  mid   → hero + tier-ledger + scanbar + list + detail stacked
+  narrow→ tier-ledger + scanbar + compact list + stacked detail (no hero band)
   micro → scanbar + compact list + stacked detail
 
 Every renderable goes through ``app._paint`` (color/mono fallback) and every
 glyph through ``glyphs(unicode)`` (unicode/ASCII fallback). The view is pure —
 the app re-renders this whole subtree on selection/scope/scan changes, matching
 the immutable view-model.
+
+Pure bucketing helpers (no Textual import):
+  ``bucket_matrix(verdicts)`` → {(fit, risk): [(index, Verdict), …]}
+  ``tier_ledger(verdicts)``   → [{"tier", "count", "fill", "names", "overflow"}, …]
 """
 
 from __future__ import annotations
@@ -49,6 +54,77 @@ _ASKS = ["Is it safe to adopt now?", "What is the main risk?", "What is the next
 # mcp_audit.DANGEROUS_KEYS). Real statuses: likely / possible / unlikely / unknown.
 _DANGEROUS_CAPS = {"write", "network", "browser", "shell", "credential", "unknown"}
 
+# ── Adoption Matrix / Tier Ledger — axis definitions ─────────────────────────
+# FITS: rows top-to-bottom (high fit at top = good, low fit at bottom).
+# RISKS: cols left-to-right (low risk at left = safe, high risk at right).
+FITS: tuple[str, ...] = ("high", "medium", "low")
+RISKS: tuple[str, ...] = ("low", "medium", "high")
+
+# Tier Ledger constants
+_TIER_ORDER = ("adopt", "trial", "assess", "hold")
+_TIER_TONE = {"adopt": "mint", "trial": "gold", "assess": "blue", "hold": "red"}
+_LEDGER_CAP = 8   # gauge max
+_DOT_MAX = 14     # max dots shown per cell before +N overflow
+
+
+# ── Pure bucketing helpers (no Textual — unit-testable in isolation) ──────────
+
+def bucket_matrix(
+    verdicts: tuple,
+) -> dict[tuple[str, str], list[tuple[int, Any]]]:
+    """Return a mapping of (fit, risk) → [(original_index, Verdict), …].
+
+    All nine cells are always present in the result (empty cells have ``[]``).
+    The order within each cell preserves the original verdict list order.
+    """
+    cells: dict[tuple[str, str], list[tuple[int, Any]]] = {
+        (f, r): [] for f in FITS for r in RISKS
+    }
+    for idx, v in enumerate(verdicts):
+        fit = getattr(v, "fit", "medium")
+        risk = getattr(v, "risk", "medium")
+        # Clamp unknown fit/risk values to "medium" so nothing falls off the grid.
+        if fit not in FITS:
+            fit = "medium"
+        if risk not in RISKS:
+            risk = "medium"
+        cells[(fit, risk)].append((idx, v))
+    return cells
+
+
+def tier_ledger(
+    verdicts: tuple,
+) -> list[dict]:
+    """Return one dict per tier with display data for the Tier Ledger.
+
+    Each row::
+
+        {
+          "tier":     str,               # "adopt" | "trial" | "assess" | "hold"
+          "tone":     str,               # palette key for the gauge
+          "count":    int,               # total verdicts for this tier
+          "fill":     int,               # min(count, _LEDGER_CAP) — gauge value
+          "names":    [(idx, name), …],  # first 5 (idx, tool_name) pairs
+          "overflow": int,               # count - 5 when count > 5, else 0
+        }
+    """
+    rows = []
+    for tier in _TIER_ORDER:
+        items = [(i, v) for i, v in enumerate(verdicts) if getattr(v, "verdict", "") == tier]
+        count = len(items)
+        fill = min(count, _LEDGER_CAP)
+        first5 = [(i, v.tool_name) for i, v in items[:5]]
+        overflow = max(0, count - 5)
+        rows.append({
+            "tier": tier,
+            "tone": _TIER_TONE[tier],
+            "count": count,
+            "fill": fill,
+            "names": first5,
+            "overflow": overflow,
+        })
+    return rows
+
 
 def _hex(tone: str) -> str:
     return _TONE.get(tone, _TONE["muted"])
@@ -66,6 +142,17 @@ def build_scout(app: Any) -> Vertical:
     root = Vertical(classes="scout-root")
     if bp.show_hero:
         root.compose_add_child(_hero(app, gl))
+
+    # Adoption Matrix (wide) / Tier Ledger (mid) placed after hero, before scanbar.
+    # Placement follows the prototype's ScoutPane: matrix in the calm-head band on
+    # wide (masterDetail=True); ledger inside the coverage area on mid/narrow.
+    # micro skips both (too little vertical room for the extra instrument).
+    if verdicts:
+        if bp.master_detail:
+            root.compose_add_child(_adoption_matrix(app, gl, verdicts))
+        elif bp.name in ("mid", "narrow"):
+            root.compose_add_child(_tier_ledger_widget(app, gl, verdicts))
+
     root.compose_add_child(_scanbar(app, gl))
 
     if not verdicts:
@@ -82,6 +169,217 @@ def build_scout(app: Any) -> Vertical:
         root.compose_add_child(_list(app, gl, verdicts, side=False, full=full))
         root.compose_add_child(_detail(app, gl, side=False))
     return root
+
+
+# ── Adoption Matrix (wide breakpoint) ────────────────────────────────────────
+#
+# Layout:
+#   header line   — "adoption matrix · fit × risk · <N>"
+#   axis row      — risk → low / med / high column headers
+#   3 rows of 3   — one ClickStatic per cell; dots + count badge + overflow
+#   readout line  — "▸ <name> · <verdict> · fit <f> · risk <r>" or hint
+#
+# Each cell is a ClickStatic so clicking anywhere in the cell selects its first
+# verdict (if populated). Individual dots within a cell that has >1 verdict are
+# rendered inline as text; the cell-click selects the first dot (mouse parity
+# for the common case). The readout line updates on the next render cycle when
+# state.sel changes.
+#
+# Invariants:
+#   • Every glyph through glyphs() + app._paint  (color/mono + unicode/ascii)
+#   • click → app._select(i) — same path as j/k  (no duplicated logic)
+#   • compose_add_child only; never remove_children + remount
+
+_RISK_LABELS = {"low": "low", "medium": "med", "high": "high"}
+_FIT_LABELS = {"high": "hi ", "medium": "med", "low": "lo "}
+
+
+def _cell_markup(
+    app: Any,
+    gl: dict[str, str],
+    items: list[tuple[int, Any]],
+    sel: int,
+    fit: str,
+    risk: str,
+) -> str:
+    """Build the Rich-markup string for one matrix cell.
+
+    Cells have a fixed 3-line budget:
+      line 0 — count badge (when >3) OR empty
+      line 1 — dot run (up to _DOT_MAX) + +N overflow
+      line 2 — "safe" / "hold" label when empty corner, else blank
+    This gives each cell a predictable height without Textual grid CSS.
+    """
+    border = _hex("muted")
+    safe_corner = fit == "high" and risk == "low"
+    hold_corner = fit == "low" and risk == "high"
+
+    if not items:
+        # Empty cell — show corner label if applicable, otherwise faint placeholder.
+        if safe_corner:
+            return app._paint(f"[{_hex('mint')} dim]safe[/]")
+        if hold_corner:
+            return app._paint(f"[{_hex('red')} dim]hold[/]")
+        return app._paint(f"[{border}]·[/]")
+
+    count = len(items)
+    displayed = items[:_DOT_MAX]
+    overflow = count - _DOT_MAX if count > _DOT_MAX else 0
+
+    # Build dot string — selected dot uses radar_core glyph.
+    parts: list[str] = []
+    if count > 3:
+        cnt_hex = _hex("text")
+        parts.append(f"[{cnt_hex}]{count}[/] ")
+
+    for i, v in displayed:
+        tone_hex = _hex(verdict_tone(v.verdict))
+        glyph = gl["radar_core"] if i == sel else gl["dot"]
+        # Each dot is individually tagged so it carries correct color in both
+        # color and mono modes (the color is stripped by app._paint in mono,
+        # leaving the glyph which still conveys presence).
+        parts.append(f"[{tone_hex}]{glyph}[/]")
+
+    if overflow:
+        parts.append(f"[{_hex('muted')}]+{overflow}[/]")
+
+    return app._paint("".join(parts))
+
+
+def _adoption_matrix(app: Any, gl: dict[str, str], verdicts: tuple) -> Vertical:
+    """Render the 3×3 Adoption Matrix as a Vertical containing box-drawn rows."""
+    sel = app.state.sel
+    n = len(verdicts)
+    cells = bucket_matrix(verdicts)
+
+    box = Vertical(classes="scout-matrix panel")
+
+    # ── header ────────────────────────────────────────────────────────────────
+    box.compose_add_child(_S(
+        app,
+        f"[{_hex('muted')}]adoption matrix[/] "
+        f"[{_hex('text')}]{gl['pip']} fit {gl['ud'][0]} {gl['pip']} risk {gl['arrow']} "
+        f"{gl['pip']}[/] [{_hex('mint')} b]{n}[/]",
+    ))
+
+    # ── risk axis header ───────────────────────────────────────────────────────
+    risk_header = (
+        f"[{_hex('muted')}]{'fit ':>5}[/]  "
+        + "  ".join(
+            f"[{_hex('muted')}]{_RISK_LABELS[r]:<6}[/]"
+            for r in RISKS
+        )
+    )
+    box.compose_add_child(_S(app, risk_header))
+
+    # ── 3 rows of cells ───────────────────────────────────────────────────────
+    for fit in FITS:
+        row_w = Horizontal(classes="scout-matrix-row")
+        # fit axis label
+        row_w.compose_add_child(_S(
+            app,
+            f"[{_hex('muted')}]{_FIT_LABELS[fit]}[/]  ",
+        ))
+        for risk in RISKS:
+            items = cells[(fit, risk)]
+            markup = _cell_markup(app, gl, items, sel, fit, risk)
+
+            if items:
+                first_idx = items[0][0]
+                cell_w = ClickStatic(
+                    markup,
+                    lambda i=first_idx: app._select(i),
+                    classes="scout-matrix-cell",
+                )
+            else:
+                cell_w = Static(markup, classes="scout-matrix-cell empty")
+
+            row_w.compose_add_child(cell_w)
+        box.compose_add_child(row_w)
+
+    # ── readout line ──────────────────────────────────────────────────────────
+    v = app.state.current
+    if v is not None:
+        tone_hex = _hex(verdict_tone(v.verdict))
+        name = v.tool_name.split("/")[-1]
+        readout = (
+            f"[{tone_hex}]{gl['tri']}[/] "
+            f"[{_hex('bright')}]{name}[/] "
+            f"[{_hex('muted')}]{gl['pip']}[/] "
+            f"[{tone_hex}]{verdict_label(v.verdict).lower()}[/] "
+            f"[{_hex('muted')}]{gl['pip']} fit[/] [{_hex(fit_tone(v.fit))} b]{v.fit}[/] "
+            f"[{_hex('muted')}]{gl['pip']} risk[/] [{_hex(risk_tone(v.risk))} b]{v.risk}[/]"
+        )
+    else:
+        readout = f"[{_hex('muted')}]select a verdict to read it[/]"
+
+    box.compose_add_child(_S(app, readout, classes="scout-matrix-read"))
+    return box
+
+
+# ── Tier Ledger (mid / narrow breakpoints) ────────────────────────────────────
+#
+# Four rows: adopt / trial / assess / hold.
+# Each row: tag · capped segment gauge · count (with + when over cap) · names.
+# Names are ClickStatics routing to app._select(i).
+
+def _tier_ledger_widget(app: Any, gl: dict[str, str], verdicts: tuple) -> Vertical:
+    """Render the Tier Ledger as a Vertical with one row per tier."""
+    box = Vertical(classes="scout-ledger panel")
+    box.compose_add_child(_S(
+        app,
+        f"[{_hex('muted')}]tier ledger[/]",
+    ))
+
+    rows = tier_ledger(verdicts)
+    for row in rows:
+        tier = row["tier"]
+        tone = row["tone"]
+        count = row["count"]
+        fill = row["fill"]
+        names = row["names"]
+        overflow = row["overflow"]
+        tone_hex = _hex(tone)
+
+        # Gauge string: lit and unlit pips via bar() so it routes through glyphs().
+        lit, unlit = bar(fill, _LEDGER_CAP, _LEDGER_CAP, unicode=app.state.unicode)
+        gauge_str = (
+            f"[{tone_hex}]{lit}[/]"
+            + (f"[{_hex('muted')}]{unlit}[/]" if unlit else "")
+        )
+
+        # Count badge: show + suffix when over cap.
+        count_mark = "+" if count > _LEDGER_CAP else " "
+        count_str = f"[{_hex('text')}]{count}{count_mark}[/]"
+
+        # Tag label.
+        tag_str = f"[{tone_hex} b]{verdict_label(tier):<6}[/]"
+
+        # Header part of the row (tag + gauge + count).
+        row_w = Horizontal(classes="scout-ledger-row")
+        row_w.compose_add_child(_S(app, f"{tag_str} {gauge_str} {count_str}  "))
+
+        if not names:
+            row_w.compose_add_child(_S(app, f"[{_hex('muted')}]{gl['pip']} none[/]"))
+        else:
+            # Render each name as a ClickStatic for mouse-select parity.
+            for j, (idx, name) in enumerate(names):
+                if j > 0:
+                    row_w.compose_add_child(_S(app, f"[{_hex('muted')}] {gl['pip']} [/]"))
+                on = idx == app.state.sel
+                name_hex = _hex("mint") if on else _hex("text")
+                row_w.compose_add_child(ClickStatic(
+                    app._paint(f"[{name_hex}]{name}[/]"),
+                    lambda i=idx: app._select(i),
+                    classes="ledger-name sel" if on else "ledger-name",
+                ))
+            if overflow:
+                row_w.compose_add_child(_S(
+                    app, f"[{_hex('muted')}] {gl['pip']} +{overflow} more[/]",
+                ))
+        box.compose_add_child(row_w)
+
+    return box
 
 
 # ── hero / funnel band ───────────────────────────────────────────────────────
