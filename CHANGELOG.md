@@ -4,6 +4,26 @@
 
 - Richer local architecture profile — the scout/judge prompt now receives AI-tooling categories, resolved dependency versions, top imports, and a project archetype (previously only languages + frameworks reached the prompt, due to a producer/consumer schema drift in stack_from_profile ↔ render_stack_profile). Deterministic, local, no source content sent.
 
+## 1.7.0 - 2026-06-03
+
+### Provider selection, two-tier CLI, gateway interop
+
+- **Single provider-selection ladder** (flag › saved preference › auto › ask-once) —
+  one source of truth shared by the TUI and headless CLI; no more divergent
+  resolution paths.
+- **CLI scout timeout fix** — `claude`/`codex` subprocesses are now hermetic
+  (no MCP autoload, structured JSON output, model + reasoning level per tier);
+  retry-once on timeout. OAuth flow preserved (not `--bare`).
+- **Restored two-tier scout/judge model split** — fast tier for the scout pass,
+  deep tier with extended reasoning for the judge pass; configured via
+  `provider.model(FAST|DEEP)` on CLI backends.
+- **`openai-compatible` provider** (`OPENAI_BASE_URL`) for gateway and self-hosted
+  interop (LiteLLM, Bifrost, vLLM, Ollama, OpenLLM). No new runtime dependency.
+- **TUI improvements** — provider indicator with reason badge in the header;
+  provider switcher overlay (`P` key + clickable Settings rows); first-run
+  ask-once picker; no-provider demo nudge; actionable scout-failure recovery
+  message with switch/retry/`--demo` options.
+
 ## 1.6.1 - 2026-06-02
 
 ### Fixed (post-release audit)

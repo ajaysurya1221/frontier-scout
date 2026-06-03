@@ -9,16 +9,16 @@ Pipeline:
     fetch (parallel)
       → dedupe by content hash
       → drop tools the user has seen via ``seen_check``
-      → Sonnet score pass (0–10 + category)
-      → Sonnet verdict pass (structured tool use)
-      → optional Opus judge pass (gated by ``JUDGE_ENABLED``)
+      → fast-tier score pass (0–10 + category)
+      → fast-tier verdict pass (structured tool use)
+      → optional deep-tier judge pass (gated by ``JUDGE_ENABLED``)
       → deterministic policy validators
       → ``output_writer`` callback (typically: persist to SQLite)
 
 Env:
     ANTHROPIC_API_KEY    required for live scans
     GITHUB_TOKEN         optional — raises GitHub API rate limit 60→5000/hr
-    JUDGE_ENABLED        ``false`` skips the Opus RLAIF judge (saves ~$0.20/scan)
+    JUDGE_ENABLED        ``false`` skips the deep-tier RLAIF judge (saves ~$0.20/scan)
     DRY_RUN              ``1`` → use fixture data only, no LLM calls
 """
 
@@ -45,7 +45,7 @@ from llm_client import call_with_retry
 from tools import SCORE_ITEMS_TOOL, VERDICT_TOOL
 from validators import validate_verdicts
 
-from frontier_scout.providers import FAST, resolve_provider
+from frontier_scout.providers import FAST
 from prompts import cached_system_blocks
 
 # ── Config ──────────────────────────────────────────────────────────────────
@@ -56,7 +56,7 @@ from prompts import cached_system_blocks
 MODEL = "claude-sonnet-4-6"
 CUTOFF = datetime.now(UTC) - timedelta(days=7)
 
-# Hard cap to bound worst-case scoring cost (Sonnet ~$0.20 at this cap).
+# Hard cap to bound worst-case scoring cost (fast tier ~$0.20 at this cap).
 MAX_ITEMS = 220
 
 # Per-source-group quotas. Designed for the solo-AI-builder bullseye — heavy
@@ -64,15 +64,15 @@ MAX_ITEMS = 220
 # Sums to <= MAX_ITEMS; remainder picked up by the round-robin redistribution
 # in :func:`stratified_cap`.
 SOURCE_QUOTAS = {
-    "skills_release":   45,  # anthropics/skills + mattpocock/skills + peers
-    "mcp_release":      35,  # MCP server registry + awesome-mcp-servers churn
-    "claude_release":   20,  # Claude Code + plugins release notes
-    "agent_release":    30,  # LangChain / LangGraph / CrewAI / Hermes / etc.
-    "rss":              35,  # First-party labs + practitioner blogs
-    "github_trending":  20,  # Python + TypeScript weekly
-    "hf_trending":      15,  # HuggingFace likes-7d (with weight cap downstream)
-    "hn_smart":         15,  # Algolia HN search (claude / mcp / agent / skill)
-    "arxiv":             5,  # cs.AI recent — capped low; mostly noise for this audience
+    "skills_release": 45,  # anthropics/skills + mattpocock/skills + peers
+    "mcp_release": 35,  # MCP server registry + awesome-mcp-servers churn
+    "claude_release": 20,  # Claude Code + plugins release notes
+    "agent_release": 30,  # LangChain / LangGraph / CrewAI / Hermes / etc.
+    "rss": 35,  # First-party labs + practitioner blogs
+    "github_trending": 20,  # Python + TypeScript weekly
+    "hf_trending": 15,  # HuggingFace likes-7d (with weight cap downstream)
+    "hn_smart": 15,  # Algolia HN search (claude / mcp / agent / skill)
+    "arxiv": 5,  # cs.AI recent — capped low; mostly noise for this audience
 }
 assert sum(SOURCE_QUOTAS.values()) <= MAX_ITEMS, "quotas exceed MAX_ITEMS"
 
@@ -83,22 +83,23 @@ USER_AGENT = "frontier-scout/0.1 (+https://github.com/ajaysurya1221/frontier-sco
 
 # RSS feeds: first-party labs + practitioner blogs. Quota: "rss".
 RSS_FEEDS: list[tuple[str, str]] = [
-    ("Anthropic News",     "https://www.anthropic.com/news/rss.xml"),
-    ("OpenAI Blog",        "https://openai.com/blog/rss.xml"),
-    ("Google DeepMind",    "https://deepmind.google/blog/rss.xml"),
-    ("Mistral News",       "https://mistral.ai/news/feed.xml"),
-    ("Hugging Face Blog",  "https://huggingface.co/blog/feed.xml"),
-    ("Simon Willison",     "https://simonwillison.net/atom/everything/"),
-    ("Latent Space",       "https://www.latent.space/feed"),
-    ("Eugene Yan",         "https://eugeneyan.com/rss/"),
-    ("Ahead of AI",        "https://sebastianraschka.com/rss_feed.xml"),
-    ("AI Tidbits",         "https://www.aitidbits.ai/feed"),
-    ("Cameron Wolfe",      "https://cameronrwolfe.substack.com/feed"),
+    ("Anthropic News", "https://www.anthropic.com/news/rss.xml"),
+    ("OpenAI Blog", "https://openai.com/blog/rss.xml"),
+    ("Google DeepMind", "https://deepmind.google/blog/rss.xml"),
+    ("Mistral News", "https://mistral.ai/news/feed.xml"),
+    ("Hugging Face Blog", "https://huggingface.co/blog/feed.xml"),
+    ("Simon Willison", "https://simonwillison.net/atom/everything/"),
+    ("Latent Space", "https://www.latent.space/feed"),
+    ("Eugene Yan", "https://eugeneyan.com/rss/"),
+    ("Ahead of AI", "https://sebastianraschka.com/rss_feed.xml"),
+    ("AI Tidbits", "https://www.aitidbits.ai/feed"),
+    ("Cameron Wolfe", "https://cameronrwolfe.substack.com/feed"),
     ("HuggingFace Papers", "https://huggingface.co/papers/rss"),
-    ("r/ClaudeAI",         "https://www.reddit.com/r/ClaudeAI/top.rss?t=week"),
-    ("r/LocalLLaMA",       "https://www.reddit.com/r/LocalLLaMA/top.rss?t=week"),
-    ("r/mcp",              "https://www.reddit.com/r/mcp/top.rss?t=week"),
+    ("r/ClaudeAI", "https://www.reddit.com/r/ClaudeAI/top.rss?t=week"),
+    ("r/LocalLLaMA", "https://www.reddit.com/r/LocalLLaMA/top.rss?t=week"),
+    ("r/mcp", "https://www.reddit.com/r/mcp/top.rss?t=week"),
 ]
+
 
 def _pack_watchlist() -> list[tuple[str, str, str]]:
     from frontier_scout.packs import default_packs
@@ -136,6 +137,7 @@ TRENDING_LANGS = ["python", "typescript"]
 
 # arXiv categories — capped low; this audience cares about applied tools, not papers.
 ARXIV_CATS = ["cs.AI"]
+
 
 # Smart HN keyword filter — tuned to skill / MCP / agent surface.
 def _pack_hn_keywords() -> list[str]:
@@ -280,7 +282,9 @@ def fetch_arxiv(category: str) -> list[dict]:
             pub = datetime.fromisoformat(pub_str.replace("Z", "+00:00"))
             if pub >= CUTOFF:
                 title = (entry.findtext("a:title", namespaces=ns) or "").strip()
-                summary = (entry.findtext("a:summary", namespaces=ns) or "").strip()[:500]
+                summary = (entry.findtext("a:summary", namespaces=ns) or "").strip()[
+                    :500
+                ]
                 link = next(
                     (
                         el.get("href", "")
@@ -412,7 +416,7 @@ def fetch_hn_smart(keywords: list[str]) -> list[dict]:
                 raw_title = hit.get("title", "")
                 for prefix in ("Show HN: ", "Ask HN: ", "Tell HN: ", "Launch HN: "):
                     if raw_title.startswith(prefix):
-                        raw_title = raw_title[len(prefix):]
+                        raw_title = raw_title[len(prefix) :]
                         break
                 items.append(
                     _make_item(
@@ -553,15 +557,12 @@ def filter_by_seen(
 # ── LLM passes ──────────────────────────────────────────────────────────────
 
 
-_PROVIDER = None
-
-
 def _provider():
-    """Resolve (once) the active LLM backend for this scan."""
-    global _PROVIDER
-    if _PROVIDER is None:
-        _PROVIDER = resolve_provider()
-    return _PROVIDER
+    """The live provider — resolved via the shared selection ladder so a saved
+    preference (and TUI runtime switches) are honored here too."""
+    from frontier_scout.providers.select import current_provider
+
+    return current_provider()
 
 
 def score_items(
@@ -594,7 +595,9 @@ def score_items(
         system=cached_system_blocks(stack_profile),
         tools=[SCORE_ITEMS_TOOL],
         tool_choice={"type": "tool", "name": "score_items"},
-        messages=[{"role": "user", "content": f"Score these {len(items)} items.\n\n{batch}"}],
+        messages=[
+            {"role": "user", "content": f"Score these {len(items)} items.\n\n{batch}"}
+        ],
     )
     # Bill against the model the API actually served (resp.model), not the
     # requested alias — providers can resolve an alias to a dated id with a
@@ -625,9 +628,7 @@ def score_items(
             items[i]["score"] = entry["score"]
             items[i]["category"] = entry["category"]
             items[i]["tags"] = [
-                t.lower()
-                for t in (entry.get("tags") or [])
-                if isinstance(t, str) and t
+                t.lower() for t in (entry.get("tags") or []) if isinstance(t, str) and t
             ]
 
     for item in items:
@@ -835,7 +836,9 @@ def run_scan(
 
     all_items, seen_drops = filter_by_seen(all_items, seen_check)
     if seen_check:
-        print(f"👀 Seen-tool filter: dropped {seen_drops} already-known → {len(all_items)} fresh")
+        print(
+            f"👀 Seen-tool filter: dropped {seen_drops} already-known → {len(all_items)} fresh"
+        )
 
     candidates = len(all_items)
     if candidates == 0:
@@ -877,14 +880,16 @@ def run_scan(
     final_verdicts: list[dict] = list(draft_verdicts)
 
     if _judge_enabled() and draft_verdicts:
-        print("⚖️  Judge pass (Opus)...")
-        judge_result, judge_cost = judge_mod.critique(draft_verdicts, scored, stack_profile)
+        print("⚖️  Judge pass (deep tier)...")
+        judge_result, judge_cost = judge_mod.critique(
+            draft_verdicts, scored, stack_profile
+        )
         final_verdicts = judge_mod.apply_judge_decisions(
             draft_verdicts, scored, judge_result
         )
     else:
         if not _judge_enabled():
-            print("  JUDGE_ENABLED=false — skipping Opus pass.")
+            print("  JUDGE_ENABLED=false — skipping the deep-tier judge pass.")
 
     final_verdicts = _attach_tags(final_verdicts, scored)
 
@@ -895,9 +900,7 @@ def run_scan(
     for d in dropped_by_policy:
         tn = (d.get("verdict") or {}).get("tool_name", "?")
         print(f"  ❌ dropped {tn!r}: {d['reason']}")
-    print(
-        f"  Policy: {len(final_verdicts)} kept, {len(dropped_by_policy)} dropped"
-    )
+    print(f"  Policy: {len(final_verdicts)} kept, {len(dropped_by_policy)} dropped")
 
     total_cost = score_cost + verdict_cost + judge_cost
     duration = round(time.time() - start, 2)

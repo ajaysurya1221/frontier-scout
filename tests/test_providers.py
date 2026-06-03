@@ -7,6 +7,7 @@ CLIs) lives outside the unit suite.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -28,7 +29,11 @@ from frontier_scout.providers import (
     first_tool_use,
     resolve_provider,
 )
-from frontier_scout.providers.cli_provider import ClaudeCodeProvider, extract_json_object
+from frontier_scout.providers.cli_provider import (
+    ClaudeCodeProvider,
+    extract_json_object,
+)
+from frontier_scout.providers.openai_provider import OpenAICompatibleProvider
 
 SCRIPTS = str(Path(__file__).resolve().parent.parent / "scripts")
 if SCRIPTS not in sys.path:
@@ -41,7 +46,12 @@ if SCRIPTS not in sys.path:
 
 
 def _clear_provider_env(monkeypatch):
-    for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "FRONTIER_SCOUT_PROVIDER"):
+    for var in (
+        "ANTHROPIC_API_KEY",
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "FRONTIER_SCOUT_PROVIDER",
+    ):
         monkeypatch.delenv(var, raising=False)
 
 
@@ -175,9 +185,17 @@ def test_openai_create_translates_and_normalises():
     resp = p.create(
         model="gpt-4o-mini",
         max_tokens=100,
-        system=[{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}],
+        system=[
+            {"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}
+        ],
         messages=[{"role": "user", "content": "score it"}],
-        tools=[{"name": "score_items", "description": "d", "input_schema": {"type": "object"}}],
+        tools=[
+            {
+                "name": "score_items",
+                "description": "d",
+                "input_schema": {"type": "object"},
+            }
+        ],
         tool_choice={"type": "tool", "name": "score_items"},
         thinking={"type": "adaptive"},  # ignored
     )
@@ -187,7 +205,10 @@ def test_openai_create_translates_and_normalises():
     assert captured["tools"][0]["type"] == "function"
     assert captured["tools"][0]["function"]["name"] == "score_items"
     # tool_choice forced
-    assert captured["tool_choice"] == {"type": "function", "function": {"name": "score_items"}}
+    assert captured["tool_choice"] == {
+        "type": "function",
+        "function": {"name": "score_items"},
+    }
     # response normalised to an Anthropic-shaped tool_use block
     block = first_tool_use(resp.content)
     assert block is not None
@@ -259,9 +280,7 @@ def test_extract_json_object_no_object_raises():
 
 def test_cli_provider_runs_and_parses(monkeypatch):
     p = ClaudeCodeProvider()
-    completed = types.SimpleNamespace(
-        returncode=0, stdout='{"scores": []}', stderr=""
-    )
+    completed = types.SimpleNamespace(returncode=0, stdout='{"scores": []}', stderr="")
     monkeypatch.setattr(
         "frontier_scout.providers.cli_provider.subprocess.run",
         lambda *a, **k: completed,
@@ -340,7 +359,9 @@ def test_call_with_retry_uses_provider_create_and_retry(monkeypatch):
     import llm_client
 
     monkeypatch.setattr(llm_client, "BASE_DELAY", 0.0)
-    out = call_with_retry(prov, "unit", model="x", max_tokens=1, system="s", messages=[])
+    out = call_with_retry(
+        prov, "unit", model="x", max_tokens=1, system="s", messages=[]
+    )
     assert prov.calls == 2
     assert isinstance(out, ProviderResponse)
 
@@ -361,7 +382,9 @@ def test_call_with_retry_reraises_non_retryable():
             return False
 
     with pytest.raises(RuntimeError):
-        call_with_retry(_HardFail(), "unit", model="x", max_tokens=1, system="s", messages=[])
+        call_with_retry(
+            _HardFail(), "unit", model="x", max_tokens=1, system="s", messages=[]
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -383,10 +406,214 @@ def test_cost_tracker_known_and_unknown_models():
     # CLI backends are free
     assert _cost("claude-code-cli", usage) == 0.0
     # Dated suffix resolves to the base alias's price (prefix match).
-    assert _cost("claude-sonnet-4-6-20251001", usage) == _cost("claude-sonnet-4-6", usage)
+    assert _cost("claude-sonnet-4-6-20251001", usage) == _cost(
+        "claude-sonnet-4-6", usage
+    )
     # Unknown model → conservative (max known) pricing, NOT $0. Costing an
     # unknown id at $0 would silently bypass the budget cap. It must be at
     # least as expensive as the priciest known model so caps stay safe.
     unknown = _cost("some-future-model", usage)
     assert unknown > 0.0
     assert unknown >= _cost("claude-opus-4-7", usage)
+
+
+# ---------------------------------------------------------------------------
+# CLI backends — tiered model()
+# ---------------------------------------------------------------------------
+
+
+def test_claude_cli_tier_models(monkeypatch):
+    for v in (
+        "FRONTIER_SCOUT_CLAUDE_CLI_FAST_MODEL",
+        "FRONTIER_SCOUT_CLAUDE_CLI_DEEP_MODEL",
+    ):
+        monkeypatch.delenv(v, raising=False)
+    p = ClaudeCodeProvider()
+    assert p.model(FAST) == "sonnet"
+    assert p.model(DEEP) == "opus"
+
+
+def test_claude_cli_model_override_and_sentinel(monkeypatch):
+    monkeypatch.setenv("FRONTIER_SCOUT_CLAUDE_CLI_DEEP_MODEL", "opus-4-1")
+    assert ClaudeCodeProvider().model(DEEP) == "opus-4-1"
+    monkeypatch.setenv("FRONTIER_SCOUT_CLAUDE_CLI_FAST_MODEL", "default")
+    assert ClaudeCodeProvider().model(FAST) == ""  # sentinel → inherit CLI default
+
+
+def test_codex_cli_defaults_to_inherit(monkeypatch):
+    for v in (
+        "FRONTIER_SCOUT_CODEX_CLI_FAST_MODEL",
+        "FRONTIER_SCOUT_CODEX_CLI_DEEP_MODEL",
+    ):
+        monkeypatch.delenv(v, raising=False)
+    p = CodexProvider()
+    assert p.model(FAST) == ""
+    assert p.model(DEEP) == ""
+
+
+# ---------------------------------------------------------------------------
+# CLI backends — Task 5: hermetic invocation, tiered effort, retryable timeout
+# ---------------------------------------------------------------------------
+
+
+def _fake_run(cap):
+    def _run(cmd, **kw):
+        cap["cmd"] = cmd
+        cap["input"] = kw.get("input")
+        return types.SimpleNamespace(returncode=0, stdout=cap["stdout"], stderr="")
+
+    return _run
+
+
+def test_claude_cli_command_is_hermetic_and_tiered(monkeypatch):
+    cap = {"stdout": '{"type":"result","result":"{\\"scores\\": []}"}'}
+    monkeypatch.setattr(
+        "frontier_scout.providers.cli_provider.subprocess.run", _fake_run(cap)
+    )
+    p = ClaudeCodeProvider()
+    resp = p.create(
+        model="sonnet",
+        max_tokens=100,
+        system="sys",
+        messages=[{"role": "user", "content": "go"}],
+        tools=[{"name": "score_items", "input_schema": {"type": "object"}}],
+    )
+    cmd = cap["cmd"]
+    assert cmd[:2] == ["claude", "-p"]
+    assert "--strict-mcp-config" in cmd
+    assert "--mcp-config" in cmd and "{}" in cmd
+    assert "--output-format" in cmd and "json" in cmd
+    assert "--bare" not in cmd
+    assert "--model" in cmd and "sonnet" in cmd
+    assert "--effort" not in cmd
+    assert first_tool_use(resp.content).input == {"scores": []}
+
+
+def test_claude_cli_judge_adds_effort(monkeypatch):
+    cap = {"stdout": '{"type":"result","result":"{\\"verdicts\\": []}"}'}
+    monkeypatch.setattr(
+        "frontier_scout.providers.cli_provider.subprocess.run", _fake_run(cap)
+    )
+    p = ClaudeCodeProvider()
+    p.create(
+        model="opus",
+        max_tokens=100,
+        system="sys",
+        messages=[{"role": "user", "content": "judge"}],
+        tools=[{"name": "judge", "input_schema": {"type": "object"}}],
+        thinking={"type": "adaptive"},
+    )
+    cmd = cap["cmd"]
+    assert "--effort" in cmd and "high" in cmd
+
+
+def test_codex_cli_command(monkeypatch):
+    cap = {"stdout": '{"verdicts": []}'}
+    monkeypatch.setattr(
+        "frontier_scout.providers.cli_provider.subprocess.run", _fake_run(cap)
+    )
+    p = CodexProvider()
+    p.create(
+        model="",
+        max_tokens=100,
+        system="sys",
+        messages=[{"role": "user", "content": "judge"}],
+        tools=[{"name": "judge", "input_schema": {"type": "object"}}],
+        thinking={"type": "adaptive"},
+    )
+    cmd = cap["cmd"]
+    assert cmd[:2] == ["codex", "exec"]
+    assert "read-only" in cmd
+    assert "-m" not in cmd
+    assert any(a.startswith("model_reasoning_effort=") for a in cmd)
+
+
+def test_cli_timeout_is_retryable(monkeypatch):
+    def _boom(cmd, **kw):
+        raise subprocess.TimeoutExpired(cmd, 180)
+
+    monkeypatch.setattr("frontier_scout.providers.cli_provider.subprocess.run", _boom)
+    p = ClaudeCodeProvider()
+    with pytest.raises(ProviderError) as exc:
+        p.create(
+            model="sonnet",
+            max_tokens=1,
+            system="s",
+            messages=[{"role": "user", "content": "x"}],
+            tools=[{"name": "t", "input_schema": {}}],
+        )
+    assert "timed out" in str(exc.value)
+    assert p.is_retryable(exc.value) is True
+
+
+def test_claude_unwrap_handles_envelope_and_fallbacks():
+    u = ClaudeCodeProvider._unwrap
+    # real envelope → inner result text
+    assert u('{"type":"result","result":"{\\"scores\\": []}"}') == '{"scores": []}'
+    # valid JSON that is NOT the envelope → returned unchanged
+    assert u('{"scores": []}') == '{"scores": []}'
+    # non-JSON stdout → returned unchanged
+    assert u("not json at all") == "not json at all"
+    # envelope with a non-str result → falls back to raw stdout
+    raw = '{"type":"result","result":{"nested":1}}'
+    assert u(raw) == raw
+
+
+# ---------------------------------------------------------------------------
+# OpenAICompatibleProvider — Task 6
+# ---------------------------------------------------------------------------
+
+
+def test_openai_compatible_tier_models(monkeypatch):
+    for v in (
+        "FRONTIER_SCOUT_OPENAI_COMPAT_FAST_MODEL",
+        "FRONTIER_SCOUT_OPENAI_COMPAT_DEEP_MODEL",
+    ):
+        monkeypatch.delenv(v, raising=False)
+    monkeypatch.setenv("FRONTIER_SCOUT_OPENAI_COMPAT_FAST_MODEL", "local-small")
+    p = OpenAICompatibleProvider()
+    assert p.model(FAST) == "local-small"
+    # DEEP unset → falls back to FAST (single-tier collapse, never crashes)
+    assert p.model(DEEP) == "local-small"
+
+
+def test_openai_compatible_passes_base_url(monkeypatch):
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:4000/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-x")  # pragma: allowlist secret
+    captured = {}
+
+    class _OpenAIMod:
+        def OpenAI(self, **kw):  # noqa: N802
+            captured.update(kw)
+            return "client"
+
+    monkeypatch.setitem(__import__("sys").modules, "openai", _OpenAIMod())
+    p = OpenAICompatibleProvider()
+    _ = p.client
+    assert captured["base_url"] == "http://localhost:4000/v1"
+
+
+def test_base_url_swaps_openai_for_compatible(monkeypatch):
+    for var in ("ANTHROPIC_API_KEY", "FRONTIER_SCOUT_PROVIDER"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr("frontier_scout.providers._has_claude_cli", lambda: False)
+    monkeypatch.setattr("frontier_scout.providers._has_codex_cli", lambda: False)
+    monkeypatch.setenv("OPENAI_API_KEY", "y")  # pragma: allowlist secret
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    assert (
+        "openai" in available_providers()
+        and "openai-compatible" not in available_providers()
+    )
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:4000/v1")
+    out = available_providers()
+    assert "openai-compatible" in out and "openai" not in out  # mutually exclusive
+
+
+def test_pinned_openai_with_base_url_resolves_compatible(monkeypatch):
+    _clear_provider_env(monkeypatch)
+    monkeypatch.setattr("frontier_scout.providers._has_claude_cli", lambda: False)
+    monkeypatch.setattr("frontier_scout.providers._has_codex_cli", lambda: False)
+    monkeypatch.setenv("OPENAI_API_KEY", "y")  # pragma: allowlist secret
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://localhost:4000/v1")
+    monkeypatch.setenv("FRONTIER_SCOUT_PROVIDER", "openai")
+    assert resolve_provider().name == "openai-compatible"
