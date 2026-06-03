@@ -1085,7 +1085,12 @@ class MissionControlApp(App[int]):
         from frontier_scout.tui3.overlays import ProviderSwitcherScreen
 
         self.push_screen(
-            ProviderSwitcherScreen(data.provider_choices(self.state.provider))
+            ProviderSwitcherScreen(
+                data.provider_choices(self.state.provider),
+                meta=data.providers(),
+                reason=self.state.provider_reason,
+                unicode=self.state.unicode,
+            )
         )
 
     def switch_provider(self, name: str) -> None:
@@ -1381,7 +1386,11 @@ class MissionControlApp(App[int]):
 
             self.push_screen(
                 ProviderSwitcherScreen(
-                    data.provider_choices(self.state.provider), first_run=True
+                    data.provider_choices(self.state.provider),
+                    first_run=True,
+                    meta=data.providers(),
+                    reason=self.state.provider_reason,
+                    unicode=self.state.unicode,
                 )
             )
         elif s.reason == "none":
@@ -1393,9 +1402,13 @@ class MissionControlApp(App[int]):
 
 
 def _provider_reason_label(reason: str) -> str:
-    return {"flag": " · pinned", "preference": " · pinned", "auto": " · auto"}.get(
-        reason, ""
-    )
+    # Human form of Selection.reason for the header badge (handoff §3): auto =
+    # detected, flag/preference = pinned. Mirrors the switcher pill's wording.
+    return {
+        "flag": " · pinned",
+        "preference": " · pinned",
+        "auto": " · detected",
+    }.get(reason, "")
 
 
 def _failure_compass(kind: str, error: str) -> str:

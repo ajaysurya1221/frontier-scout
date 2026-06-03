@@ -21,7 +21,7 @@ def test_appstate_has_provider_reason():
     [
         ("flag", " · pinned"),
         ("preference", " · pinned"),
-        ("auto", " · auto"),
+        ("auto", " · detected"),
         ("demo", ""),
         ("none", ""),
         ("must_ask", ""),
@@ -93,3 +93,38 @@ def test_failure_compass_plain_for_other_kinds():
     msg = _failure_compass("guard", "boom")
     assert "boom" in msg
     assert "retry" not in msg  # recovery affordance is scout-specific
+
+
+def test_switcher_two_line_cost_rows():
+    """Cost-aware two-line rows: cost + detail for available, 'fix: <hint>' for
+    unavailable, and an 'active · <reason>' pill on the active engine."""
+    choices = [
+        {
+            "id": "claude-cli",
+            "label": "Claude (CLI subscription)",
+            "available": True,
+            "hint": "",
+            "active": True,
+        },
+        {
+            "id": "openai",
+            "label": "OpenAI API",
+            "available": False,
+            "hint": "set OPENAI_API_KEY",
+            "active": False,
+        },
+    ]
+    scr = ProviderSwitcherScreen(choices, meta=data.providers(), reason="preference")
+    md = scr._list_markup()
+    assert "$0 marginal" in md  # claude-cli cost from data.providers()
+    assert "active" in md and "pinned" in md  # active pill carries the reason word
+    assert "PATH" in md  # claude-cli detail line ("`claude` on/not on PATH")
+    assert "fix: set OPENAI_API_KEY" in md  # unavailable row → fix line
+
+
+def test_switcher_reason_word_maps_auto_to_detected():
+    choices = [
+        {"id": "anthropic", "label": "Anthropic API", "available": True, "hint": "", "active": True},
+    ]
+    scr = ProviderSwitcherScreen(choices, meta=data.providers(), reason="auto")
+    assert "detected" in scr._list_markup()

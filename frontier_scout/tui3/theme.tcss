@@ -117,3 +117,19 @@ Screen {
 .scout-detail { height: auto; }
 .scout-detail.side { width: 1fr; border-left: tall #152232; padding-left: 1; }
 .scout-ask { height: auto; margin-top: 1; }
+
+/* Adoption Matrix (wide) + Tier Ledger (mid/narrow) — v5 signature instrument.
+   Cells are equal 1fr columns after a fixed axis gutter, so the header labels
+   and every cell row line up (the prototype's grid-template-columns: 3×1fr). */
+.scout-matrix { height: auto; margin-bottom: 1; }
+.scout-matrix-row { layout: horizontal; height: auto; }
+.scout-matrix-axis { width: 7; height: auto; }
+.scout-matrix-cell { width: 1fr; height: auto; }
+.scout-matrix-read { height: auto; margin-top: 1; }
+.scout-ledger { height: auto; margin-bottom: 1; }
+.scout-ledger-row { layout: horizontal; height: auto; }
+
+/* Architecture instrument (Settings) — two equal columns on wide, stacked
+   on mid/narrow (the builder swaps the container by breakpoint). */
+.arch-cols { layout: horizontal; height: auto; }
+.arch-col { width: 1fr; height: auto; }

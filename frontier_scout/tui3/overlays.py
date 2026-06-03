@@ -18,6 +18,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, Static
 
 from frontier_scout.tui3 import data
+from frontier_scout.tui3.kit import glyphs
 from frontier_scout.tui3.widgets import ClickStatic, LineClickStatic
 
 KEYS = [
@@ -687,10 +688,24 @@ class ProviderSwitcherScreen(_Modal):
 
     BINDINGS = [Binding("escape", "dismiss", "close", show=False)]
 
-    def __init__(self, choices: list[dict], *, first_run: bool = False) -> None:
+    # reason code → the word shown in the active row's "active · …" pill.
+    _REASON_WORD = {"flag": "pinned", "preference": "pinned", "auto": "detected"}
+
+    def __init__(
+        self,
+        choices: list[dict],
+        *,
+        first_run: bool = False,
+        meta: list[dict] | None = None,
+        reason: str = "",
+        unicode: bool = True,
+    ) -> None:
         super().__init__()
         self._choices = choices
         self._first_run = first_run
+        self._meta = {m["id"]: m for m in (meta or [])}  # id → providers() cost/detail
+        self._reason_word = self._REASON_WORD.get(reason, "")
+        self._uni = unicode
         avail = self._selectable()
         active = next((i for i, c in enumerate(choices) if c.get("active")), None)
         self._sel = active if (active in avail) else (avail[0] if avail else 0)
@@ -699,7 +714,8 @@ class ProviderSwitcherScreen(_Modal):
         return [i for i, c in enumerate(self._choices) if c.get("available")]
 
     def body(self) -> Iterable[Static]:
-        yield self._static("[#24d6a8 b]Switch provider[/]")
+        title = "Choose your engine" if self._first_run else "Switch provider"
+        yield self._static(f"[#24d6a8 b]{title}[/]")
         intro = (
             "More than one engine is available — pick one to start. Change it "
             "anytime with [#24d6a8 b]P[/]."
@@ -707,25 +723,49 @@ class ProviderSwitcherScreen(_Modal):
             else "Pick the engine for scouting & judging. Remembered for next time."
         )
         yield self._static(f"[#6e8aa1]{intro}[/]")
+        # Each provider spans two lines; map BOTH to the same choose callback so a
+        # click anywhere on the row selects it (mouse parity with j/k + ⏎).
         line_map = {
-            i: (lambda n=c["id"]: self._choose(n))
+            ln: (lambda n=c["id"]: self._choose(n))
             for i, c in enumerate(self._choices)
             if c.get("available")
+            for ln in (2 * i, 2 * i + 1)
         }
         yield LineClickStatic(
             self.app._paint(self._list_markup()), line_map, id="prov-list"
         )
-        yield self._static("\n[#6e8aa1]j/k move · ⏎ select · esc cancel[/]")
+        foot = (
+            "j/k move · ⏎ select · or run with [#24d6a8 b]--demo[/]"
+            if self._first_run
+            else "j/k move · ⏎ select · esc cancel"
+        )
+        yield self._static(f"\n[#6e8aa1]{foot}[/]")
 
     def _list_markup(self) -> str:
-        lines = []
+        g = glyphs(self._uni)
+        lines: list[str] = []
         for i, c in enumerate(self._choices):
-            mark = "[#24d6a8 b]▸ [/]" if i == self._sel else "  "
+            cur = f"[#24d6a8 b]{g['tri']} [/]" if i == self._sel else "  "
+            meta = self._meta.get(c["id"], {})
+            cost = str(meta.get("cost", "") or "")
             if c.get("available"):
-                act = " [#24d6a8]· active[/]" if c.get("active") else ""
-                lines.append(f"{mark}[#d9f7ff]{c['label']}[/]{act}")
+                if c.get("active"):
+                    mark = f"[#24d6a8]{g['dot']}[/]"
+                    rsn = f" {g['pip']} {self._reason_word}" if self._reason_word else ""
+                    pill = f"  [#24d6a8]active{rsn}[/]"
+                else:
+                    mark = f"[#6e8aa1]{g['ring']}[/]"
+                    pill = ""
+                cost_txt = f"  [#6e8aa1]{cost}[/]" if cost else ""
+                detail = str(meta.get("detail", "") or "available")
+                lines.append(f"{cur}{mark} [#d9f7ff]{c['label']}[/]{pill}{cost_txt}")
+                lines.append(f"    [#6e8aa1]{detail}[/]")
             else:
-                lines.append(f"  [#41566b]{c['label']} — {c['hint']}[/]")
+                cost_txt = f"  [#3a4a5a]{cost}[/]" if cost else ""
+                lines.append(
+                    f"{cur}[#ff6b6b]{g['cross']}[/] [#41566b]{c['label']}[/]{cost_txt}"
+                )
+                lines.append(f"    [#6e8aa1]fix: {c['hint']}[/]")
         return "\n".join(lines)
 
     def _repaint(self) -> None:

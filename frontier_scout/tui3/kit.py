@@ -38,12 +38,14 @@ UNI = {
     "arrow": "→", "check": "✓", "cross": "✕", "tri": "▸", "chev": "›",
     "radar_core": "◉", "pip": "·", "bullet": "▪", "vbar": "│",
     "enter": "⏎", "lr": "←→", "ud": "↑↓", "cmd": "⌘",
+    "seg_on": "▰", "seg_off": "▱", "cap_l": "▏", "cap_r": "▕",
 }
 ASCII = {
     "bar_full": "#", "bar_empty": ".", "dot": "*", "ring": "o", "diamond": "<>",
     "arrow": "->", "check": "v", "cross": "x", "tri": ">", "chev": ">",
     "radar_core": "(o)", "pip": ".", "bullet": "-", "vbar": "|",
     "enter": "ent", "lr": "<>", "ud": "^v", "cmd": "^",
+    "seg_on": "#", "seg_off": "-", "cap_l": "[", "cap_r": "]",
 }
 
 
@@ -60,6 +62,7 @@ _ASCIIFY = {
     "↑": "^", "↓": "v", "↔": "<>", "✓": "v", "✕": "x", "▸": ">", "›": ">",
     "◉": "(o)", "·": ".", "▪": "-", "│": "|", "⏎": "ent", "⌘": "^", "…": "...",
     "–": "-", "—": "--",
+    "▰": "#", "▱": "-", "▏": "[", "▕": "]",
 }
 
 
@@ -188,11 +191,100 @@ def breakpoint_for(cols: int, rows: int) -> Breakpoint:
 
 
 def bar(value: float, maximum: float, width: int, *, unicode: bool = True) -> tuple[str, str]:
-    """Return (filled, empty) glyph runs for a fixed-width progress bar."""
+    """Return (lit, unlit) segmented pip runs for a fixed-width gauge.
+
+    Each cell is a discrete ``seg_on`` (lit) or ``seg_off`` (unlit) pip so the
+    meter reads as N-of-M at every fill level.  A fully-lit bar is a row of
+    separated pips (``▰▰▰…``), not a featureless solid block; an empty bar is a
+    visible track (``▱▱▱…``), not invisible.  The (lit, unlit) contract is
+    unchanged so existing callers that colour the two runs independently keep
+    working without modification.
+    """
     g = glyphs(unicode)
     frac = 0.0 if maximum <= 0 else max(0.0, min(1.0, value / maximum))
     filled = round(frac * width)
-    return g["bar_full"] * filled, g["bar_empty"] * max(0, width - filled)
+    return g["seg_on"] * filled, g["seg_off"] * max(0, width - filled)
+
+
+# Tone palette hex values used for Rich markup (mirrors PALETTE + _TONE in scout_view).
+_TONE_HEX: dict[str, str] = {
+    "mint":  "#24d6a8",
+    "gold":  "#e3c26f",
+    "red":   "#ff6b6b",
+    "blue":  "#7aa6ff",
+    "muted": "#6e8aa1",
+    "dim":   "#152232",  # unlit track colour (very dark — visible but recessed)
+}
+
+
+def gauge(
+    *,
+    label: str | None = None,
+    level: str | None = None,
+    value: float | None = None,
+    maximum: int = 3,
+    tone: str | None = None,
+    read: str | None = None,
+    danger: bool = False,
+    unicode: bool = True,
+) -> str:
+    """Return a Rich-markup string for a labelled segmented gauge.
+
+    Mirrors ``Gauge`` + ``Bar`` from ``fs5-kit.jsx``.  Level shorthand maps
+    ``high``→3, ``medium``→2, ``low``→1, ``none``/other→0 of ``maximum=3``.
+
+    Auto-tone (when *tone* is None):
+      * ``muted``  when v<=0 (empty track, nothing to signal)
+      * danger path: ``red`` when v>=2 else ``gold``
+      * normal path: ``mint`` when v>=maximum (full), ``gold`` when v>=2, else ``red``
+
+    The lit segments are wrapped in the tone colour; the unlit segments use the
+    dim track colour so the track is visible but recessed.  The trailing *read*
+    word is also tone-coloured so it reinforces rather than replaces the meter.
+    The output survives ``mono()`` (color stripped, glyphs + word preserved) and
+    ``asciify()`` (unicode glyphs folded to ASCII equivalents).
+    """
+    # Resolve numeric value from level shorthand.
+    v: float
+    if level is not None:
+        v = {"high": 3, "medium": 2, "low": 1}.get(level, 0)
+        maximum = 3
+    else:
+        v = value if value is not None else 0
+
+    # Auto-tone selection (mirrors Gauge in fs5-kit.jsx).
+    t: str
+    if tone is not None:
+        t = tone
+    elif v <= 0:
+        t = "muted"
+    elif danger:
+        t = "red" if v >= 2 else "gold"
+    elif v >= maximum:
+        t = "mint"
+    elif v >= 2:
+        t = "gold"
+    else:
+        t = "red"
+
+    lit, unlit = bar(v, maximum, maximum, unicode=unicode)
+    tone_hex = _TONE_HEX.get(t, _TONE_HEX["muted"])
+    dim_hex  = _TONE_HEX["dim"]
+
+    segments = (
+        f"[{tone_hex}]{lit}[/][{dim_hex}]{unlit}[/]"
+        if unlit
+        else f"[{tone_hex}]{lit}[/]"
+    )
+
+    parts: list[str] = []
+    if label is not None:
+        parts.append(f"[{_TONE_HEX['muted']}]{label}[/]")
+    parts.append(segments)
+    if read is not None:
+        parts.append(f"[{tone_hex}]{read}[/]")
+
+    return " ".join(parts)
 
 
 def pct(value: float, maximum: float) -> int:
