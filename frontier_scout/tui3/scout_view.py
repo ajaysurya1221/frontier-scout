@@ -206,13 +206,20 @@ def _cell_markup(
     fit: str,
     risk: str,
 ) -> str:
-    """Build the Rich-markup string for one matrix cell.
+    """Build the Rich-markup string for one matrix cell — a SINGLE line.
 
-    Cells have a fixed 3-line budget:
-      line 0 — count badge (when >3) OR empty
-      line 1 — dot run (up to _DOT_MAX) + +N overflow
-      line 2 — "safe" / "hold" label when empty corner, else blank
-    This gives each cell a predictable height without Textual grid CSS.
+    Returns one painted line: a count badge (when >3) + the dot run (up to
+    ``_DOT_MAX``) + ``+N`` overflow for a populated cell, or a "safe"/"hold"
+    corner label / ``·`` placeholder for an empty cell. Cells are single-line so
+    the 3×3 grid keeps uniform row heights (the matrix alignment relies on equal
+    rows — see ``theme.tcss`` ``.scout-matrix-cell``).
+
+    When the cell holds the selected verdict, the content is wrapped inline with
+    the corner-bracket lock frame (``⌜…⌟`` → ``+…+`` in ascii). This is the
+    single-line terminal mapping of the prototype's 4-corner box: a 2-D
+    affordance that honestly degrades to a 2-corner bracket in a character grid
+    (v6 handoff §2b/§6). The selected dot's ``radar_core`` glyph remains the
+    primary selection signal; the frame is reinforcement.
     """
     border = _hex("muted")
     safe_corner = fit == "high" and risk == "low"
