@@ -42,7 +42,7 @@ from frontier_scout.tui3.kit import (
     verdict_label,
     verdict_tone,
 )
-from frontier_scout.tui3.widgets import ClickStatic
+from frontier_scout.tui3.widgets import ClickStatic, ScanSpinner
 
 _TONE = {
     "mint": "#24d6a8", "gold": "#e3c26f", "blue": "#7aa6ff", "red": "#ff6b6b",
@@ -154,6 +154,10 @@ def build_scout(app: Any) -> Vertical:
             root.compose_add_child(_tier_ledger_widget(app, gl, verdicts))
 
     root.compose_add_child(_scanbar(app, gl))
+
+    if getattr(app, "_scanning", False):
+        root.compose_add_child(_scan_progress(app, gl))
+        return root
 
     if not verdicts:
         root.compose_add_child(_empty(app, gl))
@@ -431,6 +435,79 @@ def _scanbar(app: Any, gl: dict[str, str]) -> Horizontal:
             f" [#6e8aa1]{gl['pip']} last {f.last_run} {gl['pip']} "
             f"${f.cost:.2f} {gl['pip']} {f.duration:.0f}s[/]"))
     return row
+
+
+# ── scan-progress surface (spinner + sweep + staged checklist) ───────────────
+#
+# Shown while app._scanning is True (replaces the empty / list branch entirely).
+# Layout mirrors fs6-scout.jsx ScanProgress:
+#   spinner + sweep line (the ScanSpinner widget)
+#   3-stage checklist: watch · match · decide  (painted Statics, glyph markers)
+#   foot line: "reading <repo> · offline tree-sitter pass · …"
+#
+# Stage markers follow the prototype's `mark` logic:
+#   done  → gl['check']   (✓ / v)
+#   active→ gl['tri']     (▸ / >)
+#   todo  → gl['ring']    (○ / o)
+# Stage index: app._scan_stage (int, 0-based); falls back to 0 when absent so
+# the widget renders correctly on any _scanning=True path.
+
+_SCAN_STAGES = [
+    ("watch", "scout sources"),
+    ("match", "map to your stack"),
+    ("decide", "rank verdicts"),
+]
+
+
+def _scan_progress(app: Any, gl: dict[str, str]) -> Vertical:
+    """Return a Vertical with the spinner + radar sweep + staged checklist."""
+    repo = app.state.repo_name
+    stage_idx = getattr(app, "_scan_stage", 0)
+
+    box = Vertical(classes="scout-progress")
+
+    # ScanSpinner carries both the frame-cycling spinner and the radar sweep.
+    box.compose_add_child(ScanSpinner(f"scouting {repo}"))
+
+    # Staged checklist — 3 rows, each a painted Static.
+    for i, (key, label) in enumerate(_SCAN_STAGES):
+        if i < stage_idx:
+            state_key = "done"
+            mark = gl["check"]
+            mark_hex = _hex("mint")
+            label_hex = _hex("muted")
+            suffix = ""
+        elif i == stage_idx:
+            state_key = "active"
+            mark = gl["tri"]
+            mark_hex = _hex("mint")
+            label_hex = _hex("bright")
+            suffix = app._paint(f"[{_hex('muted')}]…[/]")
+        else:
+            state_key = "todo"
+            mark = gl["ring"]
+            mark_hex = _hex("muted")
+            label_hex = _hex("muted")
+            suffix = ""
+
+        line = (
+            app._paint(f"[{mark_hex}]{mark}[/]")
+            + app._paint(f" [{_hex('muted')}]{key:<7}[/]")
+            + app._paint(f" [{label_hex}]{label}[/]")
+            + suffix
+        )
+        box.compose_add_child(Static(line, classes=f"scan-stage scan-stage-{state_key}"))
+
+    # Footer line.
+    box.compose_add_child(_S(
+        app,
+        f"[{_hex('muted')}]reading [{_hex('bright')}]{repo}[/]"
+        f" {gl['pip']} offline tree-sitter pass"
+        f" {gl['pip']} no source leaves your machine[/]",
+        classes="scan-foot",
+    ))
+
+    return box
 
 
 # ── empty / first-run state ──────────────────────────────────────────────────

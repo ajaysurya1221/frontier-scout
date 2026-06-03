@@ -36,3 +36,16 @@ def test_scan_spinner_holds_frame_when_motion_off():
             assert sp._frame == 0
             assert ("|" in txt or "/" in txt or "-" in txt or "\\" in txt)
     _run(go())
+
+
+def test_scout_home_shows_spinner_while_scanning():
+    async def go():
+        app = MissionControlApp(demo=True)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            app.state = app.state.with_(verdicts=(), scope="all")
+            app._scanning = True
+            await app._render_pane()
+            await pilot.pause()
+            assert app.query(ScanSpinner), "no ScanSpinner mounted while scanning"
+    _run(go())
