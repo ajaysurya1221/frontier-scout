@@ -577,8 +577,17 @@ def stack_from_profile(profile: ScoutProfile) -> dict[str, Any]:
     Backward-compatible: every previously-emitted key is unchanged; richer keys
     are added so the scout prompt can render the architecture brief.
     """
+    _by_name: dict[tuple[str, str], DependencySpec] = {}
+    for d in profile.dependencies:
+        dkey = (d.ecosystem, d.name.lower())
+        prev = _by_name.get(dkey)
+        if prev is None or (
+            (bool(d.resolved_version) and not prev.resolved_version)
+            or d.evidence_imports > prev.evidence_imports
+        ):
+            _by_name[dkey] = d
     top_deps = sorted(
-        profile.dependencies,
+        _by_name.values(),
         key=lambda d: (-d.evidence_imports, d.name.lower()),
     )[:15]
     return {

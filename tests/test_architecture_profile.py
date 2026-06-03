@@ -189,3 +189,28 @@ def test_render_redacts_secret_shaped_value():
     out = render_stack_profile(stack)
     assert "sk-ant-" not in out
     assert "‹redacted›" in out
+
+
+def test_stack_from_profile_dedups_dependencies_by_name():
+    p = _p()
+    # same package from two manifests (different manifest_path) + a version on one
+    p.dependencies = [
+        DependencySpec(
+            name="pydantic",
+            ecosystem="pypi",
+            specifier=">=2.0",
+            manifest_path="pyproject.toml",
+            evidence_imports=3,
+        ),
+        DependencySpec(
+            name="pydantic",
+            ecosystem="pypi",
+            resolved_version="2.6.4",
+            manifest_path="requirements.txt",
+            evidence_imports=0,
+        ),
+    ]
+    deps = stack_from_profile(p)["dependencies"]
+    names = [d["name"] for d in deps]
+    assert names.count("pydantic") == 1  # deduped
+    assert deps[0]["version"] == "2.6.4"  # kept the entry with a resolved version
