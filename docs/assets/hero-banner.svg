@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 440" width="1280" height="440" font-family="ui-monospace, &#39;SF Mono&#39;, &#39;JetBrains Mono&#39;, Menlo, Consolas, &#39;DejaVu Sans Mono&#39;, monospace" role="img" aria-label="Frontier Scout — try AI tools before you trust them. 377 scanned this week, 5 worth your time. An adoption matrix of fit by risk.">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="0%" r="90%">
+      <stop offset="0%" stop-color="#24d6a8" stop-opacity="0.10"></stop>
+      <stop offset="60%" stop-color="#24d6a8" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id="safeHeat" cx="32%" cy="32%" r="70%">
+      <stop offset="0%" stop-color="#24d6a8" stop-opacity="0.20"></stop>
+      <stop offset="100%" stop-color="#24d6a8" stop-opacity="0"></stop>
+    </radialGradient>
+    <radialGradient id="holdHeat" cx="70%" cy="70%" r="70%">
+      <stop offset="0%" stop-color="#ff6b6b" stop-opacity="0.18"></stop>
+      <stop offset="100%" stop-color="#ff6b6b" stop-opacity="0"></stop>
+    </radialGradient>
+  </defs>
+
+  
+  <rect width="1280" height="440" fill="#05080b"></rect>
+  <rect width="1280" height="440" fill="url(#glow)"></rect>
+  <rect x="0.5" y="0.5" width="1279" height="439" fill="none" stroke="#1a2c41" rx="0"></rect>
+
+  
+  <text x="64" y="92" fill="#24d6a8" font-size="14" letter-spacing="5" font-weight="500">// AI ADOPTION RADAR</text>
+
+  <g font-weight="700" letter-spacing="-1">
+    <text x="62" y="166" fill="#d9f7ff" font-size="52">Try AI tools</text>
+    <text x="62" y="222" fill="#24d6a8" font-size="52">before you trust</text>
+    <text x="62" y="278" fill="#24d6a8" font-size="52">them.</text>
+  </g>
+
+  <text x="64" y="322" fill="#6e8aa1" font-size="16.5">Reads your repo locally. Ranks every release against</text>
+  <text x="64" y="346" fill="#6e8aa1" font-size="16.5">your stack. Refuses to say <tspan fill="#a9bccd">“ship it”</tspan> without evidence.</text>
+
+  
+  <text x="64" y="402" font-size="40" font-weight="700"><tspan fill="#24d6a8">377</tspan><tspan fill="#46596b" font-size="28" dx="10">→</tspan><tspan fill="#e3c26f" dx="10">5</tspan></text>
+  <text x="252" y="392" fill="#a9bccd" font-size="14">scanned this</text>
+  <text x="252" y="410" fill="#a9bccd" font-size="14">week → <tspan fill="#e3c26f">worth your time</tspan></text>
+
+  
+  <g font-size="12.5" letter-spacing="0.5">
+    <text x="64" y="430"><tspan fill="#46596b">release </tspan><tspan fill="#24d6a8">v1.7.0</tspan><tspan fill="#1a2c41">   ·   </tspan><tspan fill="#46596b">python </tspan><tspan fill="#a9bccd">3.11+</tspan><tspan fill="#1a2c41">   ·   </tspan><tspan fill="#46596b">license </tspan><tspan fill="#a9bccd">MIT</tspan><tspan fill="#1a2c41">   ·   </tspan><tspan fill="#46596b">telemetry </tspan><tspan fill="#e3c26f">none</tspan></text>
+  </g>
+
+  
+  <text x="800" y="62" fill="#24d6a8" font-size="13" letter-spacing="4" font-weight="500">ADOPTION MATRIX</text>
+  <text x="1192" y="62" fill="#46596b" font-size="13" text-anchor="end">fit × risk · 7</text>
+
+  
+  <text x="784" y="232" fill="#6e8aa1" font-size="11" letter-spacing="3" transform="rotate(-90 784 232)" text-anchor="middle">FIT ↑</text>
+
+  
+  <g>
+    
+    <rect x="800" y="92" width="124" height="84" rx="8" fill="#0b1117" stroke="#24d6a8" stroke-opacity="0.4"></rect>
+    <rect x="800" y="92" width="124" height="84" rx="8" fill="url(#safeHeat)"></rect>
+    <rect x="934" y="92" width="124" height="84" rx="8" fill="#0b1117" stroke="#1a2c41"></rect>
+    <rect x="1068" y="92" width="124" height="84" rx="8" fill="#0b1117" stroke="#1a2c41"></rect>
+    
+    <rect x="800" y="186" width="124" height="84" rx="8" fill="#0b1117" stroke="#1a2c41"></rect>
+    <rect x="934" y="186" width="124" height="84" rx="8" fill="#0b1117" stroke="#1a2c41"></rect>
+    <rect x="1068" y="186" width="124" height="84" rx="8" fill="#0b1117" stroke="#1a2c41"></rect>
+    
+    <rect x="800" y="280" width="124" height="84" rx="8" fill="#0b1117" stroke="#1a2c41"></rect>
+    <rect x="934" y="280" width="124" height="84" rx="8" fill="#0b1117" stroke="#1a2c41"></rect>
+    <rect x="1068" y="280" width="124" height="84" rx="8" fill="#0b1117" stroke="#ff6b6b" stroke-opacity="0.35"></rect>
+    <rect x="1068" y="280" width="124" height="84" rx="8" fill="url(#holdHeat)"></rect>
+  </g>
+
+  
+  <text x="916" y="168" fill="#46596b" font-size="9" letter-spacing="1.5" text-anchor="end">SAFE</text>
+  <text x="1184" y="356" fill="#46596b" font-size="9" letter-spacing="1.5" text-anchor="end">HOLD</text>
+
+  
+  
+  <circle cx="862" cy="134" r="11" fill="#24d6a8" opacity="0.18"></circle>
+  <circle cx="862" cy="134" r="6.5" fill="#24d6a8"></circle>
+  
+  <circle cx="987" cy="134" r="5.5" fill="#e3c26f"></circle>
+  <circle cx="1005" cy="134" r="5.5" fill="#e3c26f"></circle>
+  
+  <circle cx="862" cy="228" r="5.5" fill="#7aa6ff"></circle>
+  
+  <circle cx="996" cy="228" r="5.5" fill="#e3c26f"></circle>
+  
+  <circle cx="996" cy="322" r="5.5" fill="#7aa6ff"></circle>
+  
+  <circle cx="1130" cy="322" r="6.5" fill="#ff6b6b"></circle>
+
+  
+  <g fill="#6e8aa1" font-size="11" letter-spacing="2" text-anchor="middle">
+    <text x="862" y="386">LOW</text>
+    <text x="996" y="386">MED</text>
+    <text x="1130" y="386">HIGH</text>
+  </g>
+
+  
+  <text x="800" y="420" font-size="13.5"><tspan fill="#24d6a8">▸ </tspan><tspan fill="#d9f7ff" font-weight="700">anthropics/skills</tspan><tspan fill="#46596b"> · </tspan><tspan fill="#24d6a8" letter-spacing="0.5">ADOPT</tspan><tspan fill="#46596b"> · </tspan><tspan fill="#a9bccd">fit high</tspan><tspan fill="#46596b"> · </tspan><tspan fill="#a9bccd">risk low</tspan></text>
+</svg>
