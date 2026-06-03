@@ -420,3 +420,36 @@ def test_cap_spinner_clears_after_scan_failure():
             assert not app.query(ScanSpinner), "spinner stuck after failure"
 
     _run(go())
+
+
+def test_matrix_crosshair_tones_selected_axes():
+    from frontier_scout.tui3.state import Verdict
+    async def go():
+        app = MissionControlApp(demo=True)
+        async with app.run_test(size=(140, 40)) as pilot:   # wide → matrix
+            await pilot.pause()
+            v = Verdict.from_payload({"tool_name": "x", "verdict": "adopt", "fit": "high", "risk": "low"})
+            app.state = app.state.with_(verdicts=(v,), scope="all", sel=0)
+            app._scanning = False
+            await app._render_pane(); await pilot.pause()
+            # Collect markup only from the axis-label widgets (scout-matrix-axis and
+            # the risk-header scout-matrix-cell widgets that are part of the header row).
+            axis_parts = []
+            for w in app.query(".scout-matrix-axis"):
+                c = getattr(w, "content", None)
+                if c:
+                    axis_parts.append(str(c))
+            # Also collect the risk-header cells (the header row's scout-matrix-cell widgets)
+            # by looking at all scout-matrix-cell statics and filtering to those that
+            # contain only a single label token (no dots/numbers = header cells).
+            for w in app.query(".scout-matrix-cell"):
+                c = getattr(w, "content", None)
+                if c and str(c).count("]") <= 2:  # header cell: one markup tag
+                    axis_parts.append(str(c))
+            axis_txt = "  ".join(axis_parts)
+            # fit_tone(high)=mint (#24d6a8); the "hi " label for fit=high must be bold+toned.
+            # risk_tone(low)=mint (#24d6a8); the "low" label for risk=low must be bold+toned.
+            assert "#24d6a8 b]hi " in axis_txt or "#24d6a8 b]low" in axis_txt, (
+                f"Expected toned+bold axis label in axis widgets, got: {axis_txt!r}"
+            )
+    _run(go())

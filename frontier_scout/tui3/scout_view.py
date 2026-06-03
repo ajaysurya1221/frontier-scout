@@ -267,13 +267,19 @@ def _adoption_matrix(app: Any, gl: dict[str, str], verdicts: tuple) -> Vertical:
     ))
 
     # ── risk axis header (widget columns, aligned 1:1 with the cell rows) ──────
+    cur = app.state.current
     head_row = Horizontal(classes="scout-matrix-row")
     head_row.compose_add_child(
         _S(app, f"[{_hex('muted')}]fit[/]", classes="scout-matrix-axis")
     )
     for r in RISKS:
+        if cur is not None and r == cur.risk:
+            risk_hex = _hex(risk_tone(cur.risk))
+            label_markup = f"[{risk_hex} b]{_RISK_LABELS[r]}[/]"
+        else:
+            label_markup = f"[{_hex('muted')}]{_RISK_LABELS[r]}[/]"
         head_row.compose_add_child(
-            _S(app, f"[{_hex('muted')}]{_RISK_LABELS[r]}[/]", classes="scout-matrix-cell")
+            _S(app, label_markup, classes="scout-matrix-cell")
         )
     box.compose_add_child(head_row)
 
@@ -281,9 +287,14 @@ def _adoption_matrix(app: Any, gl: dict[str, str], verdicts: tuple) -> Vertical:
     for fit in FITS:
         row_w = Horizontal(classes="scout-matrix-row")
         # fit axis label — same fixed-width gutter as the header row
+        if cur is not None and fit == cur.fit:
+            fit_hex = _hex(fit_tone(cur.fit))
+            fit_label_markup = f"[{fit_hex} b]{_FIT_LABELS[fit]}[/]"
+        else:
+            fit_label_markup = f"[{_hex('muted')}]{_FIT_LABELS[fit]}[/]"
         row_w.compose_add_child(_S(
             app,
-            f"[{_hex('muted')}]{_FIT_LABELS[fit]}[/]",
+            fit_label_markup,
             classes="scout-matrix-axis",
         ))
         for risk in RISKS:
@@ -304,17 +315,16 @@ def _adoption_matrix(app: Any, gl: dict[str, str], verdicts: tuple) -> Vertical:
         box.compose_add_child(row_w)
 
     # ── readout line ──────────────────────────────────────────────────────────
-    v = app.state.current
-    if v is not None:
-        tone_hex = _hex(verdict_tone(v.verdict))
-        name = v.tool_name.split("/")[-1]
+    if cur is not None:
+        tone_hex = _hex(verdict_tone(cur.verdict))
+        name = cur.tool_name.split("/")[-1]
         readout = (
             f"[{tone_hex}]{gl['tri']}[/] "
             f"[{_hex('bright')}]{name}[/] "
             f"[{_hex('muted')}]{gl['pip']}[/] "
-            f"[{tone_hex}]{verdict_label(v.verdict).lower()}[/] "
-            f"[{_hex('muted')}]{gl['pip']} fit[/] [{_hex(fit_tone(v.fit))} b]{v.fit}[/] "
-            f"[{_hex('muted')}]{gl['pip']} risk[/] [{_hex(risk_tone(v.risk))} b]{v.risk}[/]"
+            f"[{tone_hex}]{verdict_label(cur.verdict).lower()}[/] "
+            f"[{_hex('muted')}]{gl['pip']} fit[/] [{_hex(fit_tone(cur.fit))} b]{cur.fit}[/] "
+            f"[{_hex('muted')}]{gl['pip']} risk[/] [{_hex(risk_tone(cur.risk))} b]{cur.risk}[/]"
         )
     else:
         readout = f"[{_hex('muted')}]select a verdict to read it[/]"
