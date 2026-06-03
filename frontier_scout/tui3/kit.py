@@ -39,6 +39,8 @@ UNI = {
     "radar_core": "◉", "pip": "·", "bullet": "▪", "vbar": "│",
     "enter": "⏎", "lr": "←→", "ud": "↑↓", "cmd": "⌘",
     "seg_on": "▰", "seg_off": "▱", "cap_l": "▏", "cap_r": "▕",
+    "spark": "▁▂▃▄▅▆▇█",
+    "corner_tl": "⌜", "corner_tr": "⌝", "corner_bl": "⌞", "corner_br": "⌟",
 }
 ASCII = {
     "bar_full": "#", "bar_empty": ".", "dot": "*", "ring": "o", "diamond": "<>",
@@ -46,12 +48,26 @@ ASCII = {
     "radar_core": "(o)", "pip": ".", "bullet": "-", "vbar": "|",
     "enter": "ent", "lr": "<>", "ud": "^v", "cmd": "^",
     "seg_on": "#", "seg_off": "-", "cap_l": "[", "cap_r": "]",
+    "spark": ".:-=+*#%",
+    "corner_tl": "+", "corner_tr": "+", "corner_bl": "+", "corner_br": "+",
 }
 
 
 def glyphs(unicode: bool = True) -> dict[str, str]:
     """Return the active glyph map."""
     return UNI if unicode else ASCII
+
+
+# Frame-cycling spinner (terminal-native; replaces the v5 CSS-rotated ◉). A list,
+# so it lives next to UNI/ASCII rather than inside them. The radar sweep reuses
+# the existing seg_on/seg_off glyphs — no new glyph needed.
+SPIN_UNI = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+SPIN_ASCII = ["|", "/", "-", "\\"]
+
+
+def spinner_frames(unicode: bool = True) -> list[str]:
+    """Active spinner frames — braille in unicode, ``|/-\\`` in ascii."""
+    return SPIN_UNI if unicode else SPIN_ASCII
 
 
 # Fold every unicode glyph (plus a few extras used in static help/overlay text)
@@ -63,6 +79,8 @@ _ASCIIFY = {
     "◉": "(o)", "·": ".", "▪": "-", "│": "|", "⏎": "ent", "⌘": "^", "…": "...",
     "–": "-", "—": "--",
     "▰": "#", "▱": "-", "▏": "[", "▕": "]",
+    "▁": ".", "▂": ":", "▃": "-", "▄": "=", "▅": "+", "▆": "*", "▇": "#",
+    "⌜": "+", "⌝": "+", "⌞": "+", "⌟": "+",
 }
 
 
