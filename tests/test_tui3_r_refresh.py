@@ -342,3 +342,41 @@ def test_settings_architecture_stacked_on_narrow():
     assert "web-service" in txt
     assert "llm-sdk" in txt and "anthropic" in txt
     assert "key dependencies" in txt and "fastapi" in txt
+
+
+def test_provider_switcher_first_run_framing():
+    """The first-run switcher shows the onboarding title, the --demo escape
+    hatch, and a 'fix:' line for an unavailable engine (mounted, so body() runs)."""
+    from frontier_scout.tui3.overlays import ProviderSwitcherScreen
+
+    choices = [
+        {"id": "anthropic", "label": "Anthropic API", "available": True, "hint": "", "active": True},
+        {"id": "openai", "label": "OpenAI API", "available": False, "hint": "set OPENAI_API_KEY", "active": False},
+    ]
+
+    async def go():
+        app = MissionControlApp(demo=True)
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            await app.push_screen(
+                ProviderSwitcherScreen(
+                    choices,
+                    first_run=True,
+                    meta=data.providers(),
+                    reason="auto",
+                    unicode=app.state.unicode,
+                )
+            )
+            await pilot.pause()
+            assert isinstance(app.screen, ProviderSwitcherScreen), app.screen
+            # app.query targets the base screen; the modal lives on app.screen.
+            parts = []
+            for w in app.screen.query("Static"):
+                c = getattr(w, "content", None)
+                parts.append(str(c) if c else str(getattr(w, "renderable", "")))
+            txt = "  ".join(parts)
+            assert "Choose your engine" in txt, txt
+            assert "--demo" in txt
+            assert "fix: set OPENAI_API_KEY" in txt
+
+    _run(go())
