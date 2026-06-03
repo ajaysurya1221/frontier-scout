@@ -99,7 +99,8 @@ def test_detail_no_permission_map_for_dep():
 
 def test_permission_map_flags_real_dangerous_keys():
     """Uses the REAL backend capability keys/statuses: credential/write 'likely'
-    must render red (they're in DANGEROUS_KEYS); read 'unlikely' stays muted."""
+    must render red (they're in DANGEROUS_KEYS); read 'unlikely' stays muted with
+    0 lit pips (spec: unlikely=0=muted, empty-but-present gauge)."""
     async def go():
         app = MissionControlApp(demo=True)
         async with app.run_test(size=(160, 50)) as pilot:
@@ -111,9 +112,20 @@ def test_permission_map_flags_real_dangerous_keys():
             await app._render_pane()
             await pilot.pause()
             txt = _pane_text(app)
-            assert "credential[/] [#ff6b6b]likely" in txt, "credential:likely must render red"
-            assert "write[/] [#ff6b6b]likely" in txt, "write:likely must render red"
-            assert "read[/] [#6e8aa1]unlikely" in txt, "read:unlikely must render muted"
+            # gauge markup: [muted]label[/] [tone]lit-pips[/][dim]unlit-pips[/] [tone]read[/]
+            # dangerous+likely → red tone (#ff6b6b), 3 lit pips (▰▰▰)
+            assert "[#6e8aa1]credential[/]" in txt, "credential label must be present"
+            assert "[#ff6b6b]▰▰▰[/] [#ff6b6b]likely[/]" in txt, \
+                "credential:likely must render red with 3 lit pips"
+            assert "[#6e8aa1]write[/]" in txt, "write label must be present"
+            assert "[#ff6b6b]likely[/]" in txt, "write:likely must render red"
+            # unlikely → level=none → 0 lit pips, muted tone (#6e8aa1)
+            assert "[#6e8aa1]read[/]" in txt, "read label must be present"
+            # 0 lit pips: the lit segment is empty, only unlit (▱▱▱) track visible
+            assert "▰" not in txt.split("[#6e8aa1]read[/]", 1)[-1].split("[#6e8aa1]network[/]")[0], \
+                "read:unlikely must have NO lit pips (0 pips = muted gauge)"
+            assert "[#6e8aa1]unlikely[/]" in txt, \
+                "read:unlikely must render with muted tone"
 
     _run(go())
 

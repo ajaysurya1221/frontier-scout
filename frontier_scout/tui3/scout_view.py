@@ -225,16 +225,17 @@ def _detail(app: Any, gl: dict[str, str], *, side: bool) -> Vertical:
     # Permission map — only when the verdict carries a capability manifest (deps
     # don't), matching the prototype.  Each capability is rendered as a gauge so
     # the risk level is both a colour signal and a visible pip count.
-    # Level mapping: likely→high, possible→medium, unlikely/unknown→low.
+    # Level mapping: likely→high, possible→medium, unlikely/unknown→none (muted,
+    # 0 pips).  Spec: "unlikely=0=muted" — empty-but-present gauge.
     # Tone: dangerous+likely→red (danger=True, level=high); dangerous+possible→
     # gold (danger=True, level=medium); non-dangerous→normal tone curve.
     if v.capabilities:
         box.compose_add_child(_S(app, "\n[#24d6a8 b]Permission map[/]"))
-        _STATUS_LEVEL = {"likely": "high", "possible": "medium", "unlikely": "low"}
+        _STATUS_LEVEL = {"likely": "high", "possible": "medium", "unlikely": "none"}
         cells = []
         for key, status in v.capabilities:
             dangerous = key in _DANGEROUS_CAPS
-            cap_level = _STATUS_LEVEL.get(status, "low")
+            cap_level = _STATUS_LEVEL.get(status, "none")
             g_str = gauge(
                 label=key,
                 level=cap_level,
