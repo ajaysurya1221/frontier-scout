@@ -82,6 +82,10 @@ _ASCIIFY = {
     "▁": ".", "▂": ":", "▃": "-", "▄": "=", "▅": "+", "▆": "*", "▇": "#",
     "⌜": "+", "⌝": "+", "⌞": "+", "⌟": "+",
 }
+# Spinner braille frames fold to the ascii spinner ticks. The spinner's primary
+# path already picks spinner_frames(False) in ascii mode; this keeps the central
+# _paint safety net complete so no braille frame can leak via any other path.
+_ASCIIFY.update({u: SPIN_ASCII[i % len(SPIN_ASCII)] for i, u in enumerate(SPIN_UNI)})
 
 
 def asciify(s: str) -> str:
