@@ -285,56 +285,86 @@ Quality self-rating:
 
 
 def render_stack_profile(profile: dict[str, Any] | None) -> str:
-    """Render the user's ``stack.yaml`` profile into a prompt-ready block.
+    """Render the local architecture profile into a prompt-ready brief.
 
-    ``profile`` is the dict produced by ``fs_cli.stack_detect.detect()`` —
-    something like::
-
-        {
-            "languages":   ["python", "typescript", "rust"],
-            "frameworks":  ["fastapi", "next.js", "tokio"],
-            "model_providers": ["anthropic", "openai"],
-            "stores":      ["postgres", "redis"],
-            "agent_runtimes": ["claude-code", "cursor"],
-            "mcp_servers": ["postgres", "filesystem"],
-        }
-
-    Returns a plain-text block suitable for inclusion in the cached system
-    prompt. ``None`` produces a clearly-flagged "no profile" stub so the
-    judge knows verdicts must be framed universally.
+    ``profile`` is the dict from ``profile.stack_from_profile`` — languages,
+    frameworks, package managers, agent surfaces, AI tooling grouped by
+    category, key dependencies (name + resolved version), top imports, and a
+    coarse archetype. Derived metadata only — never source. ``None``/empty
+    produce a clearly-flagged stub so the judge frames verdicts universally.
     """
-    if not profile:
+    if profile is None:
         return (
             "STACK_PROFILE: (none)\n"
             "The user has not configured a stack profile. Frame verdicts on "
             "universal merit only — do not invent stack-specific reasoning."
         )
 
-    def _row(label: str, key: str) -> str | None:
-        values = profile.get(key)
-        if not values:
-            return None
-        return f"  {label}: {', '.join(str(v) for v in values)}"
-
     lines: list[str] = ["STACK_PROFILE:"]
-    for label, key in (
-        ("Languages", "languages"),
-        ("Frameworks", "frameworks"),
-        ("Model providers", "model_providers"),
-        ("Stores", "stores"),
-        ("Agent runtimes", "agent_runtimes"),
-        ("MCP servers", "mcp_servers"),
-    ):
-        row = _row(label, key)
-        if row is not None:
-            lines.append(row)
+
+    def _row(label: str, key: str) -> None:
+        values = profile.get(key)
+        if values:
+            lines.append(f"  {label}: {', '.join(str(v) for v in values)}")
+
+    # Backward-compatible rows (older callers may still pass these) + new rows.
+    _row("Languages", "languages")
+    _row("Frameworks", "frameworks")
+    _row("Package managers", "package_managers")
+    _row("Model providers", "model_providers")
+    _row("Stores", "stores")
+    _row("Agent runtimes", "agent_runtimes")
+    _row("MCP servers", "mcp_servers")
+    _row("Agent surfaces", "agent_configs")
+
+    archetype = profile.get("archetype")
+    if archetype and archetype != "unknown":
+        lines.append(f"  Archetype: {archetype}")
+
+    cats = profile.get("ai_categories") or {}
+    if cats:
+        lines.append("  AI tooling already in use:")
+        for bucket in sorted(cats):
+            names = cats[bucket]
+            if isinstance(names, list) and names:
+                lines.append(f"    - {bucket}: {', '.join(str(n) for n in names)}")
+
+    deps = profile.get("dependencies") or []
+    rendered_deps = ", ".join(
+        f"{d.get('name')} {d.get('version', '')}".strip()
+        for d in deps
+        if isinstance(d, dict) and d.get("name")
+    )
+    if rendered_deps:
+        lines.append(f"  Key dependencies: {rendered_deps}")
+
+    imports = profile.get("top_imports") or {}
+    for lang in sorted(imports):
+        names = imports[lang]
+        if isinstance(names, list) and names:
+            lines.append(f"  Top {lang} imports: {', '.join(str(n) for n in names)}")
+
     if len(lines) == 1:
         return (
             "STACK_PROFILE: (empty)\n"
             "Profile was configured but contained no entries. Frame verdicts "
             "on universal merit only."
         )
-    return "\n".join(lines)
+    return _redact_secrets("\n".join(lines))
+
+
+def _redact_secrets(text: str) -> str:
+    """Defense-in-depth: scrub anything secret-shaped from the rendered brief.
+
+    The brief only contains package metadata, so this should never fire — but a
+    dependency/path that embeds a token-shaped string must never reach the LLM.
+    Reuses the lab's secret pattern; degrades to no-op if unavailable.
+    """
+    try:
+        from lab_runner import SECRET_LEAK_RE
+    except Exception:  # noqa: BLE001 — redaction is best-effort defense-in-depth
+        return text
+    return SECRET_LEAK_RE.sub("‹redacted›", text)
 
 
 # ── Cached system blocks ────────────────────────────────────────────────────

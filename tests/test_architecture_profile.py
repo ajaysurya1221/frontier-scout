@@ -122,3 +122,37 @@ def test_stack_from_profile_bounds_dependencies():
         for i in range(40)
     ]
     assert len(stack_from_profile(p)["dependencies"]) == 15
+
+
+from prompts import render_stack_profile  # scripts/ is on sys.path (top of file)
+
+
+def test_render_brief_includes_rich_signal():
+    stack = {
+        "languages": ["python"],
+        "frameworks": ["fastapi"],
+        "package_managers": ["uv"],
+        "agent_configs": ["CLAUDE.md"],
+        "archetype": "web-service",
+        "ai_categories": {"llm-sdk": ["anthropic"], "vector-store": ["qdrant"]},
+        "dependencies": [{"name": "fastapi", "ecosystem": "pypi", "version": "0.110.1"}],
+        "top_imports": {"python": ["fastapi", "anthropic"]},
+    }
+    out = render_stack_profile(stack)
+    assert out.startswith("STACK_PROFILE:")
+    assert "Archetype: web-service" in out
+    assert "vector-store: qdrant" in out
+    assert "fastapi 0.110.1" in out
+    assert "Top python imports: fastapi, anthropic" in out
+
+
+def test_render_none_and_empty_stubs_unchanged():
+    assert "STACK_PROFILE: (none)" in render_stack_profile(None)
+    assert "STACK_PROFILE: (empty)" in render_stack_profile({})
+
+
+def test_render_redacts_secret_shaped_value():
+    stack = {"dependencies": [{"name": "sk-ant-" + "A" * 30, "ecosystem": "pypi", "version": "1"}]}
+    out = render_stack_profile(stack)
+    assert "sk-ant-" not in out
+    assert "‹redacted›" in out
