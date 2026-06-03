@@ -61,6 +61,7 @@ class ScoutProfile(BaseModel):
     adoption_constraints: list[str] = Field(default_factory=list)
     ignored_paths: list[str] = Field(default_factory=lambda: [".env.local", ".env", ".git"])
     import_evidence: ImportEvidenceSummary = Field(default_factory=ImportEvidenceSummary)
+    archetype: str = "unknown"
 
 
 # --- Walker ------------------------------------------------------------------
@@ -306,6 +307,39 @@ _PYPI_IMPORT_ALIAS: dict[str, str] = {
 }
 
 
+_WEB_FRAMEWORKS: frozenset[str] = frozenset({
+    "fastapi", "django", "flask", "starlette", "express", "fastify", "nestjs",
+    "next", "vue", "svelte", "rails", "sinatra", "rack", "gin", "echo", "fiber",
+    "actix-web", "axum", "rocket",
+})
+_AGENT_TOOLING: frozenset[str] = frozenset({
+    "langgraph", "crewai", "autogen", "mcp", "mastra", "langchain", "instructor", "dspy",
+})
+_ML_TOOLING: frozenset[str] = frozenset({
+    "transformers", "sentence-transformers", "vllm", "candle", "rust-bert",
+})
+
+
+def derive_archetype(profile: ScoutProfile) -> str:
+    """Coarse, deterministic project archetype from already-collected signals.
+
+    Pure function over the built profile — no extra scanning, no source. Order
+    is a precedence: a web service that also ships an agent config is still a
+    web service.
+    """
+    fw = {f.lower() for f in profile.frameworks}
+    ai = {a.lower() for a in profile.ai_tooling}
+    if fw & _WEB_FRAMEWORKS:
+        return "web-service"
+    if (ai & _AGENT_TOOLING) or profile.agent_configs:
+        return "agent-app"
+    if ai & _ML_TOOLING:
+        return "ml-data"
+    if profile.package_managers:
+        return "library"
+    return "unknown"
+
+
 # --- Build profile -----------------------------------------------------------
 
 
@@ -431,6 +465,7 @@ def build_scout_profile(repo: Path, *, scan_imports: bool = True) -> ScoutProfil
     if not profile.adoption_constraints:
         profile.adoption_constraints.append("Start with report-only evaluation before installing AI tooling.")
 
+    profile.archetype = derive_archetype(profile)
     return profile
 
 
