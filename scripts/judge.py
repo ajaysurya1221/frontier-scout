@@ -1,17 +1,18 @@
 """
-RLAIF Judge — Opus 4.7 with extended thinking, applied as a third pass over the
-Sonnet-generated verdicts before they're written to the local SQLite store.
+RLAIF Judge — the deep tier (a strong model with extended reasoning), applied as a
+third pass over the fast-tier verdicts before they're written to the local SQLite store.
 
-This is the precision lever. The Sonnet pass is a strong generator but occasionally
-over-labels maintenance releases as ADOPT or emits awareness-only items. The judge
-is a strict reviewer that vetoes those, adjusts tiers, and surfaces missed items.
+This is the precision lever. The fast-tier verdict pass is a strong generator but
+occasionally over-labels maintenance releases as ADOPT or emits awareness-only items.
+The judge is a strict reviewer that vetoes those, adjusts tiers, and surfaces missed
+items.
 
 The judge is gated by ``JUDGE_ENABLED`` in scout.run_scan() — cost-conscious
 users (~$0.20/scan) can skip it without losing the score + verdict + policy
 passes.
 
 Flow:
-    verdicts (Sonnet output) + scored_items (Sonnet score pass output)
+    verdicts (fast-tier output) + scored_items (fast-tier score pass output)
       → critique()
       → apply_judge_decisions()
       → final_verdicts + severity + readiness + judge_meta
@@ -50,7 +51,7 @@ def critique(
     stack_profile: dict | None = None,
 ) -> tuple[dict[str, Any], float]:
     """
-    Run the Opus judge pass over the draft verdicts.
+    Run the deep-tier judge pass over the draft verdicts.
 
     Args:
         verdicts: drafts emitted by ``scout.generate_verdicts``.
@@ -100,7 +101,7 @@ def critique(
     pool_block = "\n\n".join(pool_lines) if pool_lines else "(no scored items above 5)"
 
     user_message = (
-        "Below are the DRAFT VERDICTS produced by the Sonnet verdict pass, followed "
+        "Below are the DRAFT VERDICTS produced by the fast-tier verdict pass, followed "
         "by the SCORED ITEM POOL (top 30 by score) the verdict-gen picked from. "
         "Apply the JUDGE RUBRIC in the system prompt. Be strict.\n\n"
         f"━━━ DRAFT VERDICTS ({len(verdicts)}) ━━━\n{drafts_block}\n\n"
@@ -135,7 +136,9 @@ def critique(
         messages=[{"role": "user", "content": user_message}],
         extra_body={"output_config": {"effort": "high"}},
     )
-    cost += log_call("scout-judge", getattr(resp, "model", None) or model_id, resp.usage)
+    cost += log_call(
+        "scout-judge", getattr(resp, "model", None) or model_id, resp.usage
+    )
     cache_read = getattr(resp.usage, "cache_read_input_tokens", 0) or 0
     print(
         f"  Judge pass 1 (thinking): {resp.usage.input_tokens} in + "
@@ -148,7 +151,9 @@ def critique(
 
     if tool_use is None:
         # Fallback: no thinking, force the tool call. Cheaper + reliable.
-        print("  ⚠️  Judge attempt 1 emitted no tool call — retrying without thinking, forced tool_choice")
+        print(
+            "  ⚠️  Judge attempt 1 emitted no tool call — retrying without thinking, forced tool_choice"
+        )
         used_fallback = True
         resp2 = call_with_retry(
             provider,
@@ -233,25 +238,28 @@ def apply_judge_decisions(
         if idx is None or not (0 <= idx < len(scored_items)):
             continue
         item = scored_items[idx]
-        final.append({
-            "tool_name": m.get("tool_name") or (item.get("title") or "")[:80],
-            "verdict": m.get("suggested_tier", "assess"),
-            "category": m.get("category") or item.get("category", "dev_tool"),
-            "risk": m.get("risk", "medium"),
-            "fit": m.get("fit"),
-            "what": m.get("what") or (item.get("summary") or "")[:200],
-            "why_it_matters": m.get("why_it_matters", ""),
-            "adoption_cost": m.get("adoption_cost", "Not estimated"),
-            "next_action": m.get("next_action") or f"evaluate <{m.get('tool_name', 'tool')}>",
-            "source_url": item.get("url", ""),
-            "severity": m.get("severity", "high"),
-            "readiness": int(m.get("readiness", 3)),
-            # Carry topic tags from the source item so future taste-model
-            # layers (v0.3) can attribute ratings to topics.
-            "tags": list(item.get("tags") or []),
-            "_judge_reason": "promoted from missed pool",
-            "_promoted_by_judge": True,
-        })
+        final.append(
+            {
+                "tool_name": m.get("tool_name") or (item.get("title") or "")[:80],
+                "verdict": m.get("suggested_tier", "assess"),
+                "category": m.get("category") or item.get("category", "dev_tool"),
+                "risk": m.get("risk", "medium"),
+                "fit": m.get("fit"),
+                "what": m.get("what") or (item.get("summary") or "")[:200],
+                "why_it_matters": m.get("why_it_matters", ""),
+                "adoption_cost": m.get("adoption_cost", "Not estimated"),
+                "next_action": m.get("next_action")
+                or f"evaluate <{m.get('tool_name', 'tool')}>",
+                "source_url": item.get("url", ""),
+                "severity": m.get("severity", "high"),
+                "readiness": int(m.get("readiness", 3)),
+                # Carry topic tags from the source item so future taste-model
+                # layers (v0.3) can attribute ratings to topics.
+                "tags": list(item.get("tags") or []),
+                "_judge_reason": "promoted from missed pool",
+                "_promoted_by_judge": True,
+            }
+        )
 
     return final
 
@@ -285,7 +293,7 @@ def _fail_closed_result(verdicts: list[dict]) -> dict:
         "missed": [],
         "quality_self_rating": "low",
         "judge_summary": (
-            "JUDGE FAILED — Opus did not emit a structured tool call. All drafts "
+            "JUDGE FAILED — the judge model did not emit a structured tool call. All drafts "
             "vetoed (fail-closed). Operator: inspect the run, re-trigger if a "
             "provider hiccup is suspected."
         ),

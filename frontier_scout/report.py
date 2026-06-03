@@ -1,4 +1,5 @@
 """Static report rendering and seeded demo data for Frontier Scout."""
+
 # ruff: noqa: E501
 
 from __future__ import annotations
@@ -401,7 +402,11 @@ def write_report(
     cost_path = output_dir / "cost-breakdown.md"
     judge_path = output_dir / "judge-trace.md"
 
-    payload = {"date": date, "funnel": {**SAMPLE_FUNNEL, **(funnel or {})}, "verdicts": verdicts}
+    payload = {
+        "date": date,
+        "funnel": {**SAMPLE_FUNNEL, **(funnel or {})},
+        "verdicts": verdicts,
+    }
     # The demo flow writes all five companion files, so the nav links
     # resolve. CLI ``report`` callers don't go through write_report —
     # they call render_html directly with the default include_artifacts=False.
@@ -414,9 +419,18 @@ def write_report(
             include_artifacts=True,
         )
     )
-    md_path.write_text(render_markdown(verdicts, date=date, funnel=funnel, include_trials=include_trials))
+    md_path.write_text(
+        render_markdown(
+            verdicts, date=date, funnel=funnel, include_trials=include_trials
+        )
+    )
     json_path.write_text(json.dumps(payload, indent=2) + "\n")
-    log_path.write_text(json.dumps({"ts": f"{date}T00:00:00+00:00", "component": "demo", **payload["funnel"]}) + "\n")
+    log_path.write_text(
+        json.dumps(
+            {"ts": f"{date}T00:00:00+00:00", "component": "demo", **payload["funnel"]}
+        )
+        + "\n"
+    )
     cost_path.write_text(render_cost_breakdown(payload["funnel"]))
     judge_path.write_text(render_judge_trace(verdicts, payload["funnel"]))
     return {
@@ -430,7 +444,13 @@ def write_report(
 
 
 def write_demo(output_dir: Path) -> dict[str, Path]:
-    return write_report(output_dir, SAMPLE_VERDICTS, date=SAMPLE_DATE, funnel=SAMPLE_FUNNEL, include_trials=False)
+    return write_report(
+        output_dir,
+        SAMPLE_VERDICTS,
+        date=SAMPLE_DATE,
+        funnel=SAMPLE_FUNNEL,
+        include_trials=False,
+    )
 
 
 _DEFAULT_DEMO_PORT = 7771
@@ -537,15 +557,28 @@ def _is_remote_env() -> bool:
     import os
     import sys
 
-    if any(os.environ.get(v) for v in ("REMOTE_CONTAINERS", "CODESPACE_NAME", "VSCODE_REMOTE_CONTAINERS_SESSION")):
+    if any(
+        os.environ.get(v)
+        for v in (
+            "REMOTE_CONTAINERS",
+            "CODESPACE_NAME",
+            "VSCODE_REMOTE_CONTAINERS_SESSION",
+        )
+    ):
         return True
     # Headless Linux with no display server — webbrowser.open() would be a no-op.
-    if sys.platform == "linux" and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+    if (
+        sys.platform == "linux"
+        and not os.environ.get("DISPLAY")
+        and not os.environ.get("WAYLAND_DISPLAY")
+    ):
         return True
     return False
 
 
-def _print_demo_next_steps(paths: dict[str, Path], url: str, *, remote: bool = False) -> None:
+def _print_demo_next_steps(
+    paths: dict[str, Path], url: str, *, remote: bool = False
+) -> None:
     try:
         from rich.console import Console
         from rich.panel import Panel
@@ -566,8 +599,14 @@ def _print_demo_next_steps(paths: dict[str, Path], url: str, *, remote: bool = F
             t.append(f"   {desc}\n", style="dim")
 
         if remote:
-            t.append("\n  Running inside a devcontainer / remote environment.\n", style="#e3c26f")
-            t.append("  VS Code should show a port-forward notification — or open\n", style="dim")
+            t.append(
+                "\n  Running inside a devcontainer / remote environment.\n",
+                style="#e3c26f",
+            )
+            t.append(
+                "  VS Code should show a port-forward notification — or open\n",
+                style="dim",
+            )
             t.append("  the Ports panel (", style="dim")
             t.append("Ctrl+Shift+P → Forward a Port", style="bold")
             t.append("), add port ", style="dim")
@@ -599,7 +638,9 @@ def _print_demo_next_steps(paths: dict[str, Path], url: str, *, remote: bool = F
     except ImportError:
         print(f"\nDemo at {url} — Ctrl+C to stop")
         if remote:
-            print(f"  devcontainer: forward port {url.split(':')[2].rstrip('/')} then open {url}")
+            print(
+                f"  devcontainer: forward port {url.split(':')[2].rstrip('/')} then open {url}"
+            )
         print(f"  {paths['html']}")
         print(f"  {paths['json']}")
         print("\nNext: frontier-scout setup  |  frontier-scout scan --dry-run")
@@ -614,10 +655,12 @@ The demo is offline and free. These numbers show the expected shape of a live we
 | Component | Demo estimate |
 |---|---:|
 | Source fetch + dedupe | $0.00 |
-| Sonnet score pass | $0.15 |
-| Sonnet verdict pass | $0.04 |
-| Optional Opus judge | $0.12 |
+| Scout score pass (fast tier) | $0.15 |
+| Scout verdict pass (fast tier) | $0.04 |
+| Optional judge pass (deep tier) | $0.12 |
 | **Total** | **${total:.2f}** |
+
+Exact models depend on the active provider (see the provider switcher / Settings).
 
 Default posture: BYO API key, local files, no hosted service. A weekly scan should sit comfortably in a small personal Anthropic budget.
 """
@@ -690,8 +733,7 @@ def _render_trial_section_html() -> str:
     trials = _trial_summaries()
     if not trials:
         return ""
-    rows = "\n".join(
-        f"""<article class="card trial">
+    rows = "\n".join(f"""<article class="card trial">
   <div class="card-head">
     <span class="tier">TRIAL</span>
     <span class="meta">{_esc(trial.get('requested_action') or 'trial')} · {_esc(trial.get('status') or 'unknown')}</span>
@@ -699,9 +741,7 @@ def _render_trial_section_html() -> str:
   <h3>{_esc(trial.get('tool_name'))}</h3>
   <p class="what">Decision: <strong>{_esc(str(trial.get('decision') or 'pending').upper())}</strong></p>
   <p class="meta">Recorded locally at {_esc(trial.get('created_at'))}</p>
-</article>"""
-        for trial in trials
-    )
+</article>""" for trial in trials)
     return f"""
   <section>
     <div class="section-title">
@@ -725,10 +765,7 @@ def _trial_summaries() -> list[dict[str, Any]]:
 
 def _esc(value: Any) -> str:
     return (
-        str(value or "")
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
+        str(value or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     )
 
 

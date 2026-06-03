@@ -30,12 +30,13 @@ from .base import (
     first_tool_use,
 )
 from .cli_provider import ClaudeCodeProvider, CodexProvider
-from .openai_provider import OpenAIProvider
+from .openai_provider import OpenAICompatibleProvider, OpenAIProvider
 
 __all__ = [
     "AnthropicProvider",
     "ClaudeCodeProvider",
     "CodexProvider",
+    "OpenAICompatibleProvider",
     "OpenAIProvider",
     "LLMProvider",
     "ProviderError",
@@ -52,7 +53,7 @@ __all__ = [
     "PROVIDER_NAMES",
 ]
 
-PROVIDER_NAMES = ("anthropic", "openai", "claude-cli", "codex-cli")
+PROVIDER_NAMES = ("anthropic", "openai", "openai-compatible", "claude-cli", "codex-cli")
 
 
 def _has_anthropic() -> bool:
@@ -61,6 +62,13 @@ def _has_anthropic() -> bool:
 
 def _has_openai() -> bool:
     return bool(os.environ.get("OPENAI_API_KEY"))
+
+
+def _has_openai_base_url() -> bool:
+    return bool(
+        os.environ.get("FRONTIER_SCOUT_OPENAI_BASE_URL")
+        or os.environ.get("OPENAI_BASE_URL")
+    )
 
 
 def _has_claude_cli() -> bool:
@@ -76,6 +84,8 @@ def _build(name: str) -> LLMProvider:
         return AnthropicProvider()
     if name == "openai":
         return OpenAIProvider()
+    if name == "openai-compatible":
+        return OpenAICompatibleProvider()
     if name == "claude-cli":
         return ClaudeCodeProvider()
     if name == "codex-cli":
@@ -89,7 +99,7 @@ def available_providers() -> list[str]:
     if _has_anthropic():
         out.append("anthropic")
     if _has_openai():
-        out.append("openai")
+        out.append("openai-compatible" if _has_openai_base_url() else "openai")
     if _has_claude_cli():
         out.append("claude-cli")
     if _has_codex_cli():
@@ -107,6 +117,10 @@ def resolve_provider(name: str | None = None) -> LLMProvider:
     pinned = name or os.environ.get("FRONTIER_SCOUT_PROVIDER")
     if pinned:
         pinned = pinned.strip().lower()
+        # OPENAI_BASE_URL is the standard OpenAI-SDK redirect; a pinned "openai"
+        # with a base_url set means "my OpenAI-compatible endpoint".
+        if pinned == "openai" and _has_openai_base_url():
+            pinned = "openai-compatible"
         usable = available_providers()
         if pinned not in PROVIDER_NAMES:
             raise ProviderUnavailable(
