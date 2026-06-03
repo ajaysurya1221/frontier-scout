@@ -1433,7 +1433,7 @@ def _failure_compass(kind: str, error: str) -> str:
             " [#6e8aa1]"
             f"[#24d6a8 b]r[/] retry · "
             f"[#24d6a8 b]P[/] switch · "
-            f"[#24d6a8 b]·[/] --demo"
+            "--demo"
             "[/]"
         )
         return f"{motif} [#ff6b6b]{kind} failed: {error}[/]{ladder}"
