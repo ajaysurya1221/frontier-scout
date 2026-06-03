@@ -415,7 +415,8 @@ def _settings(app: Any) -> Vertical:
     invariants = [
         (
             "Repo source is never sent to an LLM",
-            "Only filenames + AST import names ever leave your machine.",
+            "Only filenames, dependency manifests/versions, import names, and "
+            "derived structure ever leave your machine — never your source.",
         ),
         (
             "Fetched release text is treated as untrusted data",

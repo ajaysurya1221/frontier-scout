@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## [Unreleased]
 
-- No unreleased changes yet.
+- Richer local architecture profile — the scout/judge prompt now receives AI-tooling categories, resolved dependency versions, top imports, and a project archetype (previously only languages + frameworks reached the prompt, due to a producer/consumer schema drift in stack_from_profile ↔ render_stack_profile). Deterministic, local, no source content sent.
 
 ## 1.7.0 - 2026-06-03
 
