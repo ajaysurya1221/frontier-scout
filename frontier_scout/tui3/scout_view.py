@@ -29,6 +29,7 @@ from frontier_scout.tui3.kit import (
     bar,
     breakpoint_for,
     fit_tone,
+    gauge,
     glyphs,
     pct,
     risk_tone,
@@ -191,9 +192,10 @@ def _detail(app: Any, gl: dict[str, str], *, side: bool) -> Vertical:
         _S(app, f"[{tone} b]{verdict_label(v.verdict)}[/]  [#d9f7ff b]{v.tool_name}[/]  [#6e8aa1]{v.category}[/]")
     )
     src = v.source + (f" {gl['pip']} {v.age}" if v.age else "")
+    fit_g = gauge(label="fit", level=v.fit, read=v.fit, unicode=app.state.unicode)
+    risk_g = gauge(label="risk", level=v.risk, read=v.risk, danger=True, unicode=app.state.unicode)
     box.compose_add_child(
-        _S(app, f"[#6e8aa1]fit [{_hex(fit_tone(v.fit))}]{v.fit}[/]  "
-                f"risk [{_hex(risk_tone(v.risk))}]{v.risk}[/]  {gl['pip']} {src}[/]")
+        _S(app, f"{fit_g}   {risk_g}   [#6e8aa1]{gl['pip']} {src}[/]")
     )
     if v.kind == "dep" and (v.from_version or v.to_version):
         box.compose_add_child(
@@ -221,23 +223,26 @@ def _detail(app: Any, gl: dict[str, str], *, side: bool) -> Vertical:
         box.compose_add_child(_S(app, f"\n[#24d6a8]{gl['check']} clean[/] [#6e8aa1]— no concerns flagged[/]"))
 
     # Permission map — only when the verdict carries a capability manifest (deps
-    # don't), matching the prototype. Tone: red for certain/likely on the
-    # sensitive surfaces (shell/secrets/network), gold for possible, else muted.
+    # don't), matching the prototype.  Each capability is rendered as a gauge so
+    # the risk level is both a colour signal and a visible pip count.
+    # Level mapping: likely→high, possible→medium, unlikely/unknown→low.
+    # Tone: dangerous+likely→red (danger=True, level=high); dangerous+possible→
+    # gold (danger=True, level=medium); non-dangerous→normal tone curve.
     if v.capabilities:
         box.compose_add_child(_S(app, "\n[#24d6a8 b]Permission map[/]"))
+        _STATUS_LEVEL = {"likely": "high", "possible": "medium", "unlikely": "low"}
         cells = []
         for key, status in v.capabilities:
-            # Mirror the backend risk model: a dangerous surface that's likely →
-            # red; a dangerous surface that's possible, or anything merely likely →
-            # gold; else muted (unlikely / unknown).
             dangerous = key in _DANGEROUS_CAPS
-            if dangerous and status == "likely":
-                tone = "#ff6b6b"
-            elif (dangerous and status == "possible") or status == "likely":
-                tone = "#e3c26f"
-            else:
-                tone = "#6e8aa1"
-            cells.append(f"[#6e8aa1]{key}[/] [{tone}]{status}[/]")
+            cap_level = _STATUS_LEVEL.get(status, "low")
+            g_str = gauge(
+                label=key,
+                level=cap_level,
+                read=status,
+                danger=dangerous,
+                unicode=app.state.unicode,
+            )
+            cells.append(g_str)
         box.compose_add_child(_S(app, "  " + "  ".join(cells)))
 
     if v.next_safe_step:
