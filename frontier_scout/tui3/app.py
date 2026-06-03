@@ -1431,8 +1431,8 @@ def _failure_compass(kind: str, error: str) -> str:
         motif = f"[#ff6b6b]{cross}[/] [#3d5566]{pip}[/]"
         ladder = (
             " [#6e8aa1]"
-            f"[#24d6a8 b]r[/] retry · "
-            f"[#24d6a8 b]P[/] switch · "
+            "[#24d6a8 b]r[/] retry · "
+            "[#24d6a8 b]P[/] switch · "
             "--demo"
             "[/]"
         )

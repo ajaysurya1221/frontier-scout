@@ -20,9 +20,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from frontier_scout.tui3.state import AppState, Verdict
 from frontier_scout.tui3.scout_view import bucket_matrix, tier_ledger
-
+from frontier_scout.tui3.state import Verdict
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -215,7 +214,7 @@ def test_tier_ledger_names_contain_index_and_tool_name():
 
 # ── 3. Render smoke: matrix present at wide, ledger at narrow ─────────────────
 
-def _make_app_with_verdicts() -> "MissionControlApp":
+def _make_app_with_verdicts():
     from frontier_scout.tui3.app import MissionControlApp
     app = MissionControlApp(repo=Path("."), demo=True)
     return app
@@ -289,7 +288,7 @@ def test_matrix_click_select_updates_state():
 def test_cell_markup_frames_selected_cell():
     """Selected cell gets corner glyphs; unselected cell does not."""
     from frontier_scout.tui3 import scout_view
-    from frontier_scout.tui3.kit import glyphs, asciify
+    from frontier_scout.tui3.kit import asciify, glyphs
 
     class _FakeState:
         unicode = True

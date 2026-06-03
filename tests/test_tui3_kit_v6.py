@@ -1,5 +1,9 @@
 from frontier_scout.tui3.kit import (
-    SPIN_UNI, SPIN_ASCII, spinner_frames, glyphs, asciify,
+    SPIN_ASCII,
+    SPIN_UNI,
+    asciify,
+    glyphs,
+    spinner_frames,
 )
 
 

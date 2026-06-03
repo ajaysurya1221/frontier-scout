@@ -479,12 +479,11 @@ def _scanbar(app: Any, gl: dict[str, str]) -> Horizontal:
 #   3-stage checklist: watch · match · decide  (painted Statics, glyph markers)
 #   foot line: "reading <repo> · offline tree-sitter pass · …"
 #
-# Stage markers follow the prototype's `mark` logic:
-#   done  → gl['check']   (✓ / v)
-#   active→ gl['tri']     (▸ / >)
-#   todo  → gl['ring']    (○ / o)
-# Stage index: app._scan_stage (int, 0-based); falls back to 0 when absent so
-# the widget renders correctly on any _scanning=True path.
+# The three phases render as a neutral pipeline descriptor (uniform ▸ marker,
+# muted tone) — not a live done/active/todo ladder. The scout runs as a single
+# pass with no per-phase milestone callbacks, so a moving checklist would imply
+# progress it can't measure (and v6 forbids fake content animation); the live
+# "working" signal is carried by the spinner + sweep above.
 
 _SCAN_STAGES = [
     ("watch", "scout sources"),
@@ -496,41 +495,20 @@ _SCAN_STAGES = [
 def _scan_progress(app: Any, gl: dict[str, str]) -> Vertical:
     """Return a Vertical with the spinner + radar sweep + staged checklist."""
     repo = app.state.repo_name
-    stage_idx = getattr(app, "_scan_stage", 0)
 
     box = Vertical(classes="scout-progress")
 
     # ScanSpinner carries both the frame-cycling spinner and the radar sweep.
     box.compose_add_child(ScanSpinner(f"scouting {repo}"))
 
-    # Staged checklist — 3 rows, each a painted Static.
-    for i, (key, label) in enumerate(_SCAN_STAGES):
-        if i < stage_idx:
-            state_key = "done"
-            mark = gl["check"]
-            mark_hex = _hex("mint")
-            label_hex = _hex("muted")
-            suffix = ""
-        elif i == stage_idx:
-            state_key = "active"
-            mark = gl["tri"]
-            mark_hex = _hex("mint")
-            label_hex = _hex("bright")
-            suffix = app._paint(f"[{_hex('muted')}]…[/]")
-        else:
-            state_key = "todo"
-            mark = gl["ring"]
-            mark_hex = _hex("muted")
-            label_hex = _hex("muted")
-            suffix = ""
-
+    # Pipeline descriptor — 3 neutral phase rows (uniform ▸ marker, muted tone).
+    for key, label in _SCAN_STAGES:
         line = (
-            app._paint(f"[{mark_hex}]{mark}[/]")
+            app._paint(f"[{_hex('muted')}]{gl['tri']}[/]")
             + app._paint(f" [{_hex('muted')}]{key:<7}[/]")
-            + app._paint(f" [{label_hex}]{label}[/]")
-            + suffix
+            + app._paint(f" [{_hex('muted')}]{label}[/]")
         )
-        box.compose_add_child(Static(line, classes=f"scan-stage scan-stage-{state_key}"))
+        box.compose_add_child(Static(line, classes="scan-stage"))
 
     # Footer line.
     box.compose_add_child(_S(

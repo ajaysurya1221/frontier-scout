@@ -399,8 +399,8 @@ def test_cap_tab_shows_spinner_while_scanning():
 
 
 def test_cap_spinner_clears_after_scan_failure():
-    from frontier_scout.tui3.widgets import ScanSpinner
     from frontier_scout.tui3.messages import WorkFailed
+    from frontier_scout.tui3.widgets import ScanSpinner
 
     async def go():
         app = MissionControlApp(demo=True)
@@ -431,7 +431,8 @@ def test_matrix_crosshair_tones_selected_axes():
             v = Verdict.from_payload({"tool_name": "x", "verdict": "adopt", "fit": "high", "risk": "low"})
             app.state = app.state.with_(verdicts=(v,), scope="all", sel=0)
             app._scanning = False
-            await app._render_pane(); await pilot.pause()
+            await app._render_pane()
+            await pilot.pause()
             # Collect markup only from the axis-label widgets (scout-matrix-axis and
             # the risk-header scout-matrix-cell widgets that are part of the header row).
             axis_parts = []

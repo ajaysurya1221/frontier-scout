@@ -1,5 +1,7 @@
 from __future__ import annotations
+
 import asyncio
+
 from frontier_scout.tui3.app import MissionControlApp
 from frontier_scout.tui3.widgets import ScanSpinner
 
