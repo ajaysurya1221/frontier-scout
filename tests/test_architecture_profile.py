@@ -36,3 +36,37 @@ def test_archetype_library_and_unknown():
 
 def test_archetype_web_beats_agent():
     assert derive_archetype(_p(frameworks=["django"], agent_configs=["CLAUDE.md"])) == "web-service"
+
+
+from frontier_scout.profile import build_scout_profile
+
+UV_LOCK = '''
+version = 1
+[[package]]
+name = "fastapi"
+version = "0.110.1"
+[[package]]
+name = "anthropic"
+version = "0.39.0"
+'''
+
+PYPROJECT = '''
+[project]
+name = "demo"
+dependencies = ["fastapi", "anthropic>=0.3"]
+'''
+
+
+def test_python_lock_versions_resolved(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(PYPROJECT)
+    (tmp_path / "uv.lock").write_text(UV_LOCK)
+    profile = build_scout_profile(tmp_path, scan_imports=False)
+    by_name = {d.name.lower(): d for d in profile.dependencies}
+    assert by_name["fastapi"].resolved_version == "0.110.1"
+    assert by_name["anthropic"].resolved_version == "0.39.0"
+
+
+def test_python_lock_absent_is_safe(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(PYPROJECT)
+    profile = build_scout_profile(tmp_path, scan_imports=False)
+    assert {d.name.lower() for d in profile.dependencies} >= {"fastapi", "anthropic"}

@@ -552,6 +552,13 @@ def _read_python_manifest(manifest_dir: Path, profile: ScoutProfile, *, repo: Pa
     for marker in ("langchain", "llamaindex", "openai", "anthropic", "mcp", "browser-use"):
         if marker in low:
             _add(profile.ai_tooling, marker)
+    resolved = _read_python_lock_versions(manifest_dir)
+    if resolved:
+        for dep in profile.dependencies:
+            if dep.ecosystem == "pypi" and not dep.resolved_version:
+                version = resolved.get(dep.name.lower())
+                if version:
+                    dep.resolved_version = version
 
 
 def _repo_id(repo: Path) -> str:
@@ -634,6 +641,31 @@ def _add_python_requirement(raw_req: str, manifest_path: str, profile: ScoutProf
             manifest_path=manifest_path,
         ),
     )
+
+
+def _read_python_lock_versions(manifest_dir: Path) -> dict[str, str]:
+    """Resolved ``{name(lower): version}`` from uv.lock or poetry.lock.
+
+    Both use a TOML ``[[package]]`` array with ``name``/``version``. Returns
+    the first lockfile found; ``{}`` if none / unparseable / no tomllib.
+    """
+    if tomllib is None:
+        return {}
+    for lockname in ("uv.lock", "poetry.lock"):
+        path = manifest_dir / lockname
+        if not path.exists():
+            continue
+        try:
+            data = tomllib.loads(path.read_text(errors="ignore"))
+        except (OSError, tomllib.TOMLDecodeError):
+            continue
+        versions: dict[str, str] = {}
+        for pkg in data.get("package") or []:
+            if isinstance(pkg, dict) and pkg.get("name") and pkg.get("version"):
+                versions[str(pkg["name"]).lower()] = str(pkg["version"])
+        if versions:
+            return versions
+    return {}
 
 
 def _read_node_lock_versions(repo: Path) -> dict[str, str]:
