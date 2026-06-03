@@ -147,7 +147,7 @@ def build_scout(app: Any) -> Vertical:
     # Placement follows the prototype's ScoutPane: matrix in the calm-head band on
     # wide (masterDetail=True); ledger inside the coverage area on mid/narrow.
     # micro skips both (too little vertical room for the extra instrument).
-    if verdicts:
+    if verdicts and not getattr(app, "_scanning", False):
         if bp.master_detail:
             root.compose_add_child(_adoption_matrix(app, gl, verdicts))
         elif bp.name in ("mid", "narrow"):
