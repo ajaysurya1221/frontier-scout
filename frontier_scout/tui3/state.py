@@ -158,6 +158,7 @@ class AppState:
     scope: str = "all"  # all | ai-devtools | mcp | deps
     unicode: bool = True
     color: bool = True
+    motion: bool = True  # spinner/sweep animate; False = reduced-motion (hold a steady frame)
     demo: bool = False
     unread: int = 0
     # capability-tab caches (None = not loaded yet; populated by a worker, never on render)

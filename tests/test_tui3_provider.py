@@ -128,3 +128,16 @@ def test_switcher_reason_word_maps_auto_to_detected():
     ]
     scr = ProviderSwitcherScreen(choices, meta=data.providers(), reason="auto")
     assert "detected" in scr._list_markup()
+
+
+def test_appstate_has_motion_default_on():
+    from frontier_scout.tui3.state import AppState
+    assert AppState(repo="/x", repo_name="x").motion is True
+
+
+def test_initial_state_honors_reduced_motion_env(monkeypatch, tmp_path):
+    from frontier_scout.tui3 import data as _data
+    monkeypatch.setenv("FRONTIER_SCOUT_REDUCED_MOTION", "1")
+    assert _data.initial_state(tmp_path, demo=True).motion is False
+    monkeypatch.delenv("FRONTIER_SCOUT_REDUCED_MOTION", raising=False)
+    assert _data.initial_state(tmp_path, demo=True).motion is True
