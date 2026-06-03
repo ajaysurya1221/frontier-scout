@@ -1,8 +1,9 @@
 <!--
   Frontier Scout · README
-  Hero is a self-contained, static SVG (assets/hero-banner.svg) — system-mono only,
-  no external fonts or animation, so it renders identically on GitHub light & dark.
-  In the repo these assets live under docs/assets/ — adjust the paths below to match.
+  Hero + screenshot are self-contained, static SVGs (docs/assets/*.svg): system-mono,
+  no external fonts / CSS / animation, so they render identically on GitHub light & dark.
+  GitHub strips <style>/<script>/class/style= from README HTML, so ALL visual richness
+  lives in baked SVG/PNG assets + plain markdown (tables, <details>, <kbd>, > [!TIP]).
   Structure inspired by othneildrew/Best-README-Template (MIT).
 -->
 
@@ -11,17 +12,8 @@
 <div align="center">
 
 <a href="https://github.com/ajaysurya1221/frontier-scout">
-  <img src="docs/assets/hero-banner.svg" alt="Frontier Scout — try AI tools before you trust them. 377 scanned this week, 5 worth your time." width="100%">
+  <img src="docs/assets/hero-banner.svg" alt="Frontier Scout — the AI adoption radar. See new AI first, prove it fits your repo before you ship." width="100%">
 </a>
-
-<p>
-  <a href="#-quickstart"><b>Quickstart</b></a> &nbsp;&#183;&nbsp;
-  <a href="#-how-it-works">How it works</a> &nbsp;&#183;&nbsp;
-  <a href="#-60-second-demo">Demo</a> &nbsp;&#183;&nbsp;
-  <a href="#-bring-your-own-llm">Bring your own LLM</a> &nbsp;&#183;&nbsp;
-  <a href="#-cost">Cost</a> &nbsp;&#183;&nbsp;
-  <a href="#-roadmap">Roadmap</a>
-</p>
 
 <p>
   <a href="https://github.com/ajaysurya1221/frontier-scout/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/ajaysurya1221/frontier-scout?include_prereleases&color=24d6a8&labelColor=05080b&label=release&style=for-the-badge"></a>
@@ -33,29 +25,52 @@
   <img alt="local-first" src="https://img.shields.io/badge/telemetry-none-e3c26f?style=for-the-badge&labelColor=05080b">
 </p>
 
+<sub>
+  <a href="#-about">About</a> &nbsp;·&nbsp;
+  <a href="#-quickstart">Quickstart</a> &nbsp;·&nbsp;
+  <a href="#-bring-your-own-llm">Bring your own LLM</a> &nbsp;·&nbsp;
+  <a href="#-60-second-demo">Demo</a> &nbsp;·&nbsp;
+  <a href="#-cost">Cost</a> &nbsp;·&nbsp;
+  <a href="#-roadmap">Roadmap</a>
+</sub>
+
 </div>
 
+<br/>
+
 > [!TIP]
-> **377 releases scanned &#8594; 5 worth your time.** Newsletters tell you what's _popular_. Trending tells you what's _loud_. Neither knows your stack — and neither tells you whether a tool is safe to run. **Frontier Scout reads your repo locally, ranks every release against it, and refuses to say "ship it" without evidence.**
+> **377 releases scanned &#8594; 5 worth your time.** Newsletters tell you what's _popular_ and trending tells you what's _loud_ — neither knows your stack, and neither says whether a tool is safe to run. **Frontier Scout reads your repo locally, ranks every release against it, and refuses to say "ship it" without evidence.**
 
 <details>
   <summary>&nbsp;<b>Table of contents</b></summary>
+  <br/>
 
-- [🛰&nbsp; How it works](#-how-it-works)
-- [🎯&nbsp; Three promises](#-three-promises)
-- [⚡&nbsp; Quickstart](#-quickstart)
-- [🔌&nbsp; Bring your own LLM](#-bring-your-own-llm)
-- [⏱&nbsp; 60-second demo](#-60-second-demo)
-- [🔭&nbsp; The killer workflow](#-the-killer-workflow)
-- [🔒&nbsp; Safety model](#-safety-model)
-- [💸&nbsp; Cost](#-cost)
-- [🗺&nbsp; Roadmap](#-roadmap)&nbsp; &#183;&nbsp; [🤝 Contributing](#-contributing)&nbsp; &#183;&nbsp; [📄 License](#-license)
+- [About](#-about) &#183; [How it works](#-how-it-works) &#183; [Three promises](#-three-promises)
+- [Quickstart](#-quickstart) &#183; [Bring your own LLM](#-bring-your-own-llm) &#183; [60-second demo](#-60-second-demo)
+- [The killer workflow](#-the-killer-workflow) &#183; [Safety model](#-safety-model) &#183; [Cost](#-cost)
+- [Roadmap](#-roadmap) &#183; [Contributing](#-contributing) &#183; [License](#-license)
 
 </details>
 
-## 🛰&nbsp; How it works
+---
 
-One pipeline, three jobs — **find what's new &#8594; figure out what's relevant to _your_ code &#8594; refuse to say "ship it" without evidence.**
+## 🛰&nbsp; About
+
+**Frontier Scout is a local-first AI-adoption radar.** One pipeline, three jobs — **find what's new &#8594; figure out what's relevant to _your_ code &#8594; refuse to say "ship it" without evidence.** It runs as a dense, keyboard- and mouse-driven terminal app (Mission Control) or fully headless in CI, and works with whatever LLM you already pay for — or none at all.
+
+<div align="center">
+  <br/>
+  <img src="docs/assets/mission-control-v5.svg" alt="Frontier Scout Mission Control: the Scout home with the Adoption Matrix — a fit-by-risk grid of tier-coloured verdict dots — cross-linked to the ranked verdict list and a detail panel for anthropics/skills." width="100%">
+  <br/><br/>
+  <sub>Mission Control — the <b>Adoption Matrix</b> (fit &#215; risk) cross-linked to the verdict list, with segmented gauges and a guard-gated detail panel.</sub>
+  <br/>
+</div>
+
+<p align="right"><sub><a href="#readme-top">&#8593; back to top</a></sub></p>
+
+---
+
+## 🔭&nbsp; How it works
 
 | | Stage | What it does |
 | :-- | :-- | :-- |
@@ -63,29 +78,27 @@ One pipeline, three jobs — **find what's new &#8594; figure out what's relevan
 | **02** | **MATCH** | A local tree-sitter pass maps releases to your repo's stack (Python, JS/TS, Go, Rust, Ruby) — **without ever reading your source**. |
 | **03** | **DECIDE** | A source-backed **ADOPT / TRIAL / ASSESS / HOLD** verdict, plus the smallest safe trial to run next. |
 
-Every finding lands on the **Adoption Matrix** (fit &#215; risk) and as a **verdict card** — a source-backed call, a fit / risk / readiness read, a permission map, and the safest next step. Note that **`guard` blocks adoption until a sandbox trial receipt exists**.
+Every finding lands on the **Adoption Matrix** (fit &#215; risk) and as a **verdict card** — a source-backed call, a fit / risk / readiness read, a permission map, and the safest next step. The detail panel surfaces explicit **concerns** (`burns tokens` &#183; `abandoned` &#183; `vendor lock-in` &#183; `security surface` &#183; `marketing-only` &#183; `unproven`), so you always see _why_ we'd push back. And **`guard` blocks adoption until a sandbox trial receipt exists.**
 
-<div align="center">
-  <img src="docs/assets/mission-control-v5.png" alt="Frontier Scout Mission Control: the Scout home with the Adoption Matrix (a fit by risk cell grid of tier-coloured verdict dots), the ranked verdict list, and a detail panel for anthropics/skills." width="100%">
-  <br/>
-  <sub>Mission Control — the <b>Adoption Matrix</b> (fit &#215; risk) cross-linked to the verdict list, with segmented gauges and a guard-gated detail panel.</sub>
-</div>
-
-The detail panel also surfaces explicit **concerns** — `burns tokens` &#183; `abandoned` &#183; `vendor lock-in` &#183; `security surface` &#183; `marketing-only` &#183; `unproven` — so you always see _why_ we'd push back.
+---
 
 ## 🎯&nbsp; Three promises
 
 Awareness is table stakes. **Evidence is the product.**
 
-|  |  |
+| | |
 | :-- | :-- |
 | **◈&nbsp; Try before trust** | Every adoption candidate earns a sandbox dry-run receipt, a permission map, and a guard check **before it touches your real repo**. |
 | **◆&nbsp; Fix vulns you didn't know existed** | Dependency intelligence cross-references your manifests against curated security, hardening, and breaking-change feeds — then emits a _trial recipe_, not a silent lockfile rewrite. |
 | **◐&nbsp; Bound risky changes** | Incident Change Scout turns a ticket into cited context, a bounded remediation plan, and a **human approval interrupt** before any write. |
 
+<p align="right"><sub><a href="#readme-top">&#8593; back to top</a></sub></p>
+
+---
+
 ## ⚡&nbsp; Quickstart
 
-> **Prerequisite —** Python 3.11+
+> **Prerequisite** — Python 3.11+
 
 ```bash
 # install (pipx recommended) — or run with no install at all
@@ -99,11 +112,11 @@ frontier-scout setup
 cd ~/code/my-app && frontier-scout
 ```
 
-Mission Control lands on the **Scout** tab — the radar that ranks the latest AI releases that fit your repo. From a highlighted verdict row, every capability is one keystroke:
+Mission Control lands on the **Scout** tab — the radar that ranks the latest AI releases that fit your repo. From a highlighted verdict, every capability is one keystroke:
 
 <div align="center">
 
-<kbd>&nbsp;L&nbsp;</kbd> hermetic lab&nbsp;&nbsp; &#183; &nbsp;&nbsp;<kbd>&nbsp;e&nbsp;</kbd> firewall eval&nbsp;&nbsp; &#183; &nbsp;&nbsp;<kbd>&nbsp;i&nbsp;</kbd> implement &amp; test&nbsp;&nbsp; &#183; &nbsp;&nbsp;<kbd>&nbsp;D&nbsp;</kbd> dossier&nbsp;&nbsp; &#183; &nbsp;&nbsp;<kbd>&nbsp;o&nbsp;</kbd> open source&nbsp;&nbsp; &#183; &nbsp;&nbsp;<kbd>&nbsp;P&nbsp;</kbd> palette
+<kbd>&nbsp;L&nbsp;</kbd> hermetic lab &nbsp;·&nbsp; <kbd>&nbsp;e&nbsp;</kbd> firewall eval &nbsp;·&nbsp; <kbd>&nbsp;i&nbsp;</kbd> implement &amp; test &nbsp;·&nbsp; <kbd>&nbsp;D&nbsp;</kbd> dossier &nbsp;·&nbsp; <kbd>&nbsp;o&nbsp;</kbd> open source &nbsp;·&nbsp; <kbd>&nbsp;P&nbsp;</kbd> palette
 
 </div>
 
@@ -111,6 +124,7 @@ Tabs: **Scout &#183; Schedule &#183; Receipts &#183; Guard &#183; Packs &#183; D
 
 <details>
   <summary>&nbsp;Develop locally</summary>
+  <br/>
 
 ```bash
 git clone https://github.com/ajaysurya1221/frontier-scout
@@ -122,9 +136,13 @@ frontier-scout --help
 
 </details>
 
+<p align="right"><sub><a href="#readme-top">&#8593; back to top</a></sub></p>
+
+---
+
 ## 🔌&nbsp; Bring your own LLM
 
-Frontier Scout needs **exactly one** backend, and works with whichever you already have. The setup wizard detects what's present and picks the first available:
+Frontier Scout needs **exactly one** backend and works with whichever you already have. The setup wizard detects what's present and picks the first available:
 
 <div align="center">
 
@@ -142,6 +160,10 @@ Already paying for a Claude Code or Codex subscription? Scouting runs at **zero 
 
 > [!NOTE]
 > **No backend at all?** `frontier-scout demo` runs the whole pipeline offline against bundled fixtures — no key, no network, no Slack, no cloud.
+
+<p align="right"><sub><a href="#readme-top">&#8593; back to top</a></sub></p>
+
+---
 
 ## ⏱&nbsp; 60-second demo
 
@@ -162,9 +184,13 @@ $ frontier-scout demo
 ╰──────────────────────────────────────────────────────────────────╯
 ```
 
-Writes [`demo/briefing.html`](demo/briefing.html), [`demo/briefing.md`](demo/briefing.md), [`demo/verdicts.json`](demo/verdicts.json), [`demo/cost-breakdown.md`](demo/cost-breakdown.md), and [`demo/judge-trace.md`](demo/judge-trace.md). Use `--no-serve` for CI / offline.
+Writes [`briefing.html`](demo/briefing.html), [`briefing.md`](demo/briefing.md), [`verdicts.json`](demo/verdicts.json), [`cost-breakdown.md`](demo/cost-breakdown.md), and [`judge-trace.md`](demo/judge-trace.md) under `demo/`. Use `--no-serve` for CI / offline.
 
-## 🔭&nbsp; The killer workflow
+<p align="right"><sub><a href="#readme-top">&#8593; back to top</a></sub></p>
+
+---
+
+## 🛠&nbsp; The killer workflow
 
 Someone drops a repo, MCP server, model, or agent framework in a newsletter or team chat. Turn that link into a local adoption **decision** instead of a vibes-based _"looks safe"_:
 
@@ -184,6 +210,10 @@ frontier-scout deps scan --repo .       # repo-relevant security & breaking upgr
 frontier-scout dossier <tool>           # local adoption dossier with explicit unknowns
 ```
 
+<p align="right"><sub><a href="#readme-top">&#8593; back to top</a></sub></p>
+
+---
+
 ## 🔒&nbsp; Safety model
 
 Frontier Scout handles untrusted public content and can optionally run untrusted packages in the lab — so the rails are load-bearing:
@@ -198,6 +228,10 @@ Frontier Scout handles untrusted public content and can optionally run untrusted
 | **`guard` never writes** | It only reads local evidence and policy; CI-friendly exit codes. |
 
 See [SECURITY.md](SECURITY.md) for the full threat model.
+
+<p align="right"><sub><a href="#readme-top">&#8593; back to top</a></sub></p>
+
+---
 
 ## 💸&nbsp; Cost
 
@@ -216,6 +250,10 @@ See [SECURITY.md](SECURITY.md) for the full threat model.
 
 Set `JUDGE_ENABLED=false` to skip the judge for the cheapest run on any provider. Every call is written to a local `~/.frontier-scout/costs.jsonl` ledger — and the **Receipts** tab shows exactly what you spent.
 
+<p align="right"><sub><a href="#readme-top">&#8593; back to top</a></sub></p>
+
+---
+
 ## 🗺&nbsp; Roadmap
 
 - [x] **`v0.2`** — Living Scout Packs, dependency intelligence, Adoption Firewall, Incident Change Scout
@@ -227,9 +265,13 @@ Set `JUDGE_ENABLED=false` to skip the judge for the cheapest run on any provider
 - [x] **`v1.6.0`** — Mission Control v2: full mouse ↔ keyboard parity, permission map, repo switcher
 - [x] **`v1.7.0`** — Single provider-selection ladder, two-tier scout/judge split, `openai-compatible` provider for gateway / self-hosted interop
 - [ ] **Mission Control v5** _(in progress)_ — the **Adoption Matrix** (fit × risk dot-plot), segmented gauges everywhere, and the local architecture profile surfaced in Settings
-- [ ] **next** — streaming subprocess output in Trials, multi-repo workspace, launchd / Windows Task Scheduler
+- [ ] **Next** — streaming subprocess output in Trials, multi-repo workspace, launchd / Windows Task Scheduler
 
 See [ROADMAP.md](ROADMAP.md) for the longer view.
+
+<p align="right"><sub><a href="#readme-top">&#8593; back to top</a></sub></p>
+
+---
 
 ## 🤝&nbsp; Contributing
 
@@ -248,7 +290,8 @@ Distributed under the [MIT License](LICENSE).
 **Built with** — [Textual](https://textual.textualize.io/) (TUI) &#183; [tree-sitter-language-pack](https://github.com/Goldziher/tree-sitter-language-pack) (grammars) &#183; [Pydantic](https://docs.pydantic.dev/) (typed models) &#183; SQLite (local store). Structure inspired by [othneildrew/Best-README-Template](https://github.com/othneildrew/Best-README-Template); deterministic import evidence pushed forward by [Lum1104/Understand-Anything](https://github.com/Lum1104/Understand-Anything).
 
 <div align="center">
-  <sub><b>Frontier Scout</b> — local-first &#183; no telemetry &#183; bring your own LLM</sub>
+  <br/>
+  <sub><b>Frontier Scout</b> &#183; local-first &#183; no telemetry &#183; bring your own LLM</sub>
   <br/><br/>
-  <a href="#readme-top">↑ back to top</a>
+  <a href="#readme-top">&#8593; back to top</a>
 </div>
