@@ -124,7 +124,7 @@ class ScanSpinner(Static):
         for i in range(self._w):
             if i == head:
                 cells.append(f"[#24d6a8]{gl['seg_on']}[/]")
-            elif motion and i in (head - 1, head - 2):
+            elif motion and i in ((head - 1) % self._w, (head - 2) % self._w):
                 cells.append(f"[#24d6a8 dim]{gl['seg_on']}[/]")
             else:
                 cells.append(f"[#152232]{gl['seg_off']}[/]")
