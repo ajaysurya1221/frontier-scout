@@ -581,11 +581,20 @@ def stack_from_profile(profile: ScoutProfile) -> dict[str, Any]:
     for d in profile.dependencies:
         dkey = (d.ecosystem, d.name.lower())
         prev = _by_name.get(dkey)
-        if prev is None or (
-            (bool(d.resolved_version) and not prev.resolved_version)
-            or d.evidence_imports > prev.evidence_imports
-        ):
+        if prev is None:
             _by_name[dkey] = d
+            continue
+        # Never discard a resolved_version; among equal version-status, prefer
+        # higher evidence. Merge evidence onto whichever entry survives.
+        prefer_d = (bool(d.resolved_version) and not prev.resolved_version) or (
+            bool(d.resolved_version) == bool(prev.resolved_version)
+            and d.evidence_imports > prev.evidence_imports
+        )
+        if prefer_d:
+            d.evidence_imports = max(d.evidence_imports, prev.evidence_imports)
+            _by_name[dkey] = d
+        else:
+            prev.evidence_imports = max(prev.evidence_imports, d.evidence_imports)
     top_deps = sorted(
         _by_name.values(),
         key=lambda d: (-d.evidence_imports, d.name.lower()),

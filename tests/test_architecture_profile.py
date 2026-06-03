@@ -214,3 +214,28 @@ def test_stack_from_profile_dedups_dependencies_by_name():
     names = [d["name"] for d in deps]
     assert names.count("pydantic") == 1  # deduped
     assert deps[0]["version"] == "2.6.4"  # kept the entry with a resolved version
+
+
+def test_stack_from_profile_dedup_preserves_version_regardless_of_order():
+    # versioned entry FIRST, then an unversioned HIGHER-evidence entry:
+    # the resolved version must survive (regression for the dedup overwrite bug).
+    p = _p()
+    p.dependencies = [
+        DependencySpec(
+            name="pydantic",
+            ecosystem="pypi",
+            resolved_version="2.6.4",
+            manifest_path="requirements.txt",
+            evidence_imports=0,
+        ),
+        DependencySpec(
+            name="pydantic",
+            ecosystem="pypi",
+            specifier=">=2.0",
+            manifest_path="pyproject.toml",
+            evidence_imports=9,
+        ),
+    ]
+    deps = stack_from_profile(p)["dependencies"]
+    assert [d["name"] for d in deps].count("pydantic") == 1
+    assert deps[0]["version"] == "2.6.4"  # version preserved despite lower evidence
