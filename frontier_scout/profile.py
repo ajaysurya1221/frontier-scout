@@ -333,7 +333,7 @@ _AI_CATEGORY: dict[str, str] = {
     "langgraph": "agent-framework", "crewai": "agent-framework", "autogen": "agent-framework",
     "mastra": "agent-framework", "dspy": "agent-framework", "mcp": "agent-framework",
     "qdrant": "vector-store", "pinecone": "vector-store", "weaviate": "vector-store",
-    "chromadb": "vector-store", "neo4j": "vector-store",
+    "chromadb": "vector-store",
     "ragas": "eval", "deepeval": "eval", "braintrust": "eval", "langsmith": "eval",
     "phoenix": "eval",
     "litellm": "gateway", "openrouter": "gateway",
@@ -507,8 +507,15 @@ def build_scout_profile(repo: Path, *, scan_imports: bool = True) -> ScoutProfil
 
 
 def stack_from_profile(profile: ScoutProfile) -> dict[str, Any]:
-    """Return the legacy stack shape used by existing evaluation code."""
+    """Stack shape used by the prompt (prompts.render_stack_profile) + payload['stack'].
 
+    Backward-compatible: every previously-emitted key is unchanged; richer keys
+    are added so the scout prompt can render the architecture brief.
+    """
+    top_deps = sorted(
+        profile.dependencies,
+        key=lambda d: (-d.evidence_imports, d.name.lower()),
+    )[:15]
     return {
         "repo": profile.repo,
         "languages": profile.languages,
@@ -517,7 +524,35 @@ def stack_from_profile(profile: ScoutProfile) -> dict[str, Any]:
         "agent_configs": profile.agent_configs,
         "ai_tooling": profile.ai_tooling,
         "risk_flags": profile.risk_flags,
+        "ai_categories": ai_categories(profile),
+        "archetype": profile.archetype,
+        "dependencies": [
+            {
+                "name": d.name,
+                "ecosystem": d.ecosystem,
+                "version": d.resolved_version or d.specifier or "",
+            }
+            for d in top_deps
+        ],
+        "top_imports": _top_imports_for_stack(profile.import_evidence),
     }
+
+
+def _top_imports_for_stack(ev: ImportEvidenceSummary, n: int = 8) -> dict[str, list[str]]:
+    """Compact per-language top import names, sorted by count desc then name."""
+    out: dict[str, list[str]] = {}
+    for lang, items in (
+        ("python", ev.top_python),
+        ("javascript", ev.top_javascript),
+        ("go", ev.top_go),
+        ("rust", ev.top_rust),
+        ("ruby", ev.top_ruby),
+    ):
+        ranked = sorted(items, key=lambda it: (-it[1], it[0]))[:n]
+        names = [name for name, _count in ranked]
+        if names:
+            out[lang] = names
+    return out
 
 
 def export_profile(profile: ScoutProfile, path: Path) -> Path:

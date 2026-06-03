@@ -84,3 +84,41 @@ def test_ai_categories_grouping():
     assert cats["eval"] == ["ragas"]
     assert cats["gateway"] == ["litellm"]
     assert cats["other"] == ["weirdthing"]  # unknown tag → "other", never dropped
+
+
+from frontier_scout.profile import DependencySpec, ImportEvidenceSummary, stack_from_profile
+
+
+def test_stack_from_profile_carries_rich_signal():
+    p = _p(
+        languages=["python"],
+        frameworks=["fastapi"],
+        package_managers=["uv"],
+        ai_tooling=["anthropic", "qdrant"],
+        agent_configs=["CLAUDE.md"],
+    )
+    p.archetype = "web-service"
+    p.dependencies = [
+        DependencySpec(name="fastapi", ecosystem="pypi", resolved_version="0.110.1",
+                       manifest_path="pyproject.toml", evidence_imports=12),
+        DependencySpec(name="anthropic", ecosystem="pypi", specifier=">=0.3",
+                       manifest_path="pyproject.toml", evidence_imports=5),
+    ]
+    p.import_evidence = ImportEvidenceSummary(top_python=[("anthropic", 5), ("fastapi", 12)])
+    stack = stack_from_profile(p)
+    assert stack["languages"] == ["python"]
+    assert "fastapi" in stack["frameworks"]
+    assert stack["ai_tooling"] == ["anthropic", "qdrant"]
+    assert stack["archetype"] == "web-service"
+    assert stack["ai_categories"]["vector-store"] == ["qdrant"]
+    assert {"name": "fastapi", "ecosystem": "pypi", "version": "0.110.1"} in stack["dependencies"]
+    assert stack["top_imports"]["python"][:2] == ["fastapi", "anthropic"]
+
+
+def test_stack_from_profile_bounds_dependencies():
+    p = _p()
+    p.dependencies = [
+        DependencySpec(name=f"dep{i}", ecosystem="pypi", manifest_path="r.txt", evidence_imports=i)
+        for i in range(40)
+    ]
+    assert len(stack_from_profile(p)["dependencies"]) == 15
