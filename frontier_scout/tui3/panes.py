@@ -17,8 +17,39 @@ from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
 from frontier_scout.tui3 import data
-from frontier_scout.tui3.kit import bar, glyphs
+from frontier_scout.tui3.kit import bar, breakpoint_for, glyphs
 from frontier_scout.tui3.widgets import ClickStatic
+
+# Archetype dial — the four canonical archetypes (profile.derive_archetype also
+# emits "unknown" as the no-signal fallback; the dial lights none in that case).
+# The "why" mirrors derive_archetype's deterministic precedence.
+_ARCHETYPES = ("web-service", "agent-app", "ml-data", "library")
+_ARCHETYPE_WHY = {
+    "web-service": "a web framework is the primary surface",
+    "agent-app": "agent tooling or agent configs are present",
+    "ml-data": "ML / data tooling detected",
+    "library": "package manifests, no application surface",
+    "unknown": "no strong framework, agent, or ML signal",
+}
+
+
+def _evidence_gauge(app: Any, n: int) -> str:
+    """Segmented evidence meter for a dependency (how much the repo imports it).
+
+    Mirrors the prototype EvidenceGauge: n>=8 → 3 mint · n>=4 → 2 gold · n>=1 →
+    1 blue · else 0 muted. Built on the §1 ``bar`` primitive so it degrades to
+    pips in mono/ascii (the word/version beside it still carries the signal).
+    """
+    if n >= 8:
+        v, tone = 3, "#24d6a8"
+    elif n >= 4:
+        v, tone = 2, "#e3c26f"
+    elif n >= 1:
+        v, tone = 1, "#7aa6ff"
+    else:
+        v, tone = 0, "#6e8aa1"
+    on, off = bar(v, 3, 3, unicode=app.state.unicode)
+    return f"[{tone}]{on}[/][#152232]{off}[/]"
 
 
 def build_pane(app: Any, tab: str) -> Vertical:
@@ -479,14 +510,34 @@ def _settings(app: Any) -> Vertical:
             _S(app, f"  [#6e8aa1]packs configured[/] [#a9bccd]{npacks}[/]")
         )
 
-    # Repo profile (read-only — what personalizes the scout).
+    # Architecture — the local profile that tunes every verdict. Worker-built
+    # (build_scout_profile is ~300ms), so it renders from the settings cache and
+    # never on the render path. Derived metadata only — never your source.
     prof = cache.get("profile", {}) or {}
+    bp = breakpoint_for(*app._term_size)
     box.compose_add_child(
         _S(
             app,
-            "\n[#24d6a8 b]Repo profile[/]  [#6e8aa1]— what personalizes your scout[/]",
+            "\n[#24d6a8 b]Architecture[/]  [#6e8aa1]— the local profile that tunes "
+            "every verdict (sent to the judge, never your source)[/]",
         )
     )
+
+    # Archetype dial — the detected one lit, the rest dim. Read-only classification.
+    archetype = str(prof.get("archetype", "unknown") or "unknown")
+    dial = []
+    for a in _ARCHETYPES:
+        if a == archetype:
+            dial.append(f"[#24d6a8]{gl['diamond']}[/] [#d9f7ff b]{a}[/]")
+        else:
+            dial.append(f"[#6e8aa1]{gl['ring']} {a}[/]")
+    box.compose_add_child(_S(app, "  [#6e8aa1]archetype[/]  " + "   ".join(dial)))
+    why = _ARCHETYPE_WHY.get(archetype, _ARCHETYPE_WHY["unknown"])
+    box.compose_add_child(_S(app, f"    [#6e8aa1]{gl['pip']} {why}[/]"))
+
+    # Stack + AI tooling — two columns on wide, stacked otherwise.
+    stack_col = Vertical(classes="arch-col")
+    stack_col.compose_add_child(_S(app, "[#24d6a8]stack[/]"))
     for label, key in (
         ("languages", "languages"),
         ("frameworks", "frameworks"),
@@ -494,12 +545,78 @@ def _settings(app: Any) -> Vertical:
         ("agent configs", "agent_configs"),
     ):
         vals = ", ".join(prof.get(key, []) or []) or "—"
-        box.compose_add_child(_S(app, f"  [#6e8aa1]{label}[/] [#a9bccd]{vals}[/]"))
+        stack_col.compose_add_child(_S(app, f"  [#6e8aa1]{label}[/] [#a9bccd]{vals}[/]"))
     risks = prof.get("risk_flags", []) or []
-    if risks:
-        box.compose_add_child(
-            _S(app, f"  [#e3c26f]risk flags[/] [#a9bccd]{', '.join(risks)}[/]")
+    risk_txt = ", ".join(risks) if risks else "none"
+    risk_col = "#a9bccd" if risks else "#6e8aa1"
+    stack_col.compose_add_child(
+        _S(app, f"  [#e3c26f]risk flags[/] [{risk_col}]{risk_txt}[/]")
+    )
+
+    ai_col = Vertical(classes="arch-col")
+    ai_col.compose_add_child(
+        _S(
+            app,
+            f"[#24d6a8]AI tooling in use[/]  "
+            f"[#6e8aa1]{gl['pip']} grouped into decision buckets[/]",
         )
+    )
+    buckets = prof.get("ai_categories", {}) or {}
+    if buckets:
+        for bucket, tools in buckets.items():
+            tags = "  ".join(f"[#a9bccd]{t}[/]" for t in (tools or []))
+            ai_col.compose_add_child(_S(app, f"  [#7aa6ff]{bucket}[/]  {tags}"))
+    else:
+        ai_col.compose_add_child(
+            _S(
+                app,
+                f"  [#6e8aa1]No AI tooling detected in imports yet {gl['pip']} "
+                f"verdicts judged on universal merit.[/]",
+            )
+        )
+
+    if bp.master_detail:
+        cols = Horizontal(classes="arch-cols")
+        cols.compose_add_child(stack_col)
+        cols.compose_add_child(ai_col)
+        box.compose_add_child(cols)
+    else:
+        box.compose_add_child(stack_col)
+        box.compose_add_child(ai_col)
+
+    # Key dependencies — each with an evidence gauge (how much the repo imports it).
+    deps = prof.get("dependencies", []) or []
+    if deps:
+        box.compose_add_child(
+            _S(
+                app,
+                f"\n[#24d6a8]key dependencies[/]  [#6e8aa1]{gl['pip']} top {len(deps)}, "
+                f"ranked by how much your code imports them[/]",
+            )
+        )
+        for d in deps:
+            n = int(d.get("evidence", 0) or 0)
+            name = str(d.get("name", ""))
+            ver = str(d.get("version", "") or "")
+            ver_txt = f"  [#6e8aa1]{ver}[/]" if ver else ""
+            box.compose_add_child(
+                _S(app, f"  {_evidence_gauge(app, n)}  [#a9bccd]{name}[/]{ver_txt}")
+            )
+
+    # Top imports — what the offline tree-sitter pass actually saw.
+    top_imports = prof.get("top_imports", {}) or {}
+    if top_imports:
+        files = int(prof.get("files_scanned", 0) or 0)
+        box.compose_add_child(
+            _S(
+                app,
+                f"\n[#24d6a8]top imports[/]  [#6e8aa1]{gl['pip']} what the offline "
+                f"tree-sitter pass saw across {files:,} files[/]",
+            )
+        )
+        for lang, names in top_imports.items():
+            tags = "  ".join(f"[#a9bccd]{nm}[/]" for nm in (names or []))
+            box.compose_add_child(_S(app, f"  [#6e8aa1]{lang}[/]  {tags}"))
 
     # Doctor.
     box.compose_add_child(_S(app, "\n[#24d6a8 b]Doctor[/]"))

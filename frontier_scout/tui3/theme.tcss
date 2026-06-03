@@ -128,3 +128,8 @@ Screen {
 .scout-matrix-read { height: auto; margin-top: 1; }
 .scout-ledger { height: auto; margin-bottom: 1; }
 .scout-ledger-row { layout: horizontal; height: auto; }
+
+/* Architecture instrument (Settings) — two equal columns on wide, stacked
+   on mid/narrow (the builder swaps the container by breakpoint). */
+.arch-cols { layout: horizontal; height: auto; }
+.arch-col { width: 1fr; height: auto; }

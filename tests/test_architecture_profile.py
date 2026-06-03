@@ -137,10 +137,16 @@ def test_stack_from_profile_carries_rich_signal():
     assert stack["ai_tooling"] == ["anthropic", "qdrant"]
     assert stack["archetype"] == "web-service"
     assert stack["ai_categories"]["vector-store"] == ["qdrant"]
-    assert {"name": "fastapi", "ecosystem": "pypi", "version": "0.110.1"} in stack[
-        "dependencies"
-    ]
+    assert {
+        "name": "fastapi",
+        "ecosystem": "pypi",
+        "version": "0.110.1",
+        "evidence": 12,
+    } in stack["dependencies"]
     assert stack["top_imports"]["python"][:2] == ["fastapi", "anthropic"]
+    # files_scanned is projected from import_evidence
+    assert "files_scanned" in stack
+    assert isinstance(stack["files_scanned"], int)
 
 
 def test_stack_from_profile_bounds_dependencies():

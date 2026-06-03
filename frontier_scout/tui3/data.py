@@ -689,15 +689,23 @@ def doctor() -> list[dict[str, Any]]:
 
 def repo_profile(repo: str) -> dict[str, Any]:
     try:
-        from frontier_scout.profile import build_scout_profile
+        from frontier_scout.profile import build_scout_profile, stack_from_profile
 
         p = build_scout_profile(Path(repo))
+        stack = stack_from_profile(p)
         return {
+            # Legacy keys (managers keeps the package_managers→"managers" mapping).
             "languages": list(_g(p, "languages", []) or []),
             "frameworks": list(_g(p, "frameworks", []) or []),
             "managers": list(_g(p, "package_managers", []) or []),
             "agent_configs": list(_g(p, "agent_configs", []) or []),
             "risk_flags": list(_g(p, "risk_flags", []) or []),
+            # Architecture keys from stack_from_profile.
+            "archetype": str(stack.get("archetype", "unknown")),
+            "ai_categories": dict(stack.get("ai_categories", {}) or {}),
+            "dependencies": list(stack.get("dependencies", []) or []),
+            "top_imports": dict(stack.get("top_imports", {}) or {}),
+            "files_scanned": int(stack.get("files_scanned", 0) or 0),
         }
     except Exception:  # noqa: BLE001
         return {}

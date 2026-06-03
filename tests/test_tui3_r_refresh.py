@@ -198,3 +198,137 @@ def test_r_loads_on_settings():
                 assert prof.calls > first_prof, "`r` did not re-run the repo_profile loader"
 
     _run(go())
+
+
+# ── data.repo_profile — architecture keys ─────────────────────────────────────
+
+
+def test_repo_profile_exposes_architecture_keys(tmp_path):
+    """data.repo_profile on a real (minimal) repo returns the new arch keys."""
+    from frontier_scout.tui3 import data as _data
+
+    # Minimal Python repo: one manifest so build_scout_profile has something to scan.
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\nname = 'x'\ndependencies = ['fastapi>=0.100']\n"
+    )
+
+    result = _data.repo_profile(str(tmp_path))
+
+    # New keys added in Change 2 must be present.
+    assert "archetype" in result, "archetype missing from repo_profile"
+    assert "ai_categories" in result, "ai_categories missing from repo_profile"
+    assert "dependencies" in result, "dependencies missing from repo_profile"
+    assert "top_imports" in result, "top_imports missing from repo_profile"
+    assert "files_scanned" in result, "files_scanned missing from repo_profile"
+
+    # Legacy keys still present (managers keeps the package_managers→managers mapping).
+    assert "languages" in result
+    assert "frameworks" in result
+    assert "managers" in result
+    assert "agent_configs" in result
+    assert "risk_flags" in result
+
+    # Types are sane.
+    assert isinstance(result["archetype"], str)
+    assert isinstance(result["ai_categories"], dict)
+    assert isinstance(result["dependencies"], list)
+    assert isinstance(result["top_imports"], dict)
+    assert isinstance(result["files_scanned"], int)
+
+
+def test_repo_profile_nonexistent_is_defensive():
+    """A nonexistent path never raises: build_scout_profile walks an empty tree
+    and yields an empty-valued profile dict (the {} fallback is reserved for an
+    actual exception, exercised separately below)."""
+    from frontier_scout.tui3 import data as _data
+
+    result = _data.repo_profile("/nonexistent/path/to/repo")
+    assert isinstance(result, dict)  # never raises
+    assert result.get("archetype", "unknown") == "unknown"
+    assert result.get("dependencies") == []
+    assert result.get("files_scanned") == 0
+
+
+def test_repo_profile_returns_empty_on_error(monkeypatch):
+    """If profile-building raises, repo_profile swallows it and returns {}."""
+    from frontier_scout.tui3 import data as _data
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("scan blew up")
+
+    monkeypatch.setattr("frontier_scout.profile.build_scout_profile", _boom)
+    assert _data.repo_profile("/any/path") == {}
+
+
+# ── Settings → Architecture instrument (v5) ───────────────────────────────────
+
+_ARCH_PROFILE = {
+    "languages": ["python"],
+    "frameworks": ["fastapi"],
+    "managers": ["uv"],
+    "agent_configs": ["CLAUDE.md"],
+    "risk_flags": [],
+    "archetype": "web-service",
+    "ai_categories": {"llm-sdk": ["anthropic"], "vector-store": ["qdrant"]},
+    "dependencies": [
+        {"name": "fastapi", "ecosystem": "pypi", "version": "0.110.1", "evidence": 12},
+        {"name": "anthropic", "ecosystem": "pypi", "version": ">=0.3", "evidence": 5},
+    ],
+    "top_imports": {"python": ["fastapi", "anthropic"]},
+    "files_scanned": 1234,
+}
+
+
+def _settings_text(profile):
+    """Boot, open Settings (auto-load uses stubbed data), return the pane text.
+
+    Stubs the three data functions the settings worker calls so nothing scans
+    the real cwd, hits the network, or spends.
+    """
+
+    async def go():
+        app = MissionControlApp(demo=True)
+        with _patch(
+            repo_profile=_Stub(profile),
+            policy=_Stub(_POLICY),
+            doctor=_Stub(_DOCTOR),
+        ):
+            async with app.run_test(size=(130, 40)) as pilot:  # wide → two columns
+                await pilot.pause()
+                await pilot.press("8")  # Settings tab → auto-load worker
+                await pilot.pause()
+                await asyncio.sleep(0.4)
+                await pilot.pause()
+                assert app.state.settings_cache is not None, "settings did not auto-load"
+                return _pane_text(app)
+
+    return _run(go())
+
+
+def test_settings_renders_architecture_section():
+    txt = _settings_text(_ARCH_PROFILE)
+    assert "Architecture" in txt, txt
+    assert "web-service" in txt  # archetype dial (lit)
+    assert "llm-sdk" in txt and "anthropic" in txt  # AI bucket + tool tag
+    assert "vector-store" in txt and "qdrant" in txt
+    assert "key dependencies" in txt and "fastapi" in txt  # dep + evidence gauge
+    assert "top imports" in txt
+    assert "1,234" in txt  # files_scanned, formatted
+
+
+def test_settings_architecture_empty_ai_tooling_note():
+    profile = {
+        "languages": ["c"],
+        "frameworks": [],
+        "managers": [],
+        "agent_configs": [],
+        "risk_flags": [],
+        "archetype": "unknown",
+        "ai_categories": {},
+        "dependencies": [],
+        "top_imports": {},
+        "files_scanned": 0,
+    }
+    txt = _settings_text(profile)
+    assert "No AI tooling detected" in txt, txt
+    assert "universal merit" in txt

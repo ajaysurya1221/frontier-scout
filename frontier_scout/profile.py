@@ -614,10 +614,12 @@ def stack_from_profile(profile: ScoutProfile) -> dict[str, Any]:
                 "name": d.name,
                 "ecosystem": d.ecosystem,
                 "version": d.resolved_version or d.specifier or "",
+                "evidence": d.evidence_imports,
             }
             for d in top_deps
         ],
         "top_imports": _top_imports_for_stack(profile.import_evidence),
+        "files_scanned": profile.import_evidence.files_scanned,
     }
 
 
