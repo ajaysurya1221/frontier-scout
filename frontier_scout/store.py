@@ -73,12 +73,8 @@ def init_db(path: Path | None = None) -> Path:
             )
             """
         )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_verdicts_scan ON verdicts(scan_id)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_verdicts_tool ON verdicts(tool_name)"
-        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_verdicts_scan ON verdicts(scan_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_verdicts_tool ON verdicts(tool_name)")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -251,6 +247,7 @@ def init_db(path: Path | None = None) -> Path:
                 consensus_score REAL NOT NULL,
                 state_changed_at TEXT NOT NULL,
                 evidence_json TEXT NOT NULL,
+                payload_json TEXT NOT NULL DEFAULT '{}',
                 UNIQUE(pack_id, tool_id)
             )
             """
@@ -339,9 +336,7 @@ def init_db(path: Path | None = None) -> Path:
         # so rebuild the table in place when the new state isn't permitted yet.
         # pack_candidates is a leaf (nothing references it), so the rebuild is safe
         # with foreign keys on; existing rows are copied verbatim.
-        row = conn.execute(
-            "SELECT sql FROM sqlite_master WHERE type='table' AND name='pack_candidates'"
-        ).fetchone()
+        row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='pack_candidates'").fetchone()
         if row and row[0] and "sanctioned" not in row[0]:
             conn.execute(
                 """
@@ -354,25 +349,30 @@ def init_db(path: Path | None = None) -> Path:
                     consensus_score REAL NOT NULL,
                     state_changed_at TEXT NOT NULL,
                     evidence_json TEXT NOT NULL,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
                     UNIQUE(pack_id, tool_id)
                 )
                 """
             )
-            conn.execute("INSERT INTO pack_candidates__v7 SELECT * FROM pack_candidates")
+            # Explicit columns (not SELECT *) so the rebuild is robust to column
+            # drift in the live table (review finding I-1).
+            conn.execute(
+                "INSERT INTO pack_candidates__v7 "
+                "(id, pack_id, tool_id, state, freshness_score, consensus_score, "
+                "state_changed_at, evidence_json) "
+                "SELECT id, pack_id, tool_id, state, freshness_score, consensus_score, "
+                "state_changed_at, evidence_json FROM pack_candidates"
+            )
             conn.execute("DROP TABLE pack_candidates")
             conn.execute("ALTER TABLE pack_candidates__v7 RENAME TO pack_candidates")
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_pack_candidates_pack ON pack_candidates(pack_id)"
-            )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pack_candidates_pack ON pack_candidates(pack_id)")
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
             (7, _now()),
         )
         # v8 (pivot): scope adoption_decisions to a pack + client. The table was
         # dormant (no writers), so existing DBs just gain two nullable columns.
-        adoption_cols = {
-            r[1] for r in conn.execute("PRAGMA table_info(adoption_decisions)").fetchall()
-        }
+        adoption_cols = {r[1] for r in conn.execute("PRAGMA table_info(adoption_decisions)").fetchall()}
         if "pack_slug" not in adoption_cols:
             conn.execute("ALTER TABLE adoption_decisions ADD COLUMN pack_slug TEXT")
         if "client" not in adoption_cols:
@@ -380,6 +380,15 @@ def init_db(path: Path | None = None) -> Path:
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
             (8, _now()),
+        )
+        # v9 (pivot): persist enriched candidate fields (category/description/tags/
+        # server_meta/repo_fit) the exporter needs, in pack_candidates.payload_json.
+        pc_cols = {r[1] for r in conn.execute("PRAGMA table_info(pack_candidates)").fetchall()}
+        if "payload_json" not in pc_cols:
+            conn.execute("ALTER TABLE pack_candidates ADD COLUMN payload_json TEXT NOT NULL DEFAULT '{}'")
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            (9, _now()),
         )
     return path
 
@@ -445,14 +454,11 @@ def latest_scan(repo: Path | str | None = None) -> dict[str, Any] | None:
         return None
     with _connect(path) as conn:
         if repo is None:
-            row = conn.execute(
-                "SELECT payload_json FROM scans ORDER BY id DESC LIMIT 1"
-            ).fetchone()
+            row = conn.execute("SELECT payload_json FROM scans ORDER BY id DESC LIMIT 1").fetchone()
         else:
             resolved = str(Path(str(repo)).expanduser().resolve())
             row = conn.execute(
-                "SELECT payload_json FROM scans WHERE repo = ? "
-                "ORDER BY id DESC LIMIT 1",
+                "SELECT payload_json FROM scans WHERE repo = ? ORDER BY id DESC LIMIT 1",
                 (resolved,),
             ).fetchone()
     if not row:
@@ -899,19 +905,29 @@ def save_pack_candidate(candidate: Any) -> int:
         pack = get_pack(payload["pack_slug"])
     tool_id = upsert_tool(payload["tool_name"])
     evidence_json = json.dumps(payload.get("evidence") or [])
+    enriched_json = json.dumps(
+        {
+            "category": payload.get("category"),
+            "description": payload.get("description", ""),
+            "tags": payload.get("tags") or [],
+            "server_meta": payload.get("server_meta") or {},
+            "repo_fit": payload.get("repo_fit"),
+        }
+    )
     with _connect(init_db()) as conn:
         cur = conn.execute(
             """
             INSERT INTO pack_candidates(
                 pack_id, tool_id, state, freshness_score, consensus_score,
-                state_changed_at, evidence_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                state_changed_at, evidence_json, payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(pack_id, tool_id) DO UPDATE SET
                 state = excluded.state,
                 freshness_score = excluded.freshness_score,
                 consensus_score = excluded.consensus_score,
                 state_changed_at = excluded.state_changed_at,
-                evidence_json = excluded.evidence_json
+                evidence_json = excluded.evidence_json,
+                payload_json = excluded.payload_json
             """,
             (
                 int(pack["id"]),
@@ -921,6 +937,7 @@ def save_pack_candidate(candidate: Any) -> int:
                 float(payload.get("consensus_score") or 0),
                 _now(),
                 evidence_json,
+                enriched_json,
             ),
         )
         return int(cur.lastrowid or tool_id)
@@ -946,6 +963,12 @@ def list_pack_candidates(pack_slug: str | None = None) -> list[dict[str, Any]]:
     for row in rows:
         item = dict(row)
         item["evidence"] = json.loads(item.pop("evidence_json") or "[]")
+        enriched = json.loads(item.pop("payload_json", None) or "{}")
+        item["category"] = enriched.get("category")
+        item["description"] = enriched.get("description", "")
+        item["tags"] = enriched.get("tags") or []
+        item["server_meta"] = enriched.get("server_meta") or {}
+        item["repo_fit"] = enriched.get("repo_fit")
         out.append(item)
     return out
 
@@ -1107,9 +1130,7 @@ def save_adoption_decision(
         return int(cur.lastrowid)
 
 
-def list_adoption_decisions(
-    *, pack_slug: str | None = None, client: str | None = None
-) -> list[dict[str, Any]]:
+def list_adoption_decisions(*, pack_slug: str | None = None, client: str | None = None) -> list[dict[str, Any]]:
     """Read adoption/sanction decisions, optionally filtered by pack + client."""
 
     query = """
@@ -1155,9 +1176,7 @@ def clear_scans_for_repo(repo: Path | str) -> int:
     target = str(Path(str(repo)).expanduser().resolve())
     with _connect(path) as conn:
         conn.execute(
-            "DELETE FROM verdicts WHERE scan_id IN ("
-            "  SELECT id FROM scans WHERE repo = ?"
-            ")",
+            "DELETE FROM verdicts WHERE scan_id IN (  SELECT id FROM scans WHERE repo = ?)",
             (target,),
         )
         cur = conn.execute("DELETE FROM scans WHERE repo = ?", (target,))

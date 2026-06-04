@@ -248,8 +248,43 @@ def build_parser() -> argparse.ArgumentParser:
         help="Opt into live discovery. Without it, seed candidates only.",
     )
     packs_refresh.add_argument("--reset-source", help="Reset one stale source id.")
-    packs_candidates = packs_sub.add_parser("candidates", help="List current pack candidates.")
-    packs_candidates.add_argument("--pack", help="Filter by pack slug.")
+    packs_candidates = packs_sub.add_parser("candidates", help="List pack candidates (repo-ranked with --repo).")
+    packs_candidates.add_argument("--pack", help="Pack slug (default: mcp when --repo is set).")
+    packs_candidates.add_argument("--repo", default=None, help="Repository for repo-aware ranking + static safety.")
+    packs_candidates.add_argument("--client", default="claude-code", help="Coding-assistant client.")
+    packs_candidates.add_argument(
+        "--discover",
+        action="store_true",
+        help="Also fetch live MCP-registry servers (network). Default is the keyless demo pack.",
+    )
+    packs_candidates.add_argument("--json", action="store_true", help="Emit JSON.")
+
+    packs_sanction = packs_sub.add_parser("sanction", help="Sanction an MCP server for a client (risk-gated).")
+    packs_sanction.add_argument("server", help="Server identifier (tool name).")
+    packs_sanction.add_argument("--repo", default=".", help="Repository for repo-aware ranking.")
+    packs_sanction.add_argument("--client", default="claude-code", help="Coding-assistant client.")
+    packs_sanction.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
+    packs_sanction.add_argument("--approver", help="Approver label recorded in the decision.")
+    packs_sanction.add_argument("--reason", help="Rationale recorded in the decision.")
+    packs_sanction.add_argument(
+        "--acknowledge-risk",
+        action="store_true",
+        help="Acknowledge a high-risk server's static safety summary and sanction it anyway.",
+    )
+    packs_sanction.add_argument("--json", action="store_true", help="Emit JSON.")
+
+    packs_unsanction = packs_sub.add_parser("unsanction", help="Reverse a sanction and exclude a server from exports.")
+    packs_unsanction.add_argument("server", help="Server identifier (tool name).")
+    packs_unsanction.add_argument("--client", default="claude-code", help="Coding-assistant client.")
+    packs_unsanction.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
+    packs_unsanction.add_argument("--reason", help="Rationale recorded in the decision.")
+    packs_unsanction.add_argument("--json", action="store_true", help="Emit JSON.")
+
+    packs_export = packs_sub.add_parser("export", help="Export the sanctioned set into client managed config.")
+    packs_export.add_argument("--client", default="claude-code", help="Coding-assistant client.")
+    packs_export.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
+    packs_export.add_argument("--target", required=True, help="Output directory for config files.")
+    packs_export.add_argument("--json", action="store_true", help="Emit JSON.")
 
     deps_cmd = sub.add_parser("deps", help="Scan dependency intelligence and create upgrade trials.")
     deps_sub = deps_cmd.add_subparsers(dest="deps_command")
@@ -399,8 +434,7 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(2)
         if value not in valid_providers:
             print(
-                f"error: invalid --provider {value!r} "
-                f"(choose from {', '.join(valid_providers)})",
+                f"error: invalid --provider {value!r} (choose from {', '.join(valid_providers)})",
                 file=sys.stderr,
             )
             raise SystemExit(2)
@@ -509,19 +543,18 @@ def main(argv: list[str] | None = None) -> int:
             interactive = sys.stdin.isatty() and sys.stdout.isatty()
             if interactive:
                 try:
-                    answer = input(
-                        "Frontier Scout is already set up "
-                        "(~/.frontier-scout/config.toml). Re-run wizard? [y/N] "
-                    ).strip().lower()
+                    answer = (
+                        input("Frontier Scout is already set up (~/.frontier-scout/config.toml). Re-run wizard? [y/N] ")
+                        .strip()
+                        .lower()
+                    )
                 except (EOFError, KeyboardInterrupt):
                     answer = ""
                 if answer not in ("y", "yes"):
                     print("Setup unchanged. Use `frontier-scout` to open Mission Control.")
                     return 0
             else:
-                print(
-                    "Already onboarded. Pass --force to re-run the wizard non-interactively."
-                )
+                print("Already onboarded. Pass --force to re-run the wizard non-interactively.")
                 return 0
         # Decide: wizard or TUI?
         # - If --wizard explicitly passed → wizard.
@@ -560,11 +593,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         from .tui.runner import run_setup
 
-        packs = (
-            [slug.strip() for slug in args.packs.split(",") if slug.strip()]
-            if args.packs
-            else None
-        )
+        packs = [slug.strip() for slug in args.packs.split(",") if slug.strip()] if args.packs else None
         return _run_tui_with_reconfigure_loop(
             run_setup,
             repo=Path(args.repo) if args.repo else Path("."),
@@ -626,7 +655,7 @@ def main(argv: list[str] | None = None) -> int:
             unread = "" if n.get("read") else " [UNREAD]"
             print(f"{n.get('timestamp', '—')}  {n.get('repo', '—')}{unread}")
             for v in (n.get("new_verdicts") or [])[:5]:
-                print(f"  {str(v.get('verdict','—')).upper():<7} {v.get('tool_name','—')}")
+                print(f"  {str(v.get('verdict', '—')).upper():<7} {v.get('tool_name', '—')}")
         return 0
     if args.command == "init":
         home = init_home()
@@ -703,10 +732,7 @@ def main(argv: list[str] | None = None) -> int:
                 # Codex #5: don't silently demo-render when nothing exists for
                 # *this* repo — that's how reports went out misattributed.
                 paths = write_demo(Path(args.output).parent)
-                print(
-                    f"No stored scan for {Path(args.repo).resolve()}; "
-                    f"wrote demo report: {paths['html']}"
-                )
+                print(f"No stored scan for {Path(args.repo).resolve()}; wrote demo report: {paths['html']}")
                 return 0
             date = str(payload.get("date") or "latest")
             verdicts = list(payload.get("verdicts") or [])
@@ -785,11 +811,7 @@ def main(argv: list[str] | None = None) -> int:
                 )
             )
         else:
-            caps = " ".join(
-                f"{k}={v}"
-                for k, v in sorted(manifest.capabilities.items())
-                if v != "unlikely"
-            )
+            caps = " ".join(f"{k}={v}" for k, v in sorted(manifest.capabilities.items()) if v != "unlikely")
             print(f"EVALUATE {evaluation.tool_name}")
             print(f"category: {evaluation.category}")
             print(f"fit: {evaluation.fit}")
@@ -852,9 +874,92 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Refreshed {count} pack candidates{suffix}.")
             return 0
         if args.packs_command == "candidates":
-            candidates = list_pack_candidates(args.pack)
-            for candidate in candidates:
-                print(f"{candidate['pack_slug']} {candidate['state']} {candidate['tool_name']}")
+            if args.repo is None:
+                # Legacy: list stored candidates filtered by --pack.
+                for candidate in list_pack_candidates(args.pack):
+                    print(f"{candidate['pack_slug']} {candidate['state']} {candidate['tool_name']}")
+                return 0
+            from . import pack_flow
+            from .safety_summary import build_safety_summary
+
+            pack_slug = args.pack or "mcp"
+            ranked = pack_flow.get_candidates(
+                args.repo,
+                client=args.client,
+                discover=args.discover,
+                pack_slug=pack_slug,
+            )
+            rows = []
+            for candidate in ranked:
+                summary = build_safety_summary(candidate)
+                rows.append(
+                    {
+                        "tool_name": candidate.tool_name,
+                        "repo_fit": candidate.repo_fit,
+                        "category": candidate.category,
+                        "transport": (candidate.server_meta or {}).get("transport"),
+                        "verdict": summary["verdict"],
+                        "risk": summary["risk"],
+                        "requires_trial": summary["requires_trial"],
+                        "description": candidate.description,
+                    }
+                )
+            if args.json:
+                print(json.dumps(rows, indent=2))
+            else:
+                print(f"Repo-ranked {pack_slug} servers for {args.client} ({len(rows)}):")
+                for row in rows:
+                    flag = "  [trial required]" if row["requires_trial"] else ""
+                    print(f"- {row['tool_name']}  fit={row['repo_fit']} risk={row['risk']} {row['transport']}{flag}")
+            return 0
+        if args.packs_command == "sanction":
+            from . import pack_flow
+
+            result = pack_flow.sanction_server(
+                args.server,
+                repo=args.repo,
+                client=args.client,
+                pack_slug=args.pack or "mcp",
+                approver=args.approver,
+                reason=args.reason,
+                acknowledge_risk=args.acknowledge_risk,
+            )
+            if args.json:
+                print(json.dumps(result, indent=2))
+            if not result["ok"]:
+                if not args.json:
+                    if result.get("blocked"):
+                        from .safety_summary import render_safety_summary
+
+                        print(render_safety_summary(result["summary"]))
+                        print("\n" + result["message"])
+                    else:
+                        print(result.get("error", "sanction failed"))
+                return 1
+            if not args.json:
+                print(f"Sanctioned {args.server} ({result['verdict']}) for {args.client}.")
+            return 0
+        if args.packs_command == "unsanction":
+            from . import pack_flow
+
+            result = pack_flow.unsanction_server(
+                args.server, client=args.client, pack_slug=args.pack or "mcp", reason=args.reason
+            )
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                print(f"Unsanctioned {args.server} for {args.client}.")
+            return 0
+        if args.packs_command == "export":
+            from . import pack_flow
+
+            result = pack_flow.export_config(client=args.client, pack_slug=args.pack or "mcp", target_dir=args.target)
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                print(f"Exported {result['sanctioned_count']} sanctioned server(s) for {args.client}:")
+                print(f"  managed: {result['paths']['managed']}")
+                print(f"  project: {result['paths']['project']}")
             return 0
         parser.error("packs requires a subcommand")
         return 2

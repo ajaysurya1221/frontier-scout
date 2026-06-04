@@ -34,16 +34,15 @@ def build_safety_summary(
 
     stack = stack or {}
     url = str(candidate.server_meta.get("url") or "").strip() or f"mcp://{candidate.tool_name}"
-    source_text = " ".join(
-        part
-        for part in (candidate.description, " ".join(candidate.tags), str(candidate.server_meta))
-        if part
-    )
+    # Capabilities come from the human description + tags only — NOT from server_meta,
+    # whose config keys (``command``, ``args``, ``url``) would falsely trip the shell/
+    # network capability patterns.
+    source_text = " ".join(part for part in (candidate.description, " ".join(candidate.tags)) if part)
     evaluation = evaluate_url(url, stack, source_text=source_text)
     manifest = evaluation.permission_manifest
     decision = evaluate_policy(evaluation, manifest, None, policy=policy)
     dangerous = list(manifest.dangerous_flags) if manifest else ["unknown"]
-    return {
+    summary = {
         "tool_name": candidate.tool_name,
         "kind": "static",
         "description": candidate.description,
@@ -57,8 +56,9 @@ def build_safety_summary(
         "verdict": decision.verdict,
         "policy_summary": decision.summary,
         "findings": [f.model_dump() for f in decision.findings],
-        "requires_trial": bool(RISKY_FLAGS.intersection(dangerous)),
     }
+    summary["requires_trial"] = is_high_risk(summary)  # single source of truth
+    return summary
 
 
 def is_high_risk(summary: dict[str, Any]) -> bool:
@@ -71,14 +71,14 @@ def render_safety_summary(summary: dict[str, Any]) -> str:
     """Render the static safety map as redacted markdown (no secrets leak)."""
 
     caps = summary.get("capabilities") or {}
-    cap_lines = [
-        f"- `{key}`: {status}" for key, status in caps.items() if status != "unlikely"
-    ] or ["- (no capabilities classified)"]
+    cap_lines = [f"- `{key}`: {status}" for key, status in caps.items() if status != "unlikely"] or [
+        "- (no capabilities classified)"
+    ]
     flags = summary.get("dangerous_flags") or []
     findings = summary.get("findings") or []
-    finding_lines = [
-        f"- [{f.get('severity')}] {f.get('rule_id')}: {f.get('message')}" for f in findings
-    ] or ["- (no policy findings)"]
+    finding_lines = [f"- [{f.get('severity')}] {f.get('rule_id')}: {f.get('message')}" for f in findings] or [
+        "- (no policy findings)"
+    ]
     lines = [
         f"## Static safety analysis — {summary.get('tool_name', '')}",
         "",

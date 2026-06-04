@@ -7,7 +7,7 @@ import math
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -68,7 +68,7 @@ class PackCandidate(BaseModel):
     category: str | None = None
     description: str = ""
     tags: list[str] = Field(default_factory=list)
-    server_meta: dict = Field(default_factory=dict)
+    server_meta: dict[str, Any] = Field(default_factory=dict)
     # repo-specific fit tier ("high"/"medium"/"low"), set by rank_candidates_for_repo.
     repo_fit: str | None = None
 
@@ -317,11 +317,7 @@ def pack_candidate_to_fit_input(candidate: PackCandidate, stack: dict) -> tuple[
     """
 
     category = candidate.category or "mcp_server"
-    text = " ".join(
-        part
-        for part in (candidate.tool_name, candidate.description, " ".join(candidate.tags))
-        if part
-    )
+    text = " ".join(part for part in (candidate.tool_name, candidate.description, " ".join(candidate.tags)) if part)
     return category, text, stack
 
 
@@ -359,9 +355,7 @@ def rank_candidates_for_repo(candidates: list[PackCandidate], profile: object) -
 _OVERRIDE_RANK = {"exclude": 3, "suppress": 3, "retire": 3, "pin": 2, "include": 1}
 
 
-def apply_pack_overrides(
-    candidates: list[PackCandidate], overrides: list[dict]
-) -> list[PackCandidate]:
+def apply_pack_overrides(candidates: list[PackCandidate], overrides: list[dict]) -> list[PackCandidate]:
     """Filter/reorder candidates by stored pack overrides.
 
     Precedence per tool: exclude > pin > include (exclude/suppress/retire all
@@ -380,13 +374,83 @@ def apply_pack_overrides(
         rank = _OVERRIDE_RANK[action]
         if rank >= best_rank.get(identifier, 0):
             best_rank[identifier] = rank
-            effective[identifier] = (
-                "exclude" if action in ("exclude", "suppress", "retire") else action
-            )
+            effective[identifier] = "exclude" if action in ("exclude", "suppress", "retire") else action
     kept = [c for c in candidates if effective.get(c.tool_name) != "exclude"]
     pinned = [c for c in kept if effective.get(c.tool_name) == "pin"]
     rest = [c for c in kept if effective.get(c.tool_name) != "pin"]
     return pinned + rest
+
+
+# A fixed, offline set of representative MCP servers (official + popular), each with
+# runnable server_meta. Lets the whole candidates -> safety -> sanction -> export
+# journey run with no network and no API key — the substrate for the demo + validation.
+_DEMO_SERVERS: tuple[tuple[str, str, dict, list[str]], ...] = (
+    (
+        "io.modelcontextprotocol/filesystem",
+        "Local filesystem access: read, write, and list files in a directory.",
+        {
+            "transport": "stdio",
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-filesystem", "."],
+            "env": {},
+        },
+        ["npm"],
+    ),
+    (
+        "io.modelcontextprotocol/fetch",
+        "Fetch a URL and convert the web page to markdown over the network.",
+        {"transport": "stdio", "command": "uvx", "args": ["mcp-server-fetch"], "env": {}},
+        ["pypi"],
+    ),
+    (
+        "io.modelcontextprotocol/time",
+        "Read the current time and convert between timezones. Read-only.",
+        {"transport": "stdio", "command": "uvx", "args": ["mcp-server-time"], "env": {}},
+        ["pypi"],
+    ),
+    (
+        "io.modelcontextprotocol/sqlite",
+        "Query and modify a local SQLite database: read and write rows.",
+        {"transport": "stdio", "command": "uvx", "args": ["mcp-server-sqlite", "--db-path", "./db.sqlite"], "env": {}},
+        ["pypi"],
+    ),
+    (
+        "com.github/github",
+        "GitHub issues, pull requests, and code search over an authenticated API.",
+        {"transport": "http", "url": "https://api.githubcopilot.com/mcp/", "headers": {}},
+        [],
+    ),
+    (
+        "dev.sentry/sentry",
+        "Read Sentry errors and monitoring data over the network.",
+        {"transport": "http", "url": "https://mcp.sentry.dev/mcp", "headers": {}},
+        [],
+    ),
+)
+
+
+def demo_mcp_servers() -> list[PackCandidate]:
+    """Return the offline demo MCP-server pack (deterministic, no network/keys)."""
+
+    out: list[PackCandidate] = []
+    for name, description, meta, extra_tags in _DEMO_SERVERS:
+        tags = list(dict.fromkeys(["mcp", *extra_tags, meta["transport"]]))
+        out.append(
+            PackCandidate(
+                pack_slug="mcp",
+                tool_name=name,
+                state="candidate",
+                category="mcp_server",
+                description=description,
+                tags=tags,
+                server_meta=meta,
+                consensus_score=0.7,
+                freshness_score=0.7,
+                independent_source_families=1,
+                evidence=[CandidateEvidence(source_family="mcp_registry", source="demo", score=0.7)],
+            )
+        )
+    return out
 
 
 def _mcp_registry_candidates(pack: ScoutPack) -> list[PackCandidate]:
@@ -402,9 +466,7 @@ def _mcp_registry_candidates(pack: ScoutPack) -> list[PackCandidate]:
     )
 
 
-def _parse_registry_payload(
-    payload: object, *, pack_slug: str, source_url: str
-) -> list[PackCandidate]:
+def _parse_registry_payload(payload: object, *, pack_slug: str, source_url: str) -> list[PackCandidate]:
     """Parse an MCP-registry ``/v0/servers`` payload into enriched candidates.
 
     Pure + offline (no network) so it is unit-testable. Fails closed: malformed
@@ -416,17 +478,13 @@ def _parse_registry_payload(
         return []
     out: list[PackCandidate] = []
     for server in servers[:50]:
-        candidate = _registry_server_to_candidate(
-            server, pack_slug=pack_slug, source_url=source_url
-        )
+        candidate = _registry_server_to_candidate(server, pack_slug=pack_slug, source_url=source_url)
         if candidate is not None:
             out.append(apply_lifecycle_rules(candidate))
     return out
 
 
-def _registry_server_to_candidate(
-    server: object, *, pack_slug: str, source_url: str
-) -> PackCandidate | None:
+def _registry_server_to_candidate(server: object, *, pack_slug: str, source_url: str) -> PackCandidate | None:
     if not isinstance(server, dict):
         return None
     name = str(server.get("name") or "").strip()
@@ -456,6 +514,7 @@ def _registry_server_to_candidate(
     else:
         server_meta = {"transport": "unknown"}
         tags.append("unknown")
+    tags = list(dict.fromkeys(tags))  # dedupe, preserve order
     return PackCandidate(
         pack_slug=pack_slug,
         tool_name=name,
@@ -464,11 +523,7 @@ def _registry_server_to_candidate(
         description=description,
         tags=tags,
         server_meta=server_meta,
-        evidence=[
-            CandidateEvidence(
-                source_family="mcp_registry", source=source_url or "mcp_registry", score=0.7
-            )
-        ],
+        evidence=[CandidateEvidence(source_family="mcp_registry", source=source_url or "mcp_registry", score=0.7)],
     )
 
 
@@ -491,8 +546,11 @@ def _stdio_meta_from_package(pkg: dict) -> dict:
         command, args = "docker", ["run", "-i", "--rm", pkg_name]
     elif runtime_hint:
         command, args = runtime_hint, [pkg_name] if pkg_name else []
+    elif pkg_name:
+        command, args = pkg_name, []
     else:
-        command, args = (pkg_name or "echo"), []
+        # Nothing runnable derivable — fail closed rather than emit a fake command.
+        return {"transport": "unknown"}
     return {"transport": "stdio", "command": command, "args": args, "env": env}
 
 
