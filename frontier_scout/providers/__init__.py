@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 
 from .anthropic_provider import AnthropicProvider
 from .base import (
@@ -71,12 +72,42 @@ def _has_openai_base_url() -> bool:
     )
 
 
+# A CLI on PATH isn't necessarily runnable — a broken install (e.g. a codex
+# Node-version crash) still satisfies `which`. Probe `<binary> --version` once
+# (cached per-process) so a non-runnable CLI is treated as unavailable rather
+# than silently selected, which fails a scan cryptically mid-run. On a clean
+# machine the `which` short-circuit means no subprocess is ever spawned.
+_CLI_PROBE_CACHE: dict[str, bool] = {}
+
+
+def _reset_cli_probe() -> None:
+    """Drop the cached CLI runnability probes (CLIs don't change mid-run)."""
+    _CLI_PROBE_CACHE.clear()
+
+
+def _cli_runs(binary: str) -> bool:
+    """True if *binary* is on PATH AND runs cleanly (``--version`` exits 0)."""
+    if binary in _CLI_PROBE_CACHE:
+        return _CLI_PROBE_CACHE[binary]
+    ok = shutil.which(binary) is not None
+    if ok:
+        try:
+            proc = subprocess.run(
+                [binary, "--version"], capture_output=True, timeout=10
+            )
+            ok = proc.returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            ok = False
+    _CLI_PROBE_CACHE[binary] = ok
+    return ok
+
+
 def _has_claude_cli() -> bool:
-    return shutil.which("claude") is not None
+    return _cli_runs("claude")
 
 
 def _has_codex_cli() -> bool:
-    return shutil.which("codex") is not None
+    return _cli_runs("codex")
 
 
 def _build(name: str) -> LLMProvider:
@@ -129,7 +160,8 @@ def resolve_provider(name: str | None = None) -> LLMProvider:
         if pinned not in usable:
             raise ProviderUnavailable(
                 f"Provider {pinned!r} is pinned but unavailable "
-                f"(no key / CLI not on PATH). Available: {usable or 'none'}."
+                f"(no API key, or the CLI is missing or not runnable — a broken "
+                f"install still satisfies PATH). Available: {usable or 'none'}."
             )
         return _build(pinned)
 

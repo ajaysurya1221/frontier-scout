@@ -71,6 +71,13 @@ def current_provider() -> LLMProvider:
 
 
 def reset_provider() -> None:
-    """Drop the cache so a runtime switch takes effect on the next scan."""
+    """Drop the cache so a runtime switch takes effect on the next scan.
+
+    Also clears the CLI runnability probe cache so a deliberate switch re-probes
+    (e.g. the user repaired a previously-broken CLI install).
+    """
     global _CACHED
     _CACHED = None
+    from . import _reset_cli_probe
+
+    _reset_cli_probe()

@@ -105,6 +105,29 @@ def test_available_providers_order(monkeypatch):
     assert available_providers() == ["openai", "claude-cli"]
 
 
+def test_broken_cli_on_path_is_unavailable(monkeypatch):
+    # A CLI that is ON PATH but crashes when run (a broken install — e.g. the
+    # codex Node-error case) must be reported UNAVAILABLE, so it is never silently
+    # selected and a scan can't die cryptically mid-run. `which` alone isn't enough.
+    import subprocess
+
+    import frontier_scout.providers as P
+
+    monkeypatch.setattr(P.shutil, "which", lambda b: f"/usr/local/bin/{b}")  # all on PATH
+
+    def fake_run(cmd, **k):
+        rc = 1 if cmd[0] == "codex" else 0  # codex --version crashes; claude runs clean
+        return types.SimpleNamespace(returncode=rc, stdout=b"", stderr=b"node crash")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    P._reset_cli_probe()
+    try:
+        assert P._has_codex_cli() is False  # broken install → unavailable
+        assert P._has_claude_cli() is True  # runs clean → available
+    finally:
+        P._reset_cli_probe()
+
+
 # ---------------------------------------------------------------------------
 # AnthropicProvider — passthrough
 # ---------------------------------------------------------------------------
