@@ -286,6 +286,9 @@ def build_parser() -> argparse.ArgumentParser:
     packs_export.add_argument("--target", required=True, help="Output directory for config files.")
     packs_export.add_argument("--json", action="store_true", help="Emit JSON.")
 
+    stats_cmd = sub.add_parser("stats", help="Show the local (opt-in) sanctioned-pack usage funnel.")
+    stats_cmd.add_argument("--json", action="store_true", help="Emit JSON.")
+
     deps_cmd = sub.add_parser("deps", help="Scan dependency intelligence and create upgrade trials.")
     deps_sub = deps_cmd.add_subparsers(dest="deps_command")
     deps_scan = deps_sub.add_parser("scan", help="Scan repo dependencies for meaningful upgrade findings.")
@@ -963,6 +966,19 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         parser.error("packs requires a subcommand")
         return 2
+    if args.command == "stats":
+        from . import telemetry
+
+        summary = telemetry.summarize()
+        if args.json:
+            print(json.dumps(summary, indent=2))
+        else:
+            if not summary["enabled"]:
+                print("Telemetry is OFF (opt in with FRONTIER_SCOUT_TELEMETRY=1).")
+            print(f"Sanctioned-pack funnel ({summary['total_events']} events):")
+            for name, count in summary["by_event"].items():
+                print(f"  {name}: {count}")
+        return 0
     if args.command == "deps":
         if args.deps_command == "scan":
             payload = run_dependency_scan(Path(args.repo))

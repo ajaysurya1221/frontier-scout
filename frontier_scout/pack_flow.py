@@ -20,6 +20,7 @@ from .packs import (
 )
 from .profile import build_scout_profile
 from .safety_summary import build_safety_summary, is_high_risk
+from .telemetry import record_event
 
 SUPPORTED_CLIENTS = ("claude-code", "copilot", "cursor")
 _REMOVE_OVERRIDES = ("exclude", "suppress", "retire")
@@ -78,6 +79,7 @@ def get_candidates(
     if persist:
         for candidate in ranked:
             store.save_pack_candidate(candidate)
+        record_event("candidates_viewed", count=len(ranked), client=client, pack=pack_slug)
     return ranked
 
 
@@ -108,6 +110,7 @@ def sanction_server(
         return {"ok": False, "error": f"unknown server: {server_name}"}
     summary = build_safety_summary(candidate)
     if is_high_risk(summary) and not acknowledge_risk:
+        record_event("sanction_blocked", server=server_name, client=client)
         return {
             "ok": False,
             "blocked": True,
@@ -129,6 +132,7 @@ def sanction_server(
         rationale=reason,
         payload={"server_meta": candidate.server_meta, "verdict": summary["verdict"]},
     )
+    record_event("sanctioned", server=server_name, client=client, verdict=summary["verdict"])
     return {"ok": True, "server": server_name, "verdict": summary["verdict"], "summary": summary}
 
 
@@ -146,6 +150,7 @@ def unsanction_server(
     for row in store.list_pack_candidates(pack_slug):
         if row["tool_name"] == server_name and row.get("state") == "sanctioned":
             store.save_pack_candidate(_candidate_from_row({**row, "state": "candidate"}))
+    record_event("unsanctioned", server=server_name, client=client)
     return {"ok": True, "server": server_name}
 
 
@@ -163,6 +168,7 @@ def export_config(*, client: str = "claude-code", pack_slug: str = "mcp", target
     # All MVP clients (claude-code/copilot/cursor) consume the same mcpServers /
     # managed allow-deny shapes, so one exporter covers them.
     paths = export_claude_config(sanctioned, denied=denied, target_dir=target_dir)
+    record_event("exported", client=client, count=len(sanctioned))
     return {
         "ok": True,
         "client": client,
