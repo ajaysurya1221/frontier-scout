@@ -100,6 +100,7 @@ class MissionControlApp(App[int]):
         self.state = AppState()
         self._bp_name = ""
         self._scanning = False
+        self._cap_scanning: str | None = None
         self._size_override: tuple[int, int] | None = None
         self._ask_i = 0
         # Path of the last rendered briefing.html (set by the report worker);
@@ -1195,6 +1196,8 @@ class MissionControlApp(App[int]):
             self._refresh_worker(tab)
 
     def _refresh_worker(self, kind: str) -> None:
+        self._cap_scanning = kind
+
         def _run() -> None:
             try:
                 if kind == "guard":
@@ -1266,14 +1269,17 @@ class MissionControlApp(App[int]):
             if self.state.tab == "scout":
                 await self._render_pane()
         elif message.kind == "guard":
+            self._cap_scanning = None
             self.state = self.state.with_(guard_cache=message.payload)
             if self.state.tab == "guard":
                 await self._render_pane()
         elif message.kind == "deps":
+            self._cap_scanning = None
             self.state = self.state.with_(deps_cache=message.payload)
             if self.state.tab == "deps":
                 await self._render_pane()
         elif message.kind == "settings":
+            self._cap_scanning = None
             self.state = self.state.with_(settings_cache=message.payload)
             if self.state.tab == "settings":
                 await self._render_pane()
@@ -1372,6 +1378,12 @@ class MissionControlApp(App[int]):
 
     def on_work_failed(self, message: WorkFailed) -> None:
         self._scanning = False
+        if message.kind in ("guard", "deps", "settings"):
+            self._cap_scanning = None
+            # Rebuild the pane so the cap-scan spinner clears (the WorkDone path
+            # re-renders; the failure path must too, or the spinner sticks).
+            if self.state.tab == message.kind:
+                self.call_later(self._render_pane)
         self._set("#mc-compass", _failure_compass(message.kind, message.error))
 
     def _maybe_ask_provider(self) -> None:
@@ -1412,12 +1424,20 @@ def _provider_reason_label(reason: str) -> str:
 
 
 def _failure_compass(kind: str, error: str) -> str:
-    hint = (
-        " [#6e8aa1]· press [#24d6a8 b]P[/] switch · [#24d6a8 b]r[/] retry · or --demo[/]"
-        if kind == "scout"
-        else ""
-    )
-    return f"[#ff6b6b]{kind} failed: {error}[/]{hint}"
+    if kind == "scout":
+        gl = glyphs(True)
+        cross = gl["cross"]           # ✕  (folds to "x" via asciify)
+        pip = gl["seg_off"] * 5       # ▱▱▱▱▱  (folds to "-----" via asciify)
+        motif = f"[#ff6b6b]{cross}[/] [#3d5566]{pip}[/]"
+        ladder = (
+            " [#6e8aa1]"
+            "[#24d6a8 b]r[/] retry · "
+            "[#24d6a8 b]P[/] switch · "
+            "--demo"
+            "[/]"
+        )
+        return f"{motif} [#ff6b6b]{kind} failed: {error}[/]{ladder}"
+    return f"[#ff6b6b]{kind} failed: {error}[/]"
 
 
 def _dossier_result_lines(payload: dict[str, Any]) -> tuple[str, list[str]]:

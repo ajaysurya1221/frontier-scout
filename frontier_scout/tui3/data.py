@@ -85,6 +85,10 @@ def initial_state(repo: Path | None = None, *, demo: bool = False) -> AppState:
     except Exception:  # noqa: BLE001 — opening state must never crash
         pass
     prov_name, prov_reason = _detect_provider(demo=demo)
+    import os
+    motion = os.environ.get("FRONTIER_SCOUT_REDUCED_MOTION", "").strip().lower() not in (
+        "1", "true", "yes", "on",
+    )
     return AppState(
         repo=repo_path,
         repo_name=_repo_name(repo_path),
@@ -95,6 +99,7 @@ def initial_state(repo: Path | None = None, *, demo: bool = False) -> AppState:
         funnel=funnel,
         demo=demo,
         unread=_unread_count(),
+        motion=motion,
     )
 
 

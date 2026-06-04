@@ -95,6 +95,14 @@ def test_failure_compass_plain_for_other_kinds():
     assert "retry" not in msg  # recovery affordance is scout-specific
 
 
+def test_failure_compass_v6_signal_lost_ladder():
+    from frontier_scout.tui3.app import _failure_compass
+    msg = _failure_compass("scout", "claude CLI timed out after 180s")
+    assert "✕" in msg or "x" in msg            # signal-lost mark
+    assert "▱" in msg                          # unlit pip run (five seg_off pips)
+    assert "switch" in msg and "retry" in msg and "--demo" in msg   # keyed ladder
+
+
 def test_switcher_two_line_cost_rows():
     """Cost-aware two-line rows: cost + detail for available, 'fix: <hint>' for
     unavailable, and an 'active · <reason>' pill on the active engine."""
@@ -128,3 +136,16 @@ def test_switcher_reason_word_maps_auto_to_detected():
     ]
     scr = ProviderSwitcherScreen(choices, meta=data.providers(), reason="auto")
     assert "detected" in scr._list_markup()
+
+
+def test_appstate_has_motion_default_on():
+    from frontier_scout.tui3.state import AppState
+    assert AppState(repo="/x", repo_name="x").motion is True
+
+
+def test_initial_state_honors_reduced_motion_env(monkeypatch, tmp_path):
+    from frontier_scout.tui3 import data as _data
+    monkeypatch.setenv("FRONTIER_SCOUT_REDUCED_MOTION", "1")
+    assert _data.initial_state(tmp_path, demo=True).motion is False
+    monkeypatch.delenv("FRONTIER_SCOUT_REDUCED_MOTION", raising=False)
+    assert _data.initial_state(tmp_path, demo=True).motion is True

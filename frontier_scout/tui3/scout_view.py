@@ -42,7 +42,7 @@ from frontier_scout.tui3.kit import (
     verdict_label,
     verdict_tone,
 )
-from frontier_scout.tui3.widgets import ClickStatic
+from frontier_scout.tui3.widgets import ClickStatic, ScanSpinner
 
 _TONE = {
     "mint": "#24d6a8", "gold": "#e3c26f", "blue": "#7aa6ff", "red": "#ff6b6b",
@@ -147,13 +147,17 @@ def build_scout(app: Any) -> Vertical:
     # Placement follows the prototype's ScoutPane: matrix in the calm-head band on
     # wide (masterDetail=True); ledger inside the coverage area on mid/narrow.
     # micro skips both (too little vertical room for the extra instrument).
-    if verdicts:
+    if verdicts and not getattr(app, "_scanning", False):
         if bp.master_detail:
             root.compose_add_child(_adoption_matrix(app, gl, verdicts))
         elif bp.name in ("mid", "narrow"):
             root.compose_add_child(_tier_ledger_widget(app, gl, verdicts))
 
     root.compose_add_child(_scanbar(app, gl))
+
+    if getattr(app, "_scanning", False):
+        root.compose_add_child(_scan_progress(app, gl))
+        return root
 
     if not verdicts:
         root.compose_add_child(_empty(app, gl))
@@ -202,13 +206,20 @@ def _cell_markup(
     fit: str,
     risk: str,
 ) -> str:
-    """Build the Rich-markup string for one matrix cell.
+    """Build the Rich-markup string for one matrix cell — a SINGLE line.
 
-    Cells have a fixed 3-line budget:
-      line 0 — count badge (when >3) OR empty
-      line 1 — dot run (up to _DOT_MAX) + +N overflow
-      line 2 — "safe" / "hold" label when empty corner, else blank
-    This gives each cell a predictable height without Textual grid CSS.
+    Returns one painted line: a count badge (when >3) + the dot run (up to
+    ``_DOT_MAX``) + ``+N`` overflow for a populated cell, or a "safe"/"hold"
+    corner label / ``·`` placeholder for an empty cell. Cells are single-line so
+    the 3×3 grid keeps uniform row heights (the matrix alignment relies on equal
+    rows — see ``theme.tcss`` ``.scout-matrix-cell``).
+
+    When the cell holds the selected verdict, the content is wrapped inline with
+    the corner-bracket lock frame (``⌜…⌟`` → ``+…+`` in ascii). This is the
+    single-line terminal mapping of the prototype's 4-corner box: a 2-D
+    affordance that honestly degrades to a 2-corner bracket in a character grid
+    (v6 handoff §2b/§6). The selected dot's ``radar_core`` glyph remains the
+    primary selection signal; the frame is reinforcement.
     """
     border = _hex("muted")
     safe_corner = fit == "high" and risk == "low"
@@ -225,6 +236,15 @@ def _cell_markup(
     count = len(items)
     displayed = items[:_DOT_MAX]
     overflow = count - _DOT_MAX if count > _DOT_MAX else 0
+
+    # Determine whether this cell holds the selected verdict.
+    cell_indices = {i for i, _ in items}
+    is_selected = sel in cell_indices
+
+    # Corner lock frame — reinforcement when this cell holds the selection.
+    # Single-line cells use inline framing: corner_tl … content … corner_br.
+    # Toned mint for normal cells, red for the danger corner (low fit / high risk).
+    frame_tone = _hex("red") if (is_selected and hold_corner) else _hex("mint")
 
     # Build dot string — selected dot uses radar_core glyph.
     parts: list[str] = []
@@ -243,7 +263,15 @@ def _cell_markup(
     if overflow:
         parts.append(f"[{_hex('muted')}]+{overflow}[/]")
 
-    return app._paint("".join(parts))
+    content = "".join(parts)
+    if is_selected:
+        # Wrap content with corner glyphs (inline: ⌜<content>⌟ style).
+        # All glyphs route through gl so ascii mode gets '+'.
+        tl = gl["corner_tl"]
+        br = gl["corner_br"]
+        content = f"[{frame_tone}]{tl}[/]{content}[{frame_tone}]{br}[/]"
+
+    return app._paint(content)
 
 
 def _adoption_matrix(app: Any, gl: dict[str, str], verdicts: tuple) -> Vertical:
@@ -263,13 +291,19 @@ def _adoption_matrix(app: Any, gl: dict[str, str], verdicts: tuple) -> Vertical:
     ))
 
     # ── risk axis header (widget columns, aligned 1:1 with the cell rows) ──────
+    cur = app.state.current
     head_row = Horizontal(classes="scout-matrix-row")
     head_row.compose_add_child(
         _S(app, f"[{_hex('muted')}]fit[/]", classes="scout-matrix-axis")
     )
     for r in RISKS:
+        if cur is not None and r == cur.risk:
+            risk_hex = _hex(risk_tone(cur.risk))
+            label_markup = f"[{risk_hex} b]{_RISK_LABELS[r]}[/]"
+        else:
+            label_markup = f"[{_hex('muted')}]{_RISK_LABELS[r]}[/]"
         head_row.compose_add_child(
-            _S(app, f"[{_hex('muted')}]{_RISK_LABELS[r]}[/]", classes="scout-matrix-cell")
+            _S(app, label_markup, classes="scout-matrix-cell")
         )
     box.compose_add_child(head_row)
 
@@ -277,9 +311,14 @@ def _adoption_matrix(app: Any, gl: dict[str, str], verdicts: tuple) -> Vertical:
     for fit in FITS:
         row_w = Horizontal(classes="scout-matrix-row")
         # fit axis label — same fixed-width gutter as the header row
+        if cur is not None and fit == cur.fit:
+            fit_hex = _hex(fit_tone(cur.fit))
+            fit_label_markup = f"[{fit_hex} b]{_FIT_LABELS[fit]}[/]"
+        else:
+            fit_label_markup = f"[{_hex('muted')}]{_FIT_LABELS[fit]}[/]"
         row_w.compose_add_child(_S(
             app,
-            f"[{_hex('muted')}]{_FIT_LABELS[fit]}[/]",
+            fit_label_markup,
             classes="scout-matrix-axis",
         ))
         for risk in RISKS:
@@ -300,17 +339,16 @@ def _adoption_matrix(app: Any, gl: dict[str, str], verdicts: tuple) -> Vertical:
         box.compose_add_child(row_w)
 
     # ── readout line ──────────────────────────────────────────────────────────
-    v = app.state.current
-    if v is not None:
-        tone_hex = _hex(verdict_tone(v.verdict))
-        name = v.tool_name.split("/")[-1]
+    if cur is not None:
+        tone_hex = _hex(verdict_tone(cur.verdict))
+        name = cur.tool_name.split("/")[-1]
         readout = (
             f"[{tone_hex}]{gl['tri']}[/] "
             f"[{_hex('bright')}]{name}[/] "
             f"[{_hex('muted')}]{gl['pip']}[/] "
-            f"[{tone_hex}]{verdict_label(v.verdict).lower()}[/] "
-            f"[{_hex('muted')}]{gl['pip']} fit[/] [{_hex(fit_tone(v.fit))} b]{v.fit}[/] "
-            f"[{_hex('muted')}]{gl['pip']} risk[/] [{_hex(risk_tone(v.risk))} b]{v.risk}[/]"
+            f"[{tone_hex}]{verdict_label(cur.verdict).lower()}[/] "
+            f"[{_hex('muted')}]{gl['pip']} fit[/] [{_hex(fit_tone(cur.fit))} b]{cur.fit}[/] "
+            f"[{_hex('muted')}]{gl['pip']} risk[/] [{_hex(risk_tone(cur.risk))} b]{cur.risk}[/]"
         )
     else:
         readout = f"[{_hex('muted')}]select a verdict to read it[/]"
@@ -431,6 +469,57 @@ def _scanbar(app: Any, gl: dict[str, str]) -> Horizontal:
             f" [#6e8aa1]{gl['pip']} last {f.last_run} {gl['pip']} "
             f"${f.cost:.2f} {gl['pip']} {f.duration:.0f}s[/]"))
     return row
+
+
+# ── scan-progress surface (spinner + sweep + staged checklist) ───────────────
+#
+# Shown while app._scanning is True (replaces the empty / list branch entirely).
+# Layout mirrors fs6-scout.jsx ScanProgress:
+#   spinner + sweep line (the ScanSpinner widget)
+#   3-stage checklist: watch · match · decide  (painted Statics, glyph markers)
+#   foot line: "reading <repo> · offline tree-sitter pass · …"
+#
+# The three phases render as a neutral pipeline descriptor (uniform ▸ marker,
+# muted tone) — not a live done/active/todo ladder. The scout runs as a single
+# pass with no per-phase milestone callbacks, so a moving checklist would imply
+# progress it can't measure (and v6 forbids fake content animation); the live
+# "working" signal is carried by the spinner + sweep above.
+
+_SCAN_STAGES = [
+    ("watch", "scout sources"),
+    ("match", "map to your stack"),
+    ("decide", "rank verdicts"),
+]
+
+
+def _scan_progress(app: Any, gl: dict[str, str]) -> Vertical:
+    """Return a Vertical with the spinner + radar sweep + staged checklist."""
+    repo = app.state.repo_name
+
+    box = Vertical(classes="scout-progress")
+
+    # ScanSpinner carries both the frame-cycling spinner and the radar sweep.
+    box.compose_add_child(ScanSpinner(f"scouting {repo}"))
+
+    # Pipeline descriptor — 3 neutral phase rows (uniform ▸ marker, muted tone).
+    for key, label in _SCAN_STAGES:
+        line = (
+            app._paint(f"[{_hex('muted')}]{gl['tri']}[/]")
+            + app._paint(f" [{_hex('muted')}]{key:<7}[/]")
+            + app._paint(f" [{_hex('muted')}]{label}[/]")
+        )
+        box.compose_add_child(Static(line, classes="scan-stage"))
+
+    # Footer line.
+    box.compose_add_child(_S(
+        app,
+        f"[{_hex('muted')}]reading [{_hex('bright')}]{repo}[/]"
+        f" {gl['pip']} offline tree-sitter pass"
+        f" {gl['pip']} no source leaves your machine[/]",
+        classes="scan-foot",
+    ))
+
+    return box
 
 
 # ── empty / first-run state ──────────────────────────────────────────────────

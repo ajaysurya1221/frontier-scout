@@ -129,6 +129,12 @@ Screen {
 .scout-ledger { height: auto; margin-bottom: 1; }
 .scout-ledger-row { layout: horizontal; height: auto; }
 
+/* Scan-progress surface (Task 4) — spinner + staged checklist shown while
+   _scanning is True. Auto-height; children stack vertically. */
+.scout-progress { height: auto; margin-bottom: 1; }
+.scan-stage { height: auto; }
+.scan-foot { height: auto; margin-top: 1; color: #6e8aa1; }
+
 /* Architecture instrument (Settings) — two equal columns on wide, stacked
    on mid/narrow (the builder swaps the container by breakpoint). */
 .arch-cols { layout: horizontal; height: auto; }
