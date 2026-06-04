@@ -1,8 +1,9 @@
 """v6 cross-mode degradation smoke — no unicode glyph may leak in ascii mode."""
 from frontier_scout.tui3.kit import asciify, glyphs, spinner_frames
 
-# Every v6 unicode glyph that must have an ascii fallback.
-V6_UNICODE = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏▰▱⌜⌝⌞⌟▁▂▃▄▅▆▇█✕◉"
+# Every v6 unicode glyph that must have an ascii fallback (incl. the cell-precision
+# rework's box-grid + sweep-tail glyphs: box_h ─, box_v │, box_x ┼, seg_mid ▒).
+V6_UNICODE = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏▰▱⌜⌝⌞⌟▁▂▃▄▅▆▇█✕◉─│┼▒"
 
 
 def _is_ascii(s: str) -> bool:

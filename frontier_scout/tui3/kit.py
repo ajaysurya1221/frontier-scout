@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from rich.cells import cell_len
+
 # ── Palette (mirrors the design CSS :root, ADOPT=mint TRIAL=gold ASSESS=blue HOLD=red)
 PALETTE = {
     "bg": "#0b1117",
@@ -38,18 +40,20 @@ UNI = {
     "arrow": "→", "check": "✓", "cross": "✕", "tri": "▸", "chev": "›",
     "radar_core": "◉", "pip": "·", "bullet": "▪", "vbar": "│",
     "enter": "⏎", "lr": "←→", "ud": "↑↓", "cmd": "⌘",
-    "seg_on": "▰", "seg_off": "▱", "cap_l": "▏", "cap_r": "▕",
+    "seg_on": "▰", "seg_off": "▱", "seg_mid": "▒", "cap_l": "▏", "cap_r": "▕",
     "spark": "▁▂▃▄▅▆▇█",
     "corner_tl": "⌜", "corner_tr": "⌝", "corner_bl": "⌞", "corner_br": "⌟",
+    "box_h": "─", "box_v": "│", "box_x": "┼",
 }
 ASCII = {
     "bar_full": "#", "bar_empty": ".", "dot": "*", "ring": "o", "diamond": "<>",
     "arrow": "->", "check": "v", "cross": "x", "tri": ">", "chev": ">",
     "radar_core": "(o)", "pip": ".", "bullet": "-", "vbar": "|",
     "enter": "ent", "lr": "<>", "ud": "^v", "cmd": "^",
-    "seg_on": "#", "seg_off": "-", "cap_l": "[", "cap_r": "]",
+    "seg_on": "#", "seg_off": "-", "seg_mid": "+", "cap_l": "[", "cap_r": "]",
     "spark": ".:-=+*#%",
     "corner_tl": "+", "corner_tr": "+", "corner_bl": "+", "corner_br": "+",
+    "box_h": "-", "box_v": "|", "box_x": "+",
 }
 
 
@@ -78,9 +82,10 @@ _ASCIIFY = {
     "↑": "^", "↓": "v", "↔": "<>", "✓": "v", "✕": "x", "▸": ">", "›": ">",
     "◉": "(o)", "·": ".", "▪": "-", "│": "|", "⏎": "ent", "⌘": "^", "…": "...",
     "–": "-", "—": "--",
-    "▰": "#", "▱": "-", "▏": "[", "▕": "]",
+    "▰": "#", "▱": "-", "▒": "+", "▏": "[", "▕": "]",
     "▁": ".", "▂": ":", "▃": "-", "▄": "=", "▅": "+", "▆": "*", "▇": "#",
     "⌜": "+", "⌝": "+", "⌞": "+", "⌟": "+",
+    "─": "-", "┼": "+",  # box_h / box_x (box_v "│" already folds above)
 }
 # Spinner braille frames fold to the ascii spinner ticks. The spinner's primary
 # path already picks spinner_frames(False) in ascii mode; this keeps the central
@@ -313,3 +318,68 @@ def pct(value: float, maximum: float) -> int:
     if maximum <= 0:
         return 0
     return round(max(0.0, min(1.0, value / maximum)) * 100)
+
+
+# ── Cell-precision primitives (v6 §1) ────────────────────────────────────────
+
+def cell_width(s: str) -> int:
+    """Return the display width of *s* in terminal cells.
+
+    Uses Rich's ``cell_len`` so that multi-cell glyphs (e.g. ``(o)`` = 3 cells,
+    wide CJK characters = 2 cells) are measured correctly — never rely on
+    ``len()`` for display-width comparisons.
+    """
+    return cell_len(s)
+
+
+def meter(value: float, width: int, *, unicode: bool = True) -> str:
+    """Return a bracketed segmented-gauge string of exactly ``width + 2`` cells.
+
+    ``value`` is a fraction in [0, 1].  ``width`` pips are filled proportionally:
+    ``round(clamp(value, 0, 1) * width)`` lit pips, the rest unlit.  Cap glyphs
+    ``cap_l`` / ``cap_r`` wrap the pip run so callers get a self-contained string
+    with no Rich markup — callers add tone wrapping themselves.
+
+    Golden (width=20, unicode=False):
+      * 0.72 → ``[##############------]``
+      * 0.0  → ``[--------------------]``
+      * 1.0  → ``[####################]``
+    """
+    g = glyphs(unicode)
+    frac = max(0.0, min(1.0, value))
+    filled = round(frac * width)
+    return g["cap_l"] + g["seg_on"] * filled + g["seg_off"] * (width - filled) + g["cap_r"]
+
+
+def sweep(width: int, head: int, *, motion: bool = True, unicode: bool = True) -> str:
+    """Return a radar-sweep string of exactly ``width`` cells (plain, no markup).
+
+    When *motion* is True:
+      * Bright head pip (``seg_on``) at column ``head % width``.
+      * 2-cell dim tail (``seg_mid``) at ``(head-1) % width`` and
+        ``(head-2) % width`` — head wins if indices coincide at tiny widths.
+      * All other cells are the track glyph (``seg_off``).
+
+    When *motion* is False (static):
+      * Bright ``seg_on`` at ``width // 2``, rest ``seg_off``.  No tail.
+
+    Golden (width=22, head=7, motion=True, unicode=False):
+      ``-----++#--------------``
+      positions: 0-4 track, 5-6 tail (``+``), 7 head (``#``), 8-21 track.
+    """
+    g = glyphs(unicode)
+    track = g["seg_off"]
+    cells = [track] * width
+
+    if motion:
+        h = head % width
+        t1 = (head - 1) % width
+        t2 = (head - 2) % width
+        # Write tail first, then head (head wins on collision).
+        cells[t2] = g["seg_mid"]
+        cells[t1] = g["seg_mid"]
+        cells[h] = g["seg_on"]
+    else:
+        cells[width // 2] = g["seg_on"]
+
+    return "".join(cells)

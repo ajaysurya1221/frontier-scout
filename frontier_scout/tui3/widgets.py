@@ -21,7 +21,23 @@ from collections.abc import Callable
 from textual import events
 from textual.widgets import Static
 
-from frontier_scout.tui3.kit import glyphs, spinner_frames
+from frontier_scout.tui3.kit import spinner_frames
+
+
+# Imported lazily to avoid a circular import (scout_view imports from widgets).
+# _scan_progress_line0 is a module-level helper that extracts line 0 from
+# scan_progress_lines; widgets.py calls it only at runtime (inside _repaint),
+# never at import time.
+def _scan_progress_line0(
+    repo: str, stage: int, head: int,
+    *, label: str = "scanning", frame_idx: int, motion: bool, unicode: bool, width: int
+) -> str:
+    from frontier_scout.tui3.scout_view import scan_progress_lines  # noqa: PLC0415
+    return scan_progress_lines(
+        repo, stage, head,
+        label=label, frame_idx=frame_idx, motion=motion, unicode=unicode, width=width,
+    )[0]
+
 
 OnClick = Callable[[], None]
 
@@ -91,11 +107,25 @@ class ScanSpinner(Static):
     Self-updates via ``.update()`` (never remove+remount → no DuplicateIds); the
     interval auto-cancels on unmount. When ``app.state.motion`` is False the spinner
     holds frame 0 and the sweep is a static mid-lit bar (no interval).
+
+    ``_repaint`` delegates line 0 to ``scan_progress_lines`` (via the module-level
+    ``_scan_progress_line0`` shim) so the golden frame is reproducible by both the
+    widget and the pure-function test path, with no duplication.
     """
 
-    def __init__(self, label: str = "scanning", *, width: int = 12, **kw) -> None:
+    def __init__(
+        self,
+        label: str = "scanning",
+        *,
+        repo: str = "",
+        stage: int = 2,
+        width: int = 22,
+        **kw,
+    ) -> None:
         super().__init__("", **kw)
         self._label = label
+        self._repo = repo
+        self._stage = stage
         self._w = width
         self._frame = 0
         self._head = 0
@@ -116,18 +146,15 @@ class ScanSpinner(Static):
 
     def _repaint(self) -> None:
         uni = self.app.state.unicode
-        gl = glyphs(uni)
         motion = getattr(self.app.state, "motion", True)
-        frame = spinner_frames(uni)[self._frame if motion else 0]
         head = self._head if motion else self._w // 2
-        cells = []
-        for i in range(self._w):
-            if i == head:
-                cells.append(f"[#24d6a8]{gl['seg_on']}[/]")
-            elif motion and i in ((head - 1) % self._w, (head - 2) % self._w):
-                cells.append(f"[#24d6a8 dim]{gl['seg_on']}[/]")
-            else:
-                cells.append(f"[#152232]{gl['seg_off']}[/]")
-        self.update(self.app._paint(
-            f"[#24d6a8 b]{frame}[/] {''.join(cells)}  [#6e8aa1]{self._label}…[/]"
-        ))
+        # Delegate line 0 to scan_progress_lines (the golden pure function) so
+        # spinner and static render path share the same format invariant.
+        # Use self._label for the line-0 spinner label (cap-scan labels flow here);
+        # self._repo (or self._label as fallback) goes in the footer.
+        repo = self._repo or self._label
+        line0 = _scan_progress_line0(
+            repo, self._stage, head,
+            label=self._label, frame_idx=self._frame, motion=motion, unicode=uni, width=self._w,
+        )
+        self.update(self.app._paint(line0))
