@@ -1,11 +1,18 @@
 # Changelog
 
-## [Unreleased]
+## 1.7.1 - 2026-06-04
+
+### Mission Control v6 ("Observatory")
+
+- **Mission Control v6 ("Observatory").** The TUI's scanning and selection states gain terminal-native motion and sharper signals. A **portable scan spinner + radar sweep** replaces the v5 CSS-rotated marker — a frame-cycling spinner with a bright pip travelling an unlit track, timer-driven and paused when motion is off (`FRONTIER_SCOUT_REDUCED_MOTION`). The **Adoption Matrix** gains a crosshair (the selected verdict's fit-row and risk-column axis labels light up) and a **lock frame** around the selected cell. The **failed-scout** state reads as a signal-lost ladder — a clear mark, an unlit pip run, and keyed recovery (`r` retry · `P` switch engine · `--demo`). New spark-ramp and corner glyphs round out the kit. Everything degrades across color↔mono, unicode↔ascii, light, and all five breakpoints; no new dependencies.
+- **README** refreshed — clearer hero, compact nav, a crisp SVG screenshot, and a calmer plain-header structure (grounded in top-repo conventions).
+
+## 1.7.0 - 2026-06-03
+
+### Mission Control v5 (TUI redesign) + architecture profile
 
 - **Mission Control v5 (TUI redesign).** The Scout home gains an **Adoption Matrix** — a fit×risk cell grid of clickable, list-linked verdicts (Tier Ledger fallback on narrow). Every meter is rebuilt as a **segmented gauge** (discrete pips, so it reads as N-of-M at every fill — never a featureless block) driving fit/risk, the permission map, dependency evidence, and pack counts. The local **architecture profile** is now surfaced in Settings (archetype dial · AI-tooling buckets · dependency-evidence gauges · top imports — derived metadata only, never source). Provider selection reads as a **cost-aware engine selector**: a two-line switcher (cost + detection reason + the exact fix for unavailable engines), doubling as the first-run picker, plus a tightened header badge. Color↔mono and unicode↔ascii throughout; nothing spends or scans on the render path.
 - Richer local architecture profile — the scout/judge prompt now receives AI-tooling categories, resolved dependency versions, top imports, and a project archetype (previously only languages + frameworks reached the prompt, due to a producer/consumer schema drift in stack_from_profile ↔ render_stack_profile). Deterministic, local, no source content sent.
-
-## 1.7.0 - 2026-06-03
 
 ### Provider selection, two-tier CLI, gateway interop
 
