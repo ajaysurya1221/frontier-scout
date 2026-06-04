@@ -56,7 +56,7 @@ def test_export_writes_both_faces_and_redacts(tmp_path):
             "transport": "stdio",
             "command": "npx",
             "args": ["pkg"],
-            "env": {"API_KEY": "sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFF"},
+            "env": {"API_KEY": "sk-ant-api03-AAAABBBBCCCCDDDDEEEEFFFF"},  # pragma: allowlist secret
         },
     )
     paths = export_claude_config([leaky], denied=[], target_dir=tmp_path)
