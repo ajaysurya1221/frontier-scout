@@ -33,6 +33,7 @@ from frontier_scout.tui3 import data
 from frontier_scout.tui3.kit import (
     bar,
     breakpoint_for,
+    cell_width,
     fit_tone,
     gauge,
     glyphs,
@@ -128,6 +129,240 @@ def tier_ledger(
 
 def _hex(tone: str) -> str:
     return _TONE.get(tone, _TONE["muted"])
+
+
+# ── Adoption Matrix — 59-cell box-grid pure function (v6 §2) ──────────────────
+#
+# The matrix is glyph-art whose every grid line is EXACTLY 59 display cells,
+# built from a width-parameterized pure function (no Textual, no app — only
+# glyphs()/_hex()), per design_handoff_mission_control_v6/BRIDGING_PX_TO_CELLS.md
+# and the "ADOPTION MATRIX (wide)" golden frame:
+#
+#   block = 59 = gutter 4 · box_v · 3×[17-col · box_v]
+#
+# Each line is assembled from PLAIN fixed-cell segments (so width is guaranteed —
+# multi-cell ascii glyphs like (o)=3 are measured with cell_width, never len),
+# then the segments are wrapped in Rich tone markup. Strip the markup back out
+# (``re.sub(r"\[/?[^\]]*\]","",line)``) and ``cell_width`` of the result is 59.
+#
+# Selection signals:
+#   • the selected verdict's dot is the radar_core glyph (◉ / "(o)") — primary.
+#   • crosshair: the selected risk column header label and the selected fit row
+#     label are toned + bold; all other axis labels are muted.
+#   • corner-lock (unicode reinforcement): the four box_x junctions bounding the
+#     selected cell are replaced with corner glyphs (⌜⌝⌞⌟) in the dividers above
+#     and below it, toned mint (red for the low-fit/high-risk danger corner). In
+#     ascii these all fold to '+' so the ascii grid is unchanged.
+
+_DATA_W = 17       # data column width (cells)
+_GUTTER = 4        # fit-label gutter width (cells)
+_MATRIX_W = 59     # full block width: _GUTTER + box_v + 3×(_DATA_W + box_v)
+_FIT_GUTTER = {"high": " HI ", "medium": "MED ", "low": " LO "}
+_RISK_HEAD = {"low": "LOW", "medium": "MED", "high": "HIGH"}
+
+
+def _center(label: str, width: int) -> str:
+    """Center *label* in *width* cells — ``(width-len)//2`` pad on the left."""
+    left = (width - len(label)) // 2
+    return " " * left + label + " " * (width - len(label) - left)
+
+
+def _matrix_cell_plain(
+    items: list[tuple[int, Any]], sel: int, gl: dict[str, str]
+) -> tuple[str, list[tuple[int, str]]]:
+    """Return (plain 17-cell string, [(verdict_index, tone), …] for dot tinting).
+
+    Dots are LEFT-aligned, single space between, padded to ``_DATA_W`` with
+    spaces (width measured via ``cell_width`` so the multi-cell ``radar_core``
+    ascii ``(o)`` counts as 3). A populated cell over ``_DOT_MAX`` shows a leading
+    count badge + a ``+N`` overflow tail. The returned tones let the markup pass
+    tint each dot by its verdict colour without re-deriving widths.
+    """
+    if not items:
+        return " " * _DATA_W, []
+
+    count = len(items)
+    displayed = items[:_DOT_MAX]
+    overflow = count - _DOT_MAX if count > _DOT_MAX else 0
+
+    tokens: list[str] = []
+    tones: list[tuple[int, str]] = []
+    if count > 3:
+        tokens.append(f"{count} ")  # count badge (text tone, applied in the pass)
+    for i, v in displayed:
+        tokens.append(gl["radar_core"] if i == sel else gl["dot"])
+        tones.append((i, verdict_tone(v.verdict)))
+    body = " ".join(tokens)
+    if overflow:
+        body = f"{body} +{overflow}"
+
+    pad = max(0, _DATA_W - cell_width(body))
+    return body + " " * pad, tones
+
+
+def adoption_matrix_lines(
+    cells: dict[tuple[str, str], list[tuple[int, Any]]],
+    sel: int,
+    total: int,
+    sel_fit: str | None = None,
+    sel_risk: str | None = None,
+    *,
+    unicode: bool = True,
+) -> list[str]:
+    """Return the Adoption Matrix as a list of Rich-markup lines (each grid line
+    exactly ``_MATRIX_W`` = 59 display cells when its markup is stripped).
+
+    Pure: ``cells`` is the ``bucket_matrix`` mapping; ``sel`` the selected verdict
+    index (``-1`` / out-of-range = nothing selected); ``total`` the verdict count
+    shown in the title; ``sel_fit``/``sel_risk`` the selected verdict's fit/risk
+    (drive the crosshair + corner-lock). ``unicode`` toggles the glyph set.
+    """
+    gl = glyphs(unicode)
+    box_h, box_v, box_x = gl["box_h"], gl["box_v"], gl["box_x"]
+    pip = gl["pip"]
+    muted = _hex("muted")
+    lines: list[str] = []
+
+    # ── title row ───────────────────────────────────────────────────────────
+    # "ADOPTION MATRIX" left + "FIT x RISK · N" right-aligned, total 59 cells.
+    left = "ADOPTION MATRIX"
+    right = f"FIT x RISK {pip} {total}"
+    gap = max(1, _MATRIX_W - len(left) - cell_width(right))
+    lines.append(
+        f"[{muted}]{left}[/]" + " " * gap + f"[{muted}]{right}[/]"
+    )
+
+    # ── risk header row ──────────────────────────────────────────────────────
+    # gutter(4) + box_v + center(LABEL,17) + box_v ×3. Selected risk col bold-toned.
+    head = " " * _GUTTER + f"[{muted}]{box_v}[/]"
+    for r in RISKS:
+        label = _RISK_HEAD[r]
+        cell = _center(label, _DATA_W)
+        if sel_risk is not None and r == sel_risk:
+            tone = _hex(risk_tone(r))
+            # tone only the label glyphs; keep the centering pad plain.
+            li = (_DATA_W - len(label)) // 2
+            cell = " " * li + f"[{tone} b]{label}[/]" + " " * (_DATA_W - len(label) - li)
+        else:
+            cell = f"[{muted}]{cell}[/]"
+        head += cell + f"[{muted}]{box_v}[/]"
+    lines.append(head)
+
+    # ── divider builder (with optional corner-lock junctions) ─────────────────
+    # Junction columns sit at indices 4, 22, 40, 58 (gutter + n×18). For a
+    # selected cell in risk column c, the left/right junctions are c and c+1.
+    def _divider(corners: dict[int, tuple[str, str]]) -> str:
+        out = " " * _GUTTER
+        for j in range(4):  # 4 junctions, 3 dash spans between them
+            if j in corners:
+                glyph, tone = corners[j]
+                out += f"[{tone}]{glyph}[/]"
+            else:
+                out += f"[{muted}]{box_x}[/]"
+            if j < 3:
+                out += f"[{muted}]{box_h * _DATA_W}[/]"
+        return out
+
+    # Resolve the selected cell's column / row for the corner-lock.
+    sel_col = RISKS.index(sel_risk) if sel_risk in RISKS else None
+    sel_fit_row = FITS.index(sel_fit) if sel_fit in FITS else None
+    locked = sel_col is not None and sel_fit_row is not None
+    lock_tone = (
+        _hex("red") if (locked and sel_fit == "low" and sel_risk == "high") else _hex("mint")
+    )
+
+    def _div_for(boundary: int) -> str:
+        """Divider above data row index ``boundary`` (0=above HI … 3=below LO)."""
+        if not locked:
+            return _divider({})
+        corners: dict[int, tuple[str, str]] = {}
+        if boundary == sel_fit_row:        # divider directly ABOVE the selected row
+            corners[sel_col] = (gl["corner_tl"], lock_tone)
+            corners[sel_col + 1] = (gl["corner_tr"], lock_tone)
+        elif boundary == sel_fit_row + 1:  # divider directly BELOW the selected row
+            corners[sel_col] = (gl["corner_bl"], lock_tone)
+            corners[sel_col + 1] = (gl["corner_br"], lock_tone)
+        return _divider(corners)
+
+    # ── 3 data rows interleaved with 4 dividers ──────────────────────────────
+    lines.append(_div_for(0))  # divider above HI
+    for row_i, fit in enumerate(FITS):
+        gutter = _FIT_GUTTER[fit]
+        if sel_fit is not None and fit == sel_fit:
+            tone = _hex(fit_tone(fit))
+            gut_markup = f"[{tone} b]{gutter}[/]"
+        else:
+            gut_markup = f"[{muted}]{gutter}[/]"
+        row = gut_markup + f"[{muted}]{box_v}[/]"
+        for r in RISKS:
+            plain, tones = _matrix_cell_plain(cells[(fit, r)], sel, gl)
+            row += _tint_cell(plain, tones, gl) + f"[{muted}]{box_v}[/]"
+        lines.append(row)
+        lines.append(_div_for(row_i + 1))  # divider below this row
+
+    # ── readout: axis legend + selection naming ──────────────────────────────
+    up = gl["ud"][0]      # ↑ / ^
+    arrow = gl["arrow"]   # → / ->
+    lines.append(
+        f"[{muted}]    FIT[/] [{_hex('text')}]{up}[/]"
+        f"[{muted}]   {pip}   RISK[/] [{_hex('text')}]{arrow}[/]"
+    )
+    cur = None
+    if 0 <= sel:
+        for f in FITS:
+            for r in RISKS:
+                for idx, v in cells[(f, r)]:
+                    if idx == sel:
+                        cur = v
+        # (cur stays None if sel isn't present in any cell)
+    if cur is not None:
+        tone = _hex(verdict_tone(cur.verdict))
+        name = cur.tool_name.split("/")[-1]
+        lines.append(
+            f"    [{tone}]{gl['tri']}[/] [{_hex('bright')}]{name}[/] "
+            f"[{tone}]{verdict_label(cur.verdict).lower()}[/] "
+            f"[{muted}]{pip} fit[/] [{_hex(fit_tone(cur.fit))} b]{cur.fit}[/] "
+            f"[{muted}]{pip} risk[/] [{_hex(risk_tone(cur.risk))} b]{cur.risk}[/]"
+        )
+    else:
+        lines.append(f"    [{muted}]{gl['tri']} select a verdict to read it[/]")
+
+    return lines
+
+
+def _tint_cell(plain: str, tones: list[tuple[int, str]], gl: dict[str, str]) -> str:
+    """Wrap a plain 17-cell dot run in per-dot tone markup (width-preserving).
+
+    Walks the plain string and replaces each dot/radar_core glyph (in order) with
+    its toned counterpart; a leading ``count `` badge is toned ``text``; spaces and
+    the ``+N`` overflow tail are left muted. The output renders identically wide.
+    """
+    if not tones:
+        return f"[{_hex('muted')}]{plain}[/]"  # empty cell — 17 spaces, muted
+    dot, core = gl["dot"], gl["radar_core"]
+    out: list[str] = []
+    ti = 0
+    i = 0
+    n = len(plain)
+    while i < n:
+        if plain.startswith(core, i):
+            tone = tones[ti][1] if ti < len(tones) else "muted"
+            out.append(f"[{_hex(tone)}]{core}[/]")
+            i += len(core)
+            ti += 1
+        elif plain.startswith(dot, i):
+            tone = tones[ti][1] if ti < len(tones) else "muted"
+            out.append(f"[{_hex(tone)}]{dot}[/]")
+            i += len(dot)
+            ti += 1
+        else:
+            # non-glyph run (badge digits, spaces, "+N") — emit muted to next glyph.
+            j = i
+            while j < n and not plain.startswith(core, j) and not plain.startswith(dot, j):
+                j += 1
+            out.append(f"[{_hex('muted')}]{plain[i:j]}[/]")
+            i = j
+    return "".join(out)
 
 
 def _S(app: Any, markup: str, **kw: Any) -> Static:

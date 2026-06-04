@@ -43,6 +43,7 @@ UNI = {
     "seg_on": "▰", "seg_off": "▱", "seg_mid": "▒", "cap_l": "▏", "cap_r": "▕",
     "spark": "▁▂▃▄▅▆▇█",
     "corner_tl": "⌜", "corner_tr": "⌝", "corner_bl": "⌞", "corner_br": "⌟",
+    "box_h": "─", "box_v": "│", "box_x": "┼",
 }
 ASCII = {
     "bar_full": "#", "bar_empty": ".", "dot": "*", "ring": "o", "diamond": "<>",
@@ -52,6 +53,7 @@ ASCII = {
     "seg_on": "#", "seg_off": "-", "seg_mid": "+", "cap_l": "[", "cap_r": "]",
     "spark": ".:-=+*#%",
     "corner_tl": "+", "corner_tr": "+", "corner_bl": "+", "corner_br": "+",
+    "box_h": "-", "box_v": "|", "box_x": "+",
 }
 
 
@@ -83,6 +85,7 @@ _ASCIIFY = {
     "▰": "#", "▱": "-", "▒": "+", "▏": "[", "▕": "]",
     "▁": ".", "▂": ":", "▃": "-", "▄": "=", "▅": "+", "▆": "*", "▇": "#",
     "⌜": "+", "⌝": "+", "⌞": "+", "⌟": "+",
+    "─": "-", "┼": "+",  # box_h / box_x (box_v "│" already folds above)
 }
 # Spinner braille frames fold to the ascii spinner ticks. The spinner's primary
 # path already picks spinner_frames(False) in ascii mode; this keeps the central
