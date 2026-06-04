@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.1 - 2026-06-04
+
+### Cell-precise Mission Control + scout reliability fixes
+
+- **Mission Control v6 rendered cell-precise.** The Adoption Matrix is rebuilt as a width-parameterized **59-cell box-drawing grid** (built per glyph-mode), the scan state as a spinner + fixed-width radar sweep + a 5-stage checklist, and gauges/meters/sweeps as pure `fn(width) -> str` functions — fixing the cell drift from multi-cell ASCII glyphs (`(o)` = 3 cells, `->` = 2) being measured with `len()`. A golden-frame + `pytest-textual-snapshot` convergence harness locks the widths. Every surface degrades identically across color/mono, unicode/ascii, and light.
+- **Scout no longer fails with "Invalid MCP configuration."** The claude-CLI backend passed `--mcp-config "{}"`, which claude CLI 2.x rejects (it requires an `mcpServers` key). Now passes `{"mcpServers": {}}` — still hermetic (no MCP autoload).
+- **Broken-but-installed CLIs are detected.** Provider availability now probes `<cli> --version` (cached) instead of trusting `PATH` alone, so a broken CLI install (e.g. a crashing `codex`) is reported unavailable and skipped — with a clearer "pinned but unavailable" message — rather than failing a scan cryptically mid-run.
+
 ## 1.8.0 - 2026-06-04
 
 ### Mission Control v6 ("Observatory")
