@@ -157,6 +157,7 @@ def _hex(tone: str) -> str:
 _DATA_W = 17       # data column width (cells)
 _GUTTER = 4        # fit-label gutter width (cells)
 _MATRIX_W = 59     # full block width: _GUTTER + box_v + 3×(_DATA_W + box_v)
+_CELL_DOT_MAX = 4  # dots per matrix cell before "+N" (fits _DATA_W w/ badge+overflow)
 _FIT_GUTTER = {"high": " HI ", "medium": "MED ", "low": " LO "}
 _RISK_HEAD = {"low": "LOW", "medium": "MED", "high": "HIGH"}
 
@@ -165,6 +166,20 @@ def _center(label: str, width: int) -> str:
     """Center *label* in *width* cells — ``(width-len)//2`` pad on the left."""
     left = (width - len(label)) // 2
     return " " * left + label + " " * (width - len(label) - left)
+
+
+def _clip(s: str, width: int) -> str:
+    """Longest prefix of *s* with display width <= *width* (cell-aware, so a
+    multi-cell ``(o)`` is never half-rendered). The absolute guarantee that a
+    matrix cell can't exceed its column budget for pathological inputs."""
+    if cell_width(s) <= width:
+        return s
+    out = ""
+    for ch in s:
+        if cell_width(out + ch) > width:
+            break
+        out += ch
+    return out
 
 
 def _matrix_cell_plain(
@@ -182,8 +197,8 @@ def _matrix_cell_plain(
         return " " * _DATA_W, []
 
     count = len(items)
-    displayed = items[:_DOT_MAX]
-    overflow = count - _DOT_MAX if count > _DOT_MAX else 0
+    displayed = items[:_CELL_DOT_MAX]
+    overflow = count - _CELL_DOT_MAX if count > _CELL_DOT_MAX else 0
 
     tokens: list[str] = []
     tones: list[tuple[int, str]] = []
@@ -196,7 +211,11 @@ def _matrix_cell_plain(
     if overflow:
         body = f"{body} +{overflow}"
 
-    pad = max(0, _DATA_W - cell_width(body))
+    # The concatenated grid row is exactly 59 cells, so a cell can never exceed
+    # _DATA_W. _CELL_DOT_MAX keeps realistic counts under budget; _clip is the
+    # absolute (cell-aware) guarantee for pathological cells, then pad to width.
+    body = _clip(body, _DATA_W)
+    pad = _DATA_W - cell_width(body)
     return body + " " * pad, tones
 
 

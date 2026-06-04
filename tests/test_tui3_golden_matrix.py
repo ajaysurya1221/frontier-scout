@@ -151,3 +151,21 @@ def test_axes_use_fits_and_risks_order():
     # Guard against silently transposing the grid: FITS top→bottom, RISKS left→right.
     assert FITS == ("high", "medium", "low")
     assert RISKS == ("low", "medium", "high")
+
+
+def test_heavy_cell_stays_59_cells():
+    # 20 verdicts all routed into ONE cell — exercises the count badge + "+N"
+    # overflow + the per-cell dot cap + the cell-aware clip. The 3-item happy-path
+    # tests miss this; without the cap the concatenated data row bulged to 76-78
+    # cells. Every grid line must stay exactly 59 cells in BOTH glyph sets.
+    vs = tuple(_mk(f"t{i}", "hold", "low", "high") for i in range(20))
+    cells = bucket_matrix(vs)
+    for uni in (True, False):
+        gl = glyphs(uni)
+        lines = adoption_matrix_lines(
+            cells, sel=0, total=20, sel_fit="low", sel_risk="high", unicode=uni
+        )
+        for line in lines:
+            p = _plain(line, unicode=uni)
+            if gl["box_v"] in p or gl["box_x"] in p or p.lstrip().startswith("ADOPTION"):
+                assert cell_width(p) == 59, (uni, cell_width(p), repr(p))
