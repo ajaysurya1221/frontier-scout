@@ -183,6 +183,8 @@ def init_db(path: Path | None = None) -> Path:
                 approver_label TEXT,
                 rationale TEXT,
                 revisit_after TEXT,
+                pack_slug TEXT,
+                client TEXT,
                 payload_json TEXT NOT NULL DEFAULT '{}'
             )
             """
@@ -365,6 +367,19 @@ def init_db(path: Path | None = None) -> Path:
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
             (7, _now()),
+        )
+        # v8 (pivot): scope adoption_decisions to a pack + client. The table was
+        # dormant (no writers), so existing DBs just gain two nullable columns.
+        adoption_cols = {
+            r[1] for r in conn.execute("PRAGMA table_info(adoption_decisions)").fetchall()
+        }
+        if "pack_slug" not in adoption_cols:
+            conn.execute("ALTER TABLE adoption_decisions ADD COLUMN pack_slug TEXT")
+        if "client" not in adoption_cols:
+            conn.execute("ALTER TABLE adoption_decisions ADD COLUMN client TEXT")
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            (8, _now()),
         )
     return path
 
@@ -1034,6 +1049,94 @@ def save_pack_override(
             (pack_slug, tool_identifier, override, reason, expires_at, _now()),
         )
         return int(cur.lastrowid)
+
+
+def list_pack_overrides(pack_slug: str | None = None) -> list[dict[str, Any]]:
+    """Read pack overrides (include/exclude/pin/suppress/retire).
+
+    Matches the given pack plus the wildcard ``*`` pack used by dossier-level
+    overrides. Previously the ``pack_overrides`` table had a writer but no reader.
+    """
+
+    query = "SELECT * FROM pack_overrides"
+    params: tuple[Any, ...] = ()
+    if pack_slug is not None:
+        query += " WHERE pack_slug = ? OR pack_slug = '*'"
+        params = (pack_slug,)
+    query += " ORDER BY created_at DESC, id DESC"
+    with _connect(init_db()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def save_adoption_decision(
+    tool_name: str,
+    decision: str,
+    *,
+    pack_slug: str | None = None,
+    client: str | None = None,
+    approver_label: str | None = None,
+    rationale: str | None = None,
+    revisit_after: str | None = None,
+    payload: dict[str, Any] | None = None,
+) -> int:
+    """Record a human sanction/adoption decision, scoped to a pack + client."""
+
+    tool_id = upsert_tool(tool_name)
+    with _connect(init_db()) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO adoption_decisions(
+                tool_id, created_at, decision, approver_label, rationale,
+                revisit_after, pack_slug, client, payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                tool_id,
+                _now(),
+                decision,
+                approver_label,
+                rationale,
+                revisit_after,
+                pack_slug,
+                client,
+                json.dumps(payload or {}),
+            ),
+        )
+        return int(cur.lastrowid)
+
+
+def list_adoption_decisions(
+    *, pack_slug: str | None = None, client: str | None = None
+) -> list[dict[str, Any]]:
+    """Read adoption/sanction decisions, optionally filtered by pack + client."""
+
+    query = """
+        SELECT ad.*, t.tool_name
+        FROM adoption_decisions ad
+        JOIN tools t ON t.id = ad.tool_id
+    """
+    clauses: list[str] = []
+    params: list[Any] = []
+    if pack_slug is not None:
+        clauses.append("ad.pack_slug = ?")
+        params.append(pack_slug)
+    if client is not None:
+        clauses.append("ad.client = ?")
+        params.append(client)
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY ad.created_at DESC, ad.id DESC"
+    with _connect(init_db()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, tuple(params)).fetchall()
+    out = []
+    for row in rows:
+        item = dict(row)
+        item["payload"] = json.loads(item.pop("payload_json") or "{}")
+        out.append(item)
+    return out
 
 
 def clear_scans_for_repo(repo: Path | str) -> int:

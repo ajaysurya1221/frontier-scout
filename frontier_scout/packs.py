@@ -356,6 +356,39 @@ def rank_candidates_for_repo(candidates: list[PackCandidate], profile: object) -
     return scored
 
 
+_OVERRIDE_RANK = {"exclude": 3, "suppress": 3, "retire": 3, "pin": 2, "include": 1}
+
+
+def apply_pack_overrides(
+    candidates: list[PackCandidate], overrides: list[dict]
+) -> list[PackCandidate]:
+    """Filter/reorder candidates by stored pack overrides.
+
+    Precedence per tool: exclude > pin > include (exclude/suppress/retire all
+    remove). Pinned candidates move to the front, preserving relative order.
+    Overrides are read via ``store.list_pack_overrides`` and passed in here so
+    this stays a pure, store-free transform.
+    """
+
+    best_rank: dict[str, int] = {}
+    effective: dict[str, str] = {}
+    for override in overrides:
+        identifier = override.get("tool_identifier")
+        action = override.get("override")
+        if not identifier or action not in _OVERRIDE_RANK:
+            continue
+        rank = _OVERRIDE_RANK[action]
+        if rank >= best_rank.get(identifier, 0):
+            best_rank[identifier] = rank
+            effective[identifier] = (
+                "exclude" if action in ("exclude", "suppress", "retire") else action
+            )
+    kept = [c for c in candidates if effective.get(c.tool_name) != "exclude"]
+    pinned = [c for c in kept if effective.get(c.tool_name) == "pin"]
+    rest = [c for c in kept if effective.get(c.tool_name) != "pin"]
+    return pinned + rest
+
+
 def _mcp_registry_candidates(pack: ScoutPack) -> list[PackCandidate]:
     try:
         with urllib.request.urlopen(pack.discovery.mcp_registry_url, timeout=8) as response:  # noqa: S310
