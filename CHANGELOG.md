@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.7.1 - 2026-06-04
+## 1.8.0 - 2026-06-04
 
 ### Mission Control v6 ("Observatory")
 
