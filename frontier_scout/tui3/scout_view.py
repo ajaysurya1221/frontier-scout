@@ -40,6 +40,8 @@ from frontier_scout.tui3.kit import (
     pct,
     risk_tone,
     sev_tone,
+    spinner_frames,
+    sweep,
     verdict_label,
     verdict_tone,
 )
@@ -729,21 +731,115 @@ def _scanbar(app: Any, gl: dict[str, str]) -> Horizontal:
 #
 # Shown while app._scanning is True (replaces the empty / list branch entirely).
 # Layout mirrors fs6-scout.jsx ScanProgress:
-#   spinner + sweep line (the ScanSpinner widget)
-#   3-stage checklist: watch · match · decide  (painted Statics, glyph markers)
-#   foot line: "reading <repo> · offline tree-sitter pass · …"
+#   spinner + sweep line (the ScanSpinner widget, drives line 0)
+#   5-stage checklist: read tree · parse symbols · judge fit · score risk · rank
+#   foot line: "reading <repo> · offline pass · nothing leaves your machine"
 #
-# The three phases render as a neutral pipeline descriptor (uniform ▸ marker,
-# muted tone) — not a live done/active/todo ladder. The scout runs as a single
-# pass with no per-phase milestone callbacks, so a moving checklist would imply
-# progress it can't measure (and v6 forbids fake content animation); the live
-# "working" signal is carried by the spinner + sweep above.
+# Stage source decision: the scout worker emits progress via reporter.stage(text)
+# (plain text labels like "Detecting stack", "Querying judge") that don't map
+# cleanly to the 5 golden stages. There is no per-phase milestone callback that
+# matches the golden checklist. Per the no-fake-animation rule (v6 handoff: stage
+# motion must reflect real progress or none), we hold a fixed representative stage
+# (stage 2 = "judge fit" active, stages 0-1 done, stages 3-4 todo). The live
+# "working" signal is carried by the spinner + sweep; the checklist is an honest
+# structural descriptor, not a live progress bar.
 
 _SCAN_STAGES = [
-    ("watch", "scout sources"),
-    ("match", "map to your stack"),
-    ("decide", "rank verdicts"),
+    "read tree",
+    "parse symbols",
+    "judge fit",
+    "score risk",
+    "rank",
 ]
+
+# Fixed representative stage held while scanning (index of the active stage).
+# Stages 0.._SCAN_ACTIVE_STAGE-1 are rendered done; _SCAN_ACTIVE_STAGE active;
+# stages _SCAN_ACTIVE_STAGE+1..end are todo. See stage-source decision above.
+_SCAN_ACTIVE_STAGE = 2
+
+
+def scan_progress_lines(
+    repo: str,
+    stage: int,
+    head: int,
+    *,
+    frame_idx: int = 0,
+    motion: bool = True,
+    unicode: bool = True,
+    width: int = 22,
+) -> list[str]:
+    """Return Rich-markup lines reproducing the golden "SCAN STATE" frame.
+
+    Pure function (no Textual, no app) — unit-testable in isolation.
+
+    Args:
+        repo:      Repo name shown in the footer.
+        stage:     Index of the active stage in ``_SCAN_STAGES`` (0-based).
+                   Stages 0..stage-1 are done (✓/v), stage is active (▸/>),
+                   stages stage+1..end are todo (○/o).
+        head:      Sweep head column (0-based, wraps at *width*).
+        frame_idx: Spinner frame index into ``spinner_frames(unicode)``.
+        motion:    When False, use frame 0 and a static sweep.
+        unicode:   Glyph set selector.
+        width:     Width of the sweep run in cells (default 22).
+
+    Returns a list of 7 lines (1 spinner+sweep + 5 stage rows + 1 footer).
+
+    Golden (stage=2, head=7, frame_idx=1, motion=True, unicode=False, width=22):
+        "/ scanning   -----++#--------------"
+        "  v read tree"
+        "  v parse symbols"
+        "  > judge fit ..."
+        "  o score risk"
+        "  o rank"
+        "  reading <repo> . offline pass . nothing leaves your machine"
+    """
+    gl = glyphs(unicode)
+    mint = "#24d6a8"
+    muted = "#6e8aa1"
+    bright = "#d9f7ff"
+
+    # ── line 0: spinner frame + label + sweep ────────────────────────────────
+    frames = spinner_frames(unicode)
+    frame_char = frames[frame_idx if motion else 0]
+    sw = sweep(width, head, motion=motion, unicode=unicode)
+    # Sweep: head cell bright mint, tail cells dim, rest in track colour (#152232).
+    # Wrap the whole sweep in mint to let the head shine; the sweep() function
+    # returns plain chars, so markup doesn't alter cell width.
+    line0 = (
+        f"[{mint} b]{frame_char}[/]"
+        f" [#a9bccd]scanning[/]"
+        f"   [{mint}]{sw}[/]"
+    )
+
+    # ── lines 1-5: stage checklist ───────────────────────────────────────────
+    stage_lines: list[str] = []
+    for i, label in enumerate(_SCAN_STAGES):
+        if i < stage:
+            # done — mint check
+            marker = f"[{mint}]{gl['check']}[/]"
+            lbl = f"[{mint}]{label}[/]"
+            stage_lines.append(f"  {marker} {lbl}")
+        elif i == stage:
+            # active — mint bold check-marker, trailing " ..."
+            marker = f"[{mint} b]{gl['tri']}[/]"
+            lbl = f"[{mint} b]{label}[/] [{muted}]...[/]"
+            stage_lines.append(f"  {marker} {lbl}")
+        else:
+            # todo — muted ring
+            marker = f"[{muted}]{gl['ring']}[/]"
+            lbl = f"[{muted}]{label}[/]"
+            stage_lines.append(f"  {marker} {lbl}")
+
+    # ── footer ───────────────────────────────────────────────────────────────
+    pip = gl["pip"]
+    foot = (
+        f"  [{muted}]reading [{bright}]{repo}[/]"
+        f" [{muted}]{pip} offline pass"
+        f" {pip} nothing leaves your machine[/]"
+    )
+
+    return [line0] + stage_lines + [foot]
 
 
 def _scan_progress(app: Any, gl: dict[str, str]) -> Vertical:
@@ -752,26 +848,21 @@ def _scan_progress(app: Any, gl: dict[str, str]) -> Vertical:
 
     box = Vertical(classes="scout-progress")
 
-    # ScanSpinner carries both the frame-cycling spinner and the radar sweep.
-    box.compose_add_child(ScanSpinner(f"scouting {repo}"))
+    # ScanSpinner carries the live spinner frame + radar sweep (line 0).
+    # It now uses scan_progress_lines internally via _repaint.
+    box.compose_add_child(ScanSpinner(repo=repo, stage=_SCAN_ACTIVE_STAGE))
 
-    # Pipeline descriptor — 3 neutral phase rows (uniform ▸ marker, muted tone).
-    for key, label in _SCAN_STAGES:
-        line = (
-            app._paint(f"[{_hex('muted')}]{gl['tri']}[/]")
-            + app._paint(f" [{_hex('muted')}]{key:<7}[/]")
-            + app._paint(f" [{_hex('muted')}]{label}[/]")
-        )
-        box.compose_add_child(Static(line, classes="scan-stage"))
+    # Stage checklist — rendered from the pure function lines 1-5 as static Statics.
+    # Stage is held fixed (see stage-source decision in the module comment above).
+    uni = app.state.unicode
+    lines = scan_progress_lines(
+        repo, _SCAN_ACTIVE_STAGE, 0, frame_idx=0, motion=False, unicode=uni
+    )
+    for line in lines[1:-1]:  # skip line 0 (spinner, rendered by ScanSpinner) and footer
+        box.compose_add_child(Static(app._paint(line), classes="scan-stage"))
 
-    # Footer line.
-    box.compose_add_child(_S(
-        app,
-        f"[{_hex('muted')}]reading [{_hex('bright')}]{repo}[/]"
-        f" {gl['pip']} offline tree-sitter pass"
-        f" {gl['pip']} no source leaves your machine[/]",
-        classes="scan-foot",
-    ))
+    # Footer line (line -1).
+    box.compose_add_child(Static(app._paint(lines[-1]), classes="scan-foot"))
 
     return box
 
