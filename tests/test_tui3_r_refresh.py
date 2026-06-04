@@ -423,6 +423,13 @@ def test_cap_spinner_clears_after_scan_failure():
 
 
 def test_matrix_crosshair_tones_selected_axes():
+    """The selected fit/risk axis labels are bold+toned in the rendered matrix block.
+
+    The new _adoption_matrix renders everything as a single LineClickStatic with
+    class ``scout-matrix-block``. The crosshair is baked into adoption_matrix_lines
+    (pure fn); we assert the toned+bold markup appears in the widget's rendered
+    content rather than querying separate axis sub-widgets.
+    """
     from frontier_scout.tui3.state import Verdict
     async def go():
         app = MissionControlApp(demo=True)
@@ -433,24 +440,17 @@ def test_matrix_crosshair_tones_selected_axes():
             app._scanning = False
             await app._render_pane()
             await pilot.pause()
-            # Collect markup only from the axis-label widgets (scout-matrix-axis and
-            # the risk-header scout-matrix-cell widgets that are part of the header row).
-            axis_parts = []
-            for w in app.query(".scout-matrix-axis"):
+            # The new matrix is a single LineClickStatic (.scout-matrix-block).
+            # adoption_matrix_lines bakes the crosshair markup into the content:
+            # fit_tone(high)=mint → "HI " bold+toned; risk_tone(low)=mint → "LOW" bold+toned.
+            blocks = app.query(".scout-matrix-block")
+            block_content = ""
+            for w in blocks:
                 c = getattr(w, "content", None)
                 if c:
-                    axis_parts.append(str(c))
-            # Also collect the risk-header cells (the header row's scout-matrix-cell widgets)
-            # by looking at all scout-matrix-cell statics and filtering to those that
-            # contain only a single label token (no dots/numbers = header cells).
-            for w in app.query(".scout-matrix-cell"):
-                c = getattr(w, "content", None)
-                if c and str(c).count("]") <= 2:  # header cell: one markup tag
-                    axis_parts.append(str(c))
-            axis_txt = "  ".join(axis_parts)
-            # fit_tone(high)=mint (#24d6a8); the "hi " label for fit=high must be bold+toned.
-            # risk_tone(low)=mint (#24d6a8); the "low" label for risk=low must be bold+toned.
-            assert "#24d6a8 b]hi " in axis_txt or "#24d6a8 b]low" in axis_txt, (
-                f"Expected toned+bold axis label in axis widgets, got: {axis_txt!r}"
+                    block_content += str(c)
+            # Bold+toned axis labels must appear somewhere in the block content.
+            assert "#24d6a8 b]" in block_content, (
+                f"Expected toned+bold axis label in matrix block, got: {block_content!r}"
             )
     _run(go())

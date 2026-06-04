@@ -29,12 +29,13 @@ from frontier_scout.tui3.kit import spinner_frames
 # scan_progress_lines; widgets.py calls it only at runtime (inside _repaint),
 # never at import time.
 def _scan_progress_line0(
-    repo: str, stage: int, head: int, *, frame_idx: int, motion: bool, unicode: bool, width: int
+    repo: str, stage: int, head: int,
+    *, label: str = "scanning", frame_idx: int, motion: bool, unicode: bool, width: int
 ) -> str:
     from frontier_scout.tui3.scout_view import scan_progress_lines  # noqa: PLC0415
     return scan_progress_lines(
         repo, stage, head,
-        frame_idx=frame_idx, motion=motion, unicode=unicode, width=width,
+        label=label, frame_idx=frame_idx, motion=motion, unicode=unicode, width=width,
     )[0]
 
 
@@ -149,9 +150,11 @@ class ScanSpinner(Static):
         head = self._head if motion else self._w // 2
         # Delegate line 0 to scan_progress_lines (the golden pure function) so
         # spinner and static render path share the same format invariant.
+        # Use self._label for the line-0 spinner label (cap-scan labels flow here);
+        # self._repo (or self._label as fallback) goes in the footer.
         repo = self._repo or self._label
         line0 = _scan_progress_line0(
             repo, self._stage, head,
-            frame_idx=self._frame, motion=motion, unicode=uni, width=self._w,
+            label=self._label, frame_idx=self._frame, motion=motion, unicode=uni, width=self._w,
         )
         self.update(self.app._paint(line0))

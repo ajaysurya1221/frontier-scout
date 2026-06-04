@@ -45,7 +45,7 @@ from frontier_scout.tui3.kit import (
     verdict_label,
     verdict_tone,
 )
-from frontier_scout.tui3.widgets import ClickStatic, ScanSpinner
+from frontier_scout.tui3.widgets import ClickStatic, LineClickStatic, ScanSpinner
 
 _TONE = {
     "mint": "#24d6a8", "gold": "#e3c26f", "blue": "#7aa6ff", "red": "#ff6b6b",
@@ -433,183 +433,73 @@ def build_scout(app: Any) -> Vertical:
 
 # ── Adoption Matrix (wide breakpoint) ────────────────────────────────────────
 #
-# Layout:
-#   header line   — "adoption matrix · fit × risk · <N>"
-#   axis row      — risk → low / med / high column headers
-#   3 rows of 3   — one ClickStatic per cell; dots + count badge + overflow
-#   readout line  — "▸ <name> · <verdict> · fit <f> · risk <r>" or hint
-#
-# Each cell is a ClickStatic so clicking anywhere in the cell selects its first
-# verdict (if populated). Individual dots within a cell that has >1 verdict are
-# rendered inline as text; the cell-click selects the first dot (mouse parity
-# for the common case). The readout line updates on the next render cycle when
-# state.sel changes.
+# Layout: the 59-cell box-grid produced by ``adoption_matrix_lines`` (pure fn),
+# rendered as a single ``LineClickStatic`` so every glyph routes through
+# app._paint and glyphs(unicode) exactly once. The line_map maps each DATA-row
+# line index → app._select(first_verdict_in_that_row) for row-granularity
+# mouse parity (same path as j/k).
 #
 # Invariants:
-#   • Every glyph through glyphs() + app._paint  (color/mono + unicode/ascii)
-#   • click → app._select(i) — same path as j/k  (no duplicated logic)
-#   • compose_add_child only; never remove_children + remount
-
-_RISK_LABELS = {"low": "low", "medium": "med", "high": "high"}
-_FIT_LABELS = {"high": "hi ", "medium": "med", "low": "lo "}
-
-
-def _cell_markup(
-    app: Any,
-    gl: dict[str, str],
-    items: list[tuple[int, Any]],
-    sel: int,
-    fit: str,
-    risk: str,
-) -> str:
-    """Build the Rich-markup string for one matrix cell — a SINGLE line.
-
-    Returns one painted line: a count badge (when >3) + the dot run (up to
-    ``_DOT_MAX``) + ``+N`` overflow for a populated cell, or a "safe"/"hold"
-    corner label / ``·`` placeholder for an empty cell. Cells are single-line so
-    the 3×3 grid keeps uniform row heights (the matrix alignment relies on equal
-    rows — see ``theme.tcss`` ``.scout-matrix-cell``).
-
-    When the cell holds the selected verdict, the content is wrapped inline with
-    the corner-bracket lock frame (``⌜…⌟`` → ``+…+`` in ascii). This is the
-    single-line terminal mapping of the prototype's 4-corner box: a 2-D
-    affordance that honestly degrades to a 2-corner bracket in a character grid
-    (v6 handoff §2b/§6). The selected dot's ``radar_core`` glyph remains the
-    primary selection signal; the frame is reinforcement.
-    """
-    border = _hex("muted")
-    safe_corner = fit == "high" and risk == "low"
-    hold_corner = fit == "low" and risk == "high"
-
-    if not items:
-        # Empty cell — show corner label if applicable, otherwise faint placeholder.
-        if safe_corner:
-            return app._paint(f"[{_hex('mint')} dim]safe[/]")
-        if hold_corner:
-            return app._paint(f"[{_hex('red')} dim]hold[/]")
-        return app._paint(f"[{border}]·[/]")
-
-    count = len(items)
-    displayed = items[:_DOT_MAX]
-    overflow = count - _DOT_MAX if count > _DOT_MAX else 0
-
-    # Determine whether this cell holds the selected verdict.
-    cell_indices = {i for i, _ in items}
-    is_selected = sel in cell_indices
-
-    # Corner lock frame — reinforcement when this cell holds the selection.
-    # Single-line cells use inline framing: corner_tl … content … corner_br.
-    # Toned mint for normal cells, red for the danger corner (low fit / high risk).
-    frame_tone = _hex("red") if (is_selected and hold_corner) else _hex("mint")
-
-    # Build dot string — selected dot uses radar_core glyph.
-    parts: list[str] = []
-    if count > 3:
-        cnt_hex = _hex("text")
-        parts.append(f"[{cnt_hex}]{count}[/] ")
-
-    for i, v in displayed:
-        tone_hex = _hex(verdict_tone(v.verdict))
-        glyph = gl["radar_core"] if i == sel else gl["dot"]
-        # Each dot is individually tagged so it carries correct color in both
-        # color and mono modes (the color is stripped by app._paint in mono,
-        # leaving the glyph which still conveys presence).
-        parts.append(f"[{tone_hex}]{glyph}[/]")
-
-    if overflow:
-        parts.append(f"[{_hex('muted')}]+{overflow}[/]")
-
-    content = "".join(parts)
-    if is_selected:
-        # Wrap content with corner glyphs (inline: ⌜<content>⌟ style).
-        # All glyphs route through gl so ascii mode gets '+'.
-        tl = gl["corner_tl"]
-        br = gl["corner_br"]
-        content = f"[{frame_tone}]{tl}[/]{content}[{frame_tone}]{br}[/]"
-
-    return app._paint(content)
-
+#   • Build in the ACTIVE mode (unicode=app.state.unicode) — NOT asciify post-hoc
+#     (the multi-cell ascii radar_core "(o)"=3 vs "◉"=1 would drift widths).
+#   • click → app._select(i) — same path as j/k (no duplicated logic).
+#   • compose_add_child only; never remove_children + remount.
 
 def _adoption_matrix(app: Any, gl: dict[str, str], verdicts: tuple) -> Vertical:
-    """Render the 3×3 Adoption Matrix as a Vertical containing box-drawn rows."""
-    sel = app.state.sel
-    n = len(verdicts)
+    """Render the 59-cell box-grid Adoption Matrix as a Vertical.
+
+    Uses ``adoption_matrix_lines`` (pure) in the ACTIVE glyph mode, wrapped in
+    a single ``LineClickStatic``. The ``line_map`` maps each DATA-row line index
+    (the three lines whose plain text starts with a fit gutter) to
+    ``app._select(first_verdict_index_in_that_row)`` when the row is populated.
+    """
     cells = bucket_matrix(verdicts)
+    cur = app.state.current
+    sel = app.state.sel
+    sel_fit = cur.fit if cur else None
+    sel_risk = cur.risk if cur else None
+
+    lines = adoption_matrix_lines(
+        cells, sel, len(verdicts), sel_fit, sel_risk,
+        unicode=app.state.unicode,
+    )
+
+    # ── build the line_map ────────────────────────────────────────────────────
+    # adoption_matrix_lines returns:
+    #   [0]      title row
+    #   [1]      risk header row
+    #   [2]      divider above HI
+    #   [3]      HI data row       ← DATA-ROW 0  (fit="high")
+    #   [4]      divider below HI
+    #   [5]      MED data row      ← DATA-ROW 1  (fit="medium")
+    #   [6]      divider below MED
+    #   [7]      LO data row       ← DATA-ROW 2  (fit="low")
+    #   [8]      divider below LO
+    #   [9]      axis legend
+    #   [10]     selection readout
+    # Data-row line indices are 3, 5, 7 (title + header + divider-above + 2 per data-row).
+    _DATA_LINE_INDICES = {
+        "high": 3,
+        "medium": 5,
+        "low": 7,
+    }
+    line_map: dict[int, Any] = {}
+    for fit, line_idx in _DATA_LINE_INDICES.items():
+        # Find the first populated cell in this row (scan RISKS low→med→high).
+        first_idx: int | None = None
+        for risk in RISKS:
+            row_items = cells[(fit, risk)]
+            if row_items:
+                first_idx = row_items[0][0]
+                break
+        if first_idx is not None:
+            line_map[line_idx] = lambda i=first_idx: app._select(i)
+
+    content = "\n".join(app._paint(ln) for ln in lines)
+    widget = LineClickStatic(content, line_map, classes="scout-matrix-block")
 
     box = Vertical(classes="scout-matrix panel")
-
-    # ── header ────────────────────────────────────────────────────────────────
-    box.compose_add_child(_S(
-        app,
-        f"[{_hex('muted')}]adoption matrix[/] "
-        f"[{_hex('text')}]{gl['pip']} fit {gl['ud'][0]} {gl['pip']} risk {gl['arrow']} "
-        f"{gl['pip']}[/] [{_hex('mint')} b]{n}[/]",
-    ))
-
-    # ── risk axis header (widget columns, aligned 1:1 with the cell rows) ──────
-    cur = app.state.current
-    head_row = Horizontal(classes="scout-matrix-row")
-    head_row.compose_add_child(
-        _S(app, f"[{_hex('muted')}]fit[/]", classes="scout-matrix-axis")
-    )
-    for r in RISKS:
-        if cur is not None and r == cur.risk:
-            risk_hex = _hex(risk_tone(cur.risk))
-            label_markup = f"[{risk_hex} b]{_RISK_LABELS[r]}[/]"
-        else:
-            label_markup = f"[{_hex('muted')}]{_RISK_LABELS[r]}[/]"
-        head_row.compose_add_child(
-            _S(app, label_markup, classes="scout-matrix-cell")
-        )
-    box.compose_add_child(head_row)
-
-    # ── 3 rows of cells ───────────────────────────────────────────────────────
-    for fit in FITS:
-        row_w = Horizontal(classes="scout-matrix-row")
-        # fit axis label — same fixed-width gutter as the header row
-        if cur is not None and fit == cur.fit:
-            fit_hex = _hex(fit_tone(cur.fit))
-            fit_label_markup = f"[{fit_hex} b]{_FIT_LABELS[fit]}[/]"
-        else:
-            fit_label_markup = f"[{_hex('muted')}]{_FIT_LABELS[fit]}[/]"
-        row_w.compose_add_child(_S(
-            app,
-            fit_label_markup,
-            classes="scout-matrix-axis",
-        ))
-        for risk in RISKS:
-            items = cells[(fit, risk)]
-            markup = _cell_markup(app, gl, items, sel, fit, risk)
-
-            if items:
-                first_idx = items[0][0]
-                cell_w = ClickStatic(
-                    markup,
-                    lambda i=first_idx: app._select(i),
-                    classes="scout-matrix-cell",
-                )
-            else:
-                cell_w = Static(markup, classes="scout-matrix-cell empty")
-
-            row_w.compose_add_child(cell_w)
-        box.compose_add_child(row_w)
-
-    # ── readout line ──────────────────────────────────────────────────────────
-    if cur is not None:
-        tone_hex = _hex(verdict_tone(cur.verdict))
-        name = cur.tool_name.split("/")[-1]
-        readout = (
-            f"[{tone_hex}]{gl['tri']}[/] "
-            f"[{_hex('bright')}]{name}[/] "
-            f"[{_hex('muted')}]{gl['pip']}[/] "
-            f"[{tone_hex}]{verdict_label(cur.verdict).lower()}[/] "
-            f"[{_hex('muted')}]{gl['pip']} fit[/] [{_hex(fit_tone(cur.fit))} b]{cur.fit}[/] "
-            f"[{_hex('muted')}]{gl['pip']} risk[/] [{_hex(risk_tone(cur.risk))} b]{cur.risk}[/]"
-        )
-    else:
-        readout = f"[{_hex('muted')}]select a verdict to read it[/]"
-
-    box.compose_add_child(_S(app, readout, classes="scout-matrix-read"))
+    box.compose_add_child(widget)
     return box
 
 
@@ -763,6 +653,7 @@ def scan_progress_lines(
     stage: int,
     head: int,
     *,
+    label: str = "scanning",
     frame_idx: int = 0,
     motion: bool = True,
     unicode: bool = True,
@@ -778,6 +669,7 @@ def scan_progress_lines(
                    Stages 0..stage-1 are done (✓/v), stage is active (▸/>),
                    stages stage+1..end are todo (○/o).
         head:      Sweep head column (0-based, wraps at *width*).
+        label:     Label shown on line 0 next to the spinner (default "scanning").
         frame_idx: Spinner frame index into ``spinner_frames(unicode)``.
         motion:    When False, use frame 0 and a static sweep.
         unicode:   Glyph set selector.
@@ -808,7 +700,7 @@ def scan_progress_lines(
     # returns plain chars, so markup doesn't alter cell width.
     line0 = (
         f"[{mint} b]{frame_char}[/]"
-        f" [#a9bccd]scanning[/]"
+        f" [#a9bccd]{label}[/]"
         f"   [{mint}]{sw}[/]"
     )
 
