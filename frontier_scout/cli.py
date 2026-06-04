@@ -44,7 +44,9 @@ from .trials import run_trial
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="frontier-scout",
-        description="Local AI adoption radar for tools, MCP servers, agent frameworks, and model drops.",
+        description="Sanctioned MCP-server packs for coding assistants: repo-rank approved MCP "
+        "servers, read each server's static safety map, and export the approved set into your "
+        "Claude Code managed config.",
     )
     parser.add_argument("--version", action="version", version=f"frontier-scout {__version__}")
     # Stream I: top-level alias matches the mental model `frontier-scout --setup`.

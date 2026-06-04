@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Pivot — sanctioned MCP-server packs for coding assistants
+
+Repositioning from a broad "AI-adoption radar" into a focused product: **repo-ranked, sanctioned
+MCP-server packs** with a **static safety map** and a **one-step export into Claude Code managed
+config** (`allowedMcpServers` / `deniedMcpServers`). Driven by follow-up market research; see
+[`docs/pivot/REVISED_IMPLEMENTATION_PLAN.md`](docs/pivot/REVISED_IMPLEMENTATION_PLAN.md) and
+[`DEPRECATIONS.md`](DEPRECATIONS.md). Phase 0: repositioned README/CLI copy, deprecation notices,
+feasibility spikes (`docs/spike-mcp-probe.md`, `docs/spike-claude-config.md`). No behavior removed;
+the radar/scan/TUI remain as the ranking engine behind the product.
+
 ## 1.8.1 - 2026-06-04
 
 ### Cell-precise Mission Control + scout reliability fixes

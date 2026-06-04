@@ -11,7 +11,7 @@
 <div align="center">
 
 <a href="https://github.com/ajaysurya1221/frontier-scout">
-  <img src="docs/assets/hero-banner.svg" alt="Frontier Scout — the AI adoption radar. See new AI first, prove it fits your repo before you ship." width="100%">
+  <img src="docs/assets/hero-banner.svg" alt="Frontier Scout — sanctioned MCP-server packs for coding assistants. Repo-rank approved MCP servers, read each server's static safety map, and export the approved set into your Claude Code managed config." width="100%">
 </a>
 
 <p>
@@ -36,13 +36,15 @@
 </div>
 
 > [!TIP]
-> **377 releases scanned &#8594; 5 worth your time.** Newsletters tell you what's _popular_ and trending tells you what's _loud_ — neither knows your stack, and neither says whether a tool is safe to run. **Frontier Scout reads your repo locally, ranks every release against it, and refuses to say "ship it" without evidence.**
+> **Hundreds of MCP servers. Which ones are safe for _your_ team?** Registries and catalogs tell you what _exists_ — they don't rank by your repo, classify each server's capabilities, or hand you a config fragment to approve them. **Frontier Scout builds a repo-ranked, sanctioned MCP-server pack and exports it straight into Claude Code's managed allow-list.**
 
 ---
 
 ## About
 
-**Frontier Scout is a local-first AI-adoption radar.** One pipeline, three jobs — **find what's new &#8594; figure out what's relevant to _your_ code &#8594; refuse to say "ship it" without evidence.** It runs as a dense, keyboard- and mouse-driven terminal app (Mission Control) or fully headless in CI, and works with whatever LLM you already pay for — or none at all.
+**Frontier Scout turns "can we use this MCP server?" into a one-step decision for your coding assistant.** It builds a **sanctioned pack** of approved MCP servers — **repo-ranked** so the ones that matter to _your_ code rise to the top — shows a **static safety map** (capability + policy) for each, and **exports the approved set into the Claude Code managed config your team already controls** (`allowedMcpServers` / `deniedMcpServers`).
+
+The local-first adoption radar that powers the ranking is still here — it runs fully offline (`frontier-scout demo`), never sends your source to an LLM, and works with whatever LLM you already pay for, or none at all. But the product is the **sanctioned pack**, not the radar. _(Repositioning in progress — see [`docs/pivot/REVISED_IMPLEMENTATION_PLAN.md`](docs/pivot/REVISED_IMPLEMENTATION_PLAN.md).)_
 
 <div align="center">
   <img src="docs/assets/mission-control-v5.svg" alt="Frontier Scout Mission Control: the Scout home with the Adoption Matrix — a fit-by-risk grid of tier-coloured verdict dots — cross-linked to the ranked verdict list and a detail panel for anthropics/skills." width="100%">
