@@ -350,6 +350,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
     guard_cmd.add_argument("--strict", action="store_true", help="Exit non-zero on medium findings too.")
+    guard_cmd.add_argument(
+        "--notify",
+        action="store_true",
+        help="Non-blocking: report policy drift / unsanctioned tools but always exit 0.",
+    )
 
     policy_cmd = sub.add_parser("policy", help="Manage local Adoption Firewall policy.")
     policy_sub = policy_cmd.add_subparsers(dest="policy_command")
@@ -1029,6 +1034,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "guard":
         findings = run_guard(Path(args.repo), strict=args.strict)
         print(format_findings(findings, output_format=args.format))
+        if args.notify:
+            # Non-blocking notifier: surface drift without failing the build (the soft
+            # data-gathering surface the research prefers over a hard gate).
+            return 0
         if any(f.severity == "high" or (args.strict and f.severity == "medium") for f in findings):
             return 1
         return 0
@@ -1045,6 +1054,19 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("policy requires a subcommand")
         return 2
     if args.command == "incident":
+        # Incident Change Scout is parked during the sanctioned-packs pivot (it's a
+        # separate problem/buyer). Keep the code, gate it behind an experimental flag.
+        if os.environ.get("FRONTIER_SCOUT_EXPERIMENTAL", "").strip().lower() not in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        ):
+            print(
+                "incident is an experimental module, parked during the sanctioned-packs "
+                "pivot. Set FRONTIER_SCOUT_EXPERIMENTAL=1 to enable it."
+            )
+            return 2
         if args.incident_command == "demo":
             summary = run_incident_demo(
                 corpus_dir=Path(args.corpus),

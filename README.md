@@ -156,22 +156,22 @@ Writes [`briefing.html`](demo/briefing.html), [`briefing.md`](demo/briefing.md),
 
 ## The killer workflow
 
-Someone drops a repo, MCP server, model, or agent framework in a newsletter or team chat. Turn that link into a local adoption **decision** instead of a vibes-based _"looks safe"_:
+Build your team's **sanctioned MCP-server pack** for a coding assistant — repo-ranked, risk-gated, exported straight into the managed config you already control. Keyless and offline by default:
 
 ```bash
-frontier-scout init --repo .            # local stack profile (+ tree-sitter import evidence)
-frontier-scout evaluate <tool-url>      # source-backed evidence + permission map
-frontier-scout trial <tool> --dry-run   # adoption receipt, installs nothing
-frontier-scout guard --repo .           # CI gate: risky tools need a stored receipt
-frontier-scout report                   # static HTML executive radar
+frontier-scout packs candidates --repo . --client claude-code   # repo-ranked MCP servers + static safety
+frontier-scout packs sanction <server> --repo .                 # approve (high-risk needs --acknowledge-risk)
+frontier-scout packs export --client claude-code --target ./out # managed allowedMcpServers/.mcp.json
 ```
 
-Inspect living packs and repo-relevant dependency upgrades:
+The export's `managed-settings.json` (allow/deny) is the admin-deployed surface that governs even **user-scoped** installs; `.mcp.json` is the project face. Full walkthrough: [docs/sanctioned-packs-quickstart.md](docs/sanctioned-packs-quickstart.md).
+
+The single-tool engine underneath still works (`evaluate` → `trial` → `guard` → `report`), now as the ranking + safety engine behind the pack:
 
 ```bash
-frontier-scout packs list               # candidate → watched → core → retired
+frontier-scout evaluate <tool-url>      # source-backed evidence + permission map
+frontier-scout guard --repo . --notify  # non-blocking policy-drift / unsanctioned-tool notice
 frontier-scout deps scan --repo .       # repo-relevant security & breaking upgrades
-frontier-scout dossier <tool>           # local adoption dossier with explicit unknowns
 ```
 
 ## Safety model
