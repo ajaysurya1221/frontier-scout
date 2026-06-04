@@ -25,7 +25,7 @@ def test_spark_ascii():
 
 def test_matrix_block_59():
     cells = bucket_matrix(())
-    plain = [re.sub(r"\[/?[^\]]*\]", "", l) for l in adoption_matrix_lines(cells, -1, 0)]
+    plain = [re.sub(r"\[/?[^\]]*\]", "", ln) for ln in adoption_matrix_lines(cells, -1, 0)]
     grid = [p for p in plain if "|" in p or "│" in p or "+" in p or "─" in p]
     assert grid and all(cell_width(p) == 59 for p in grid)
 

@@ -169,3 +169,13 @@ def test_heavy_cell_stays_59_cells():
             p = _plain(line, unicode=uni)
             if gl["box_v"] in p or gl["box_x"] in p or p.lstrip().startswith("ADOPTION"):
                 assert cell_width(p) == 59, (uni, cell_width(p), repr(p))
+
+
+def test_danger_corner_lock_is_red():
+    # The selected cell at low fit / high risk (the danger corner) frames in red,
+    # not mint. The corner glyphs are unicode-only, so assert on the unicode build.
+    # CI-visible guard for the lock_tone path (the old _cell_markup test that covered
+    # this was removed with the function; this re-covers it without the snapshot).
+    vs = (_mk("a", "hold", "low", "high"),)
+    blob = "".join(adoption_matrix_lines(bucket_matrix(vs), 0, 1, "low", "high", unicode=True))
+    assert "#ff6b6b" in blob  # red lock frame on the danger corner

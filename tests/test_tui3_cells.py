@@ -1,5 +1,4 @@
-from rich.cells import cell_len
-from frontier_scout.tui3.kit import meter, sweep, cell_width, glyphs, asciify
+from frontier_scout.tui3.kit import asciify, cell_width, glyphs, meter, sweep
 
 
 def test_cell_width_multicell_ascii():
