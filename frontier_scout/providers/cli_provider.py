@@ -219,7 +219,11 @@ class ClaudeCodeProvider(_CLIProvider):
             "-p",
             "--strict-mcp-config",
             "--mcp-config",
-            "{}",
+            # claude CLI 2.x validates this strictly: a bare "{}" is rejected
+            # ("Invalid MCP configuration: mcpServers: expected record, received
+            # undefined"). Pass an explicit empty mcpServers map — still hermetic
+            # (--strict-mcp-config + no servers = no MCP autoload).
+            '{"mcpServers": {}}',
             "--output-format",
             "json",
             "--disallowed-tools",
