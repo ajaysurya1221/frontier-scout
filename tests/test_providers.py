@@ -299,6 +299,21 @@ def test_cli_provider_runs_and_parses(monkeypatch):
     assert resp.usage.input_tokens == 0  # CLI runs are $0 / untracked
 
 
+def test_claude_mcp_config_has_mcpservers_key():
+    # Regression: claude CLI 2.x strictly validates --mcp-config and rejects a
+    # bare `{}` ("Invalid MCP configuration: mcpServers: expected record, received
+    # undefined"), which silently broke every claude-backend scout. The hermetic
+    # config must carry an explicit empty `mcpServers` map.
+    import json
+
+    cmd = ClaudeCodeProvider()._command("sonnet", "")
+    assert "--mcp-config" in cmd
+    cfg = cmd[cmd.index("--mcp-config") + 1]
+    parsed = json.loads(cfg)
+    assert parsed == {"mcpServers": {}}, f"--mcp-config must be {{'mcpServers': {{}}}}, got {cfg!r}"
+    assert "--strict-mcp-config" in cmd  # still hermetic — no MCP autoload
+
+
 def test_cli_provider_nonzero_exit_raises(monkeypatch):
     p = CodexProvider()
     completed = types.SimpleNamespace(returncode=1, stdout="", stderr="boom")
@@ -481,7 +496,8 @@ def test_claude_cli_command_is_hermetic_and_tiered(monkeypatch):
     cmd = cap["cmd"]
     assert cmd[:2] == ["claude", "-p"]
     assert "--strict-mcp-config" in cmd
-    assert "--mcp-config" in cmd and "{}" in cmd
+    # claude 2.x rejects a bare "{}" — config must carry an explicit mcpServers map.
+    assert "--mcp-config" in cmd and '{"mcpServers": {}}' in cmd
     assert "--output-format" in cmd and "json" in cmd
     assert "--bare" not in cmd
     assert "--model" in cmd and "sonnet" in cmd
