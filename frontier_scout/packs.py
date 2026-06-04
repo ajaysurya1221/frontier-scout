@@ -11,7 +11,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-PackState = Literal["candidate", "watched", "core", "retired"]
+PackState = Literal["candidate", "watched", "core", "retired", "sanctioned"]
 PackCandidateState = PackState
 
 
@@ -64,6 +64,13 @@ class PackCandidate(BaseModel):
     days_since_release: int | None = None
     issue_response_p90_days: int | None = None
     star_growth_z: float | None = None
+    # v1.9 (pivot): enrichment consumed by the repo-aware ranker + config exporter.
+    category: str | None = None
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+    server_meta: dict = Field(default_factory=dict)
+    # repo-specific fit tier ("high"/"medium"/"low"), set by rank_candidates_for_repo.
+    repo_fit: str | None = None
 
 
 @dataclass(frozen=True)
@@ -274,8 +281,14 @@ def pack_summary_rows() -> list[dict[str, object]]:
     return rows
 
 
-def candidate_rows_for_pack(pack: ScoutPack, *, discover: bool = False) -> list[PackCandidate]:
-    """Return seed and optional live-discovered candidates for a pack."""
+def candidate_rows_for_pack(
+    pack: ScoutPack, *, discover: bool = False, profile: object | None = None
+) -> list[PackCandidate]:
+    """Return seed and optional live-discovered candidates for a pack.
+
+    When ``profile`` (a ScoutProfile) is given, candidates are ranked by repo fit
+    via :func:`rank_candidates_for_repo`; without it the legacy order is preserved.
+    """
 
     candidates = [
         PackCandidate(
@@ -291,7 +304,56 @@ def candidate_rows_for_pack(pack: ScoutPack, *, discover: bool = False) -> list[
     ]
     if discover and pack.discovery.mcp_registry_url:
         candidates.extend(_mcp_registry_candidates(pack))
+    if profile is not None:
+        candidates = rank_candidates_for_repo(candidates, profile)
     return candidates
+
+
+def pack_candidate_to_fit_input(candidate: PackCandidate, stack: dict) -> tuple[str, str, dict]:
+    """Adapt a PackCandidate into the ``(category, text, stack)`` shape evaluate._fit wants.
+
+    MCP-registry candidates default to ``mcp_server``; ``text`` combines name +
+    description + tags so the fit heuristic has signal to match against the repo stack.
+    """
+
+    category = candidate.category or "mcp_server"
+    text = " ".join(
+        part
+        for part in (candidate.tool_name, candidate.description, " ".join(candidate.tags))
+        if part
+    )
+    return category, text, stack
+
+
+_FIT_RANK = {"high": 2, "medium": 1, "low": 0}
+
+
+def rank_candidates_for_repo(candidates: list[PackCandidate], profile: object) -> list[PackCandidate]:
+    """Rank candidates by deterministic repo fit (highest first).
+
+    Reuses the public :func:`frontier_scout.evaluate.repo_fit` scorer and the repo
+    stack from ``stack_from_profile`` — both offline/deterministic (no LLM, no
+    network). Stable: ties keep input order.
+    """
+
+    from .evaluate import repo_fit as _repo_fit
+    from .profile import stack_from_profile
+
+    stack = stack_from_profile(profile) if profile is not None else {}
+    scored: list[PackCandidate] = []
+    for candidate in candidates:
+        category, text, _ = pack_candidate_to_fit_input(candidate, stack)
+        fit = _repo_fit(category, text, stack) if stack else "low"
+        scored.append(candidate.model_copy(update={"repo_fit": fit}))
+    scored.sort(
+        key=lambda c: (
+            _FIT_RANK.get(c.repo_fit or "low", 0),
+            c.consensus_score,
+            c.freshness_score,
+        ),
+        reverse=True,
+    )
+    return scored
 
 
 def _mcp_registry_candidates(pack: ScoutPack) -> list[PackCandidate]:
@@ -300,30 +362,110 @@ def _mcp_registry_candidates(pack: ScoutPack) -> list[PackCandidate]:
             payload = json.loads(response.read().decode("utf-8"))
     except (OSError, urllib.error.URLError, json.JSONDecodeError):
         return []
+    return _parse_registry_payload(
+        payload,
+        pack_slug=pack.slug,
+        source_url=pack.discovery.mcp_registry_url or "mcp_registry",
+    )
+
+
+def _parse_registry_payload(
+    payload: object, *, pack_slug: str, source_url: str
+) -> list[PackCandidate]:
+    """Parse an MCP-registry ``/v0/servers`` payload into enriched candidates.
+
+    Pure + offline (no network) so it is unit-testable. Fails closed: malformed
+    entries are skipped, never raised.
+    """
+
     servers = payload.get("servers") if isinstance(payload, dict) else payload
     if not isinstance(servers, list):
         return []
-    candidates: list[PackCandidate] = []
+    out: list[PackCandidate] = []
     for server in servers[:50]:
-        if not isinstance(server, dict):
-            continue
-        name = str(server.get("repository") or server.get("name") or server.get("id") or "").strip()
-        if not name:
-            continue
-        candidates.append(
-            apply_lifecycle_rules(
-                PackCandidate(
-                    pack_slug=pack.slug,
-                    tool_name=name,
-                    state="candidate",
-                    evidence=[
-                        CandidateEvidence(
-                            source_family="mcp_registry",
-                            source=pack.discovery.mcp_registry_url or "mcp_registry",
-                            score=0.7,
-                        )
-                    ],
-                )
-            )
+        candidate = _registry_server_to_candidate(
+            server, pack_slug=pack_slug, source_url=source_url
         )
-    return candidates
+        if candidate is not None:
+            out.append(apply_lifecycle_rules(candidate))
+    return out
+
+
+def _registry_server_to_candidate(
+    server: object, *, pack_slug: str, source_url: str
+) -> PackCandidate | None:
+    if not isinstance(server, dict):
+        return None
+    name = str(server.get("name") or "").strip()
+    if not name:
+        repo = server.get("repository")
+        if isinstance(repo, dict):
+            name = str(repo.get("url") or "").strip()
+        elif isinstance(repo, str):
+            name = repo.strip()
+    if not name:
+        name = str(server.get("id") or "").strip()
+    if not name:
+        return None
+    description = str(server.get("description") or "").strip()
+    packages = server.get("packages")
+    remotes = server.get("remotes")
+    tags = ["mcp"]
+    if isinstance(packages, list) and packages and isinstance(packages[0], dict):
+        server_meta = _stdio_meta_from_package(packages[0])
+        registry = str(packages[0].get("registry_name") or packages[0].get("registry") or "").lower()
+        if registry:
+            tags.append(registry)
+        tags.append("stdio")
+    elif isinstance(remotes, list) and remotes and isinstance(remotes[0], dict):
+        server_meta = _remote_meta(remotes[0])
+        tags.append(server_meta["transport"])
+    else:
+        server_meta = {"transport": "unknown"}
+        tags.append("unknown")
+    return PackCandidate(
+        pack_slug=pack_slug,
+        tool_name=name,
+        state="candidate",
+        category="mcp_server",
+        description=description,
+        tags=tags,
+        server_meta=server_meta,
+        evidence=[
+            CandidateEvidence(
+                source_family="mcp_registry", source=source_url or "mcp_registry", score=0.7
+            )
+        ],
+    )
+
+
+def _stdio_meta_from_package(pkg: dict) -> dict:
+    """Derive a runnable stdio ``server_meta`` from a registry package entry."""
+
+    registry = str(pkg.get("registry_name") or pkg.get("registry") or "").lower()
+    pkg_name = str(pkg.get("name") or "").strip()
+    runtime_hint = str(pkg.get("runtime_hint") or "").strip()
+    env = {
+        str(item.get("name")): ""
+        for item in (pkg.get("environment_variables") or [])
+        if isinstance(item, dict) and item.get("name")
+    }
+    if registry == "npm":
+        command, args = "npx", ["-y", pkg_name]
+    elif registry in ("pypi", "pip"):
+        command, args = "uvx", [pkg_name]
+    elif registry in ("docker", "oci"):
+        command, args = "docker", ["run", "-i", "--rm", pkg_name]
+    elif runtime_hint:
+        command, args = runtime_hint, [pkg_name] if pkg_name else []
+    else:
+        command, args = (pkg_name or "echo"), []
+    return {"transport": "stdio", "command": command, "args": args, "env": env}
+
+
+def _remote_meta(remote: dict) -> dict:
+    """Derive an http/sse ``server_meta`` from a registry remote entry."""
+
+    transport_type = str(remote.get("transport_type") or remote.get("type") or "").lower()
+    transport = "sse" if transport_type == "sse" else "http"
+    return {"transport": transport, "url": str(remote.get("url") or "").strip(), "headers": {}}

@@ -244,7 +244,7 @@ def init_db(path: Path | None = None) -> Path:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 pack_id INTEGER NOT NULL REFERENCES packs(id) ON DELETE CASCADE,
                 tool_id INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
-                state TEXT NOT NULL CHECK (state IN ('candidate','watched','core','retired')),
+                state TEXT NOT NULL CHECK (state IN ('candidate','watched','core','retired','sanctioned')),
                 freshness_score REAL NOT NULL,
                 consensus_score REAL NOT NULL,
                 state_changed_at TEXT NOT NULL,
@@ -331,6 +331,40 @@ def init_db(path: Path | None = None) -> Path:
         conn.execute(
             "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
             (6, _now()),
+        )
+        # v7 (pivot — sanctioned MCP packs): widen pack_candidates.state to allow
+        # 'sanctioned'. CREATE TABLE IF NOT EXISTS cannot alter an existing CHECK,
+        # so rebuild the table in place when the new state isn't permitted yet.
+        # pack_candidates is a leaf (nothing references it), so the rebuild is safe
+        # with foreign keys on; existing rows are copied verbatim.
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='pack_candidates'"
+        ).fetchone()
+        if row and row[0] and "sanctioned" not in row[0]:
+            conn.execute(
+                """
+                CREATE TABLE pack_candidates__v7 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pack_id INTEGER NOT NULL REFERENCES packs(id) ON DELETE CASCADE,
+                    tool_id INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
+                    state TEXT NOT NULL CHECK (state IN ('candidate','watched','core','retired','sanctioned')),
+                    freshness_score REAL NOT NULL,
+                    consensus_score REAL NOT NULL,
+                    state_changed_at TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL,
+                    UNIQUE(pack_id, tool_id)
+                )
+                """
+            )
+            conn.execute("INSERT INTO pack_candidates__v7 SELECT * FROM pack_candidates")
+            conn.execute("DROP TABLE pack_candidates")
+            conn.execute("ALTER TABLE pack_candidates__v7 RENAME TO pack_candidates")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_pack_candidates_pack ON pack_candidates(pack_id)"
+            )
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            (7, _now()),
         )
     return path
 
