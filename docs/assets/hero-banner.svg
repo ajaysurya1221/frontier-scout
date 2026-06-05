@@ -63,7 +63,7 @@
     <text x="800" y="330" fill="#24d6a8" font-size="9.5">fit high</text>
     <text x="894" y="330" fill="#e3c26f" font-size="9.5" text-anchor="end">risk med</text>
 
-    <text x="788" y="362" fill="#46596b" font-size="10">your repo · tree-sitter</text>
+    <text x="788" y="361" fill="#46596b" font-size="8.5">your repo · tree-sitter</text>
   </g>
 
 
@@ -84,8 +84,8 @@
 
 
   <g>
-    <circle cx="966" cy="362" r="4" fill="#ff6b6b"></circle>
-    <text x="1010" y="366" fill="#5d7184" font-size="9.5" text-anchor="middle">high-risk gated</text>
+    <circle cx="958" cy="363" r="3.5" fill="#ff6b6b"></circle>
+    <text x="970" y="367" fill="#5d7184" font-size="9.5">high-risk gated</text>
   </g>
 
 
@@ -104,14 +104,14 @@
     <circle cx="1122" cy="191" r="3" fill="#24d6a8" fill-opacity="0.7"></circle>
     <text x="1196" y="195" fill="#46596b" font-size="9" text-anchor="end">managed</text>
 
-    <text x="1100" y="228" fill="#46596b" font-size="22" font-weight="700">{</text>
-    <text x="1118" y="227" fill="#a9bccd" font-size="10">&quot;allowed</text>
-    <text x="1118" y="240" fill="#a9bccd" font-size="10"> McpServers&quot;:</text>
-    <text x="1130" y="258" fill="#24d6a8" font-size="10">filesystem,</text>
-    <text x="1130" y="274" fill="#24d6a8" font-size="10">time, sentry</text>
-    <text x="1100" y="296" fill="#a9bccd" font-size="10">&quot;deniedMcp</text>
-    <text x="1100" y="309" fill="#a9bccd" font-size="10"> Servers&quot;: [ ]</text>
-    <text x="1100" y="331" fill="#46596b" font-size="22" font-weight="700">}</text>
+    <text x="1100" y="226" fill="#5d7184" font-size="13" font-weight="700">{</text>
+    <text x="1116" y="227" fill="#a9bccd" font-size="9.5">&quot;allowed</text>
+    <text x="1116" y="239" fill="#a9bccd" font-size="9.5"> McpServers&quot;:</text>
+    <text x="1126" y="256" fill="#24d6a8" font-size="9.5">filesystem,</text>
+    <text x="1126" y="271" fill="#24d6a8" font-size="9.5">time, sentry</text>
+    <text x="1100" y="293" fill="#a9bccd" font-size="9.5">&quot;deniedMcp</text>
+    <text x="1100" y="306" fill="#a9bccd" font-size="9.5"> Servers&quot;: [ ]</text>
+    <text x="1100" y="330" fill="#5d7184" font-size="13" font-weight="700">}</text>
 
     <text x="1145" y="350" fill="#46596b" font-size="9.5" text-anchor="middle">admin deploys</text>
   </g>
