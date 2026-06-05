@@ -44,7 +44,7 @@
 
 **Frontier Scout turns "can we use this MCP server?" into a one-step decision for your coding assistant.** It builds a **sanctioned pack** of approved MCP servers — **repo-ranked** so the ones that matter to _your_ code rise to the top — shows a **static safety map** (capability + policy) for each, and **exports the approved set into the Claude Code managed config your team already controls** (`allowedMcpServers` / `deniedMcpServers`).
 
-The local-first adoption radar that powers the ranking is still here — it runs fully offline (`frontier-scout demo`), never sends your source to an LLM, and works with whatever LLM you already pay for, or none at all. But the product is the **sanctioned pack**, not the radar. _(Repositioning in progress — see [`docs/pivot/REVISED_IMPLEMENTATION_PLAN.md`](docs/pivot/REVISED_IMPLEMENTATION_PLAN.md).)_
+The local-first adoption radar that powers the ranking is still here — it runs fully offline (`frontier-scout demo`), never sends your source to an LLM, and works with whatever LLM you already pay for, or none at all. But the product is the **sanctioned pack**, not the radar. _(See the [5-minute quickstart](docs/sanctioned-packs-quickstart.md) and the [implementation plan](docs/pivot/REVISED_IMPLEMENTATION_PLAN.md).)_
 
 <div align="center">
   <img src="docs/assets/mission-control-v5.svg" alt="Frontier Scout Mission Control: the Scout home with the Adoption Matrix — a fit-by-risk grid of tier-coloured verdict dots — cross-linked to the ranked verdict list and a detail panel for anthropics/skills." width="100%">
@@ -56,47 +56,35 @@ The local-first adoption radar that powers the ranking is still here — it runs
 
 | | Stage | What it does |
 | :-- | :-- | :-- |
-| **01** | **WATCH** | Scouts GitHub Releases, the MCP registry, Hugging Face, and PyPI / npm — the frontier as it lands. |
-| **02** | **MATCH** | A local tree-sitter pass maps releases to your repo's stack (Python, JS/TS, Go, Rust, Ruby) — **without ever reading your source**. |
-| **03** | **DECIDE** | A source-backed **ADOPT / TRIAL / ASSESS / HOLD** verdict, plus the smallest safe trial to run next. |
+| **01** | **RANK** | Enumerate MCP servers (the curated offline pack, or the live MCP registry with `--discover`) and rank them against _your_ repo's stack with a local tree-sitter pass — **without ever reading your source**. |
+| **02** | **CHECK** | A **static safety map** per server — capability classification (read / write / network / shell / credential) plus a policy verdict. No server is started or executed. |
+| **03** | **SANCTION &#8594; EXPORT** | Approve servers (high-risk ones are gated behind an explicit acknowledgement), then export the approved set into Claude Code's **managed `allowedMcpServers` / `deniedMcpServers`** + a project `.mcp.json`. |
 
-Every finding lands on the **Adoption Matrix** (fit &#215; risk) and as a **verdict card** — a source-backed call, a fit / risk / readiness read, a permission map, and the safest next step. The detail panel surfaces explicit **concerns** (`burns tokens` &#183; `abandoned` &#183; `vendor lock-in` &#183; `security surface` &#183; `marketing-only` &#183; `unproven`), so you always see _why_ we'd push back. And **`guard` blocks adoption until a sandbox trial receipt exists.**
+The local-first adoption **radar** (`frontier-scout demo`, the Mission Control TUI, `evaluate` / `guard`) is still here — it's the ranking + safety engine _underneath_ the pack, not the headline.
 
-## Three promises
+## What you get
 
-Awareness is table stakes. **Evidence is the product.**
+Discovery is table stakes. **A sanctioned, repo-relevant, exportable set is the product.**
 
 | | |
 | :-- | :-- |
-| **Try before trust** | Every adoption candidate earns a sandbox dry-run receipt, a permission map, and a guard check **before it touches your real repo**. |
-| **Fix vulns you didn't know existed** | Dependency intelligence cross-references your manifests against curated security, hardening, and breaking-change feeds — then emits a _trial recipe_, not a silent lockfile rewrite. |
-| **Bound risky changes** | Incident Change Scout turns a ticket into cited context, a bounded remediation plan, and a **human approval interrupt** before any write. |
+| **Repo-ranked curation** | The MCP servers that matter to _your_ code rise to the top — local tree-sitter ranking, your source never leaves the machine. |
+| **Static safety + risk-gating** | A capability + policy map for each server; write / shell / credential / network servers can't be sanctioned without an explicit risk acknowledgement. |
+| **One-step control-plane export** | The approved set drops straight into Claude Code's admin-deployed managed config (`allowedMcpServers` / `deniedMcpServers`) — the surface that governs even user-scoped installs. |
 
 ## Quickstart
 
-> **Prerequisite** — Python 3.11+
+> **Prerequisite** — Python 3.11+. Keyless and offline by default.
 
 ```bash
-# install (pipx recommended) — or run with no install at all
-pipx install frontier-scout
-uvx frontier-scout demo          # try it without installing
+pipx install frontier-scout                                       # or run with: uvx frontier-scout ...
 
-# configure your LLM backend once (auto-detects what you have)
-frontier-scout setup
-
-# open Mission Control inside any repo
-cd ~/code/my-app && frontier-scout
+frontier-scout packs candidates --repo . --client claude-code    # repo-ranked MCP servers + static safety
+frontier-scout packs sanction <server> --repo .                  # approve (high-risk needs --acknowledge-risk)
+frontier-scout packs export --client claude-code --target ./out  # managed allowedMcpServers + .mcp.json
 ```
 
-Mission Control lands on the **Scout** tab — the radar that ranks the latest AI releases that fit your repo. From a highlighted verdict, every capability is one keystroke:
-
-<div align="center">
-
-<kbd>&nbsp;L&nbsp;</kbd> hermetic lab &nbsp;·&nbsp; <kbd>&nbsp;e&nbsp;</kbd> firewall eval &nbsp;·&nbsp; <kbd>&nbsp;i&nbsp;</kbd> implement &amp; test &nbsp;·&nbsp; <kbd>&nbsp;D&nbsp;</kbd> dossier &nbsp;·&nbsp; <kbd>&nbsp;o&nbsp;</kbd> open source &nbsp;·&nbsp; <kbd>&nbsp;P&nbsp;</kbd> palette
-
-</div>
-
-Tabs: **Scout &#183; Schedule &#183; Receipts &#183; Guard &#183; Packs &#183; Deps &#183; Reports &#183; Settings.** Everything reflows down to an 80&#215;24 VS Code panel, with unicode/ASCII and colour/mono fallbacks. Prefer a calmer, one-finding-at-a-time flow? `frontier-scout --ui briefing`.
+Full walkthrough: [docs/sanctioned-packs-quickstart.md](docs/sanctioned-packs-quickstart.md). Prefer the radar engine directly? The dense **Mission Control** TUI is still one command away (`frontier-scout`), and `frontier-scout demo` renders the offline radar with no keys or network.
 
 <details>
   <summary>&nbsp;Develop locally</summary>
@@ -217,6 +205,7 @@ Set `JUDGE_ENABLED=false` to skip the judge for the cheapest run on any provider
 - [x] **`v1.6.0`** — Mission Control v2: full mouse ↔ keyboard parity, permission map, repo switcher
 - [x] **`v1.7.0`** — Single provider-selection ladder, two-tier scout/judge split, `openai-compatible` provider for gateway / self-hosted interop
 - [ ] **Mission Control v5** _(in progress)_ — the **Adoption Matrix** (fit × risk dot-plot), segmented gauges everywhere, and the local architecture profile surfaced in Settings
+- [ ] **Pivot — sanctioned MCP-server packs** _(this branch)_ — repo-ranked MCP servers, a static safety map, risk-gated sanctioning, and Claude managed-config export (`packs candidates / sanction / export`). Validation-gated next: a behavioral MCP probe and Copilot + GitHub allow-list exporters. See [`docs/pivot/`](docs/pivot/).
 - [ ] **Next** — streaming subprocess output in Trials, multi-repo workspace, launchd / Windows Task Scheduler
 
 See [ROADMAP.md](ROADMAP.md) for the longer view.
