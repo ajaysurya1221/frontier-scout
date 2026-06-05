@@ -45,7 +45,7 @@ def build_safety_summary(
     summary = {
         "tool_name": candidate.tool_name,
         "kind": "static",
-        "description": candidate.description,
+        "description": sanitize_sensitive_text(candidate.description),
         "category": evaluation.category,
         "fit": evaluation.fit,
         "risk": evaluation.risk,
@@ -54,8 +54,8 @@ def build_safety_summary(
         "dangerous_flags": dangerous,
         "confidence": manifest.confidence if manifest else "low",
         "verdict": decision.verdict,
-        "policy_summary": decision.summary,
-        "findings": [f.model_dump() for f in decision.findings],
+        "policy_summary": sanitize_sensitive_text(decision.summary),
+        "findings": [{**f.model_dump(), "message": sanitize_sensitive_text(f.message)} for f in decision.findings],
     }
     summary["requires_trial"] = is_high_risk(summary)  # single source of truth
     return summary

@@ -235,3 +235,29 @@ Open the PR below when ready.
 > next step: run `docs/validation-protocol.md`.
 >
 > 🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+## 22. Post-implementation code review (addendum)
+
+A senior-reviewer subagent reviewed the full branch (`4154c8b..HEAD`) — running the migrations on a
+real legacy DB, blocking the network to prove the offline invariant, and probing redaction/gating.
+**No Critical issues.** Three Important findings were fixed (TDD, `tests/test_review_fixes.py`):
+
+- **I-1 (security):** `build_safety_summary` returned raw `description`/`policy_summary`/`findings`,
+  so `packs sanction|candidates --json` could emit a secret embedded in a 3rd-party registry
+  description. **Fixed** by redacting those fields at the source — so this corrects the earlier
+  "redacted" claim: redaction is now applied at construction, not only on the markdown path.
+- **I-2:** the project `.mcp.json` exporter collapsed server names to their last path segment, so
+  two namespaced servers collided and one was silently dropped. **Fixed** with key de-collision.
+- **I-3:** `_candidate_from_row` dropped `freshness_score`/`consensus_score`, so sanctioning a
+  stored candidate zeroed them. **Fixed** by carrying the scores (+evidence) through.
+- **M-3 / M-4:** `--client` now validated (`choices=`); the remove-override set de-duplicated to one
+  constant (`packs.REMOVE_OVERRIDES`).
+
+Accepted-with-note (not fixed): **M-1** (a real secret placed in `server_meta.env` is stored
+verbatim in the local DB — normally `""`; the *exported* config is still pattern-redacted) and
+**M-2** (project URLs keep their query string; managed URLs are collapsed to `scheme://host/*`).
+Both are documented follow-ups; the spike already advises `${VAR}` for env secrets.
+
+Reviewer verdict after fixes: mergeable. (One process note: an over-broad `ruff format frontier_scout/`
+briefly reformatted 64 unrelated files; that churn was reverted and only the 5 review-fix files were
+reformatted — the final diff is surgical.)

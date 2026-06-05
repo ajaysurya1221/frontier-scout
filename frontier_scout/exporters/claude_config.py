@@ -80,8 +80,16 @@ def to_project_mcp_json(servers) -> dict:
     mcp_servers: dict[str, dict] = {}
     for server in servers:
         entry = _project_entry(server)
-        if entry is not None:
-            mcp_servers[_server_key(server.tool_name)] = entry
+        if entry is None:
+            continue
+        key = _server_key(server.tool_name)
+        if key in mcp_servers:
+            # de-collide: two namespaced server names can share a last path segment.
+            suffix = 2
+            while f"{key}-{suffix}" in mcp_servers:
+                suffix += 1
+            key = f"{key}-{suffix}"
+        mcp_servers[key] = entry
     return {"mcpServers": mcp_servers}
 
 

@@ -12,6 +12,7 @@ from typing import Any
 from . import store
 from .exporters import export_claude_config
 from .packs import (
+    REMOVE_OVERRIDES,
     PackCandidate,
     apply_pack_overrides,
     default_packs,
@@ -23,7 +24,6 @@ from .safety_summary import build_safety_summary, is_high_risk
 from .telemetry import record_event
 
 SUPPORTED_CLIENTS = ("claude-code", "copilot", "cursor")
-_REMOVE_OVERRIDES = ("exclude", "suppress", "retire")
 
 
 def _client_allows(candidate: PackCandidate, client: str) -> bool:
@@ -43,6 +43,9 @@ def _candidate_from_row(row: dict[str, Any]) -> PackCandidate:
         tags=row.get("tags") or [],
         server_meta=row.get("server_meta") or {},
         repo_fit=row.get("repo_fit"),
+        freshness_score=float(row.get("freshness_score") or 0.0),
+        consensus_score=float(row.get("consensus_score") or 0.0),
+        evidence=row.get("evidence") or [],
     )
 
 
@@ -163,7 +166,7 @@ def export_config(*, client: str = "claude-code", pack_slug: str = "mcp", target
     denied = [
         override["tool_identifier"]
         for override in store.list_pack_overrides(pack_slug)
-        if override.get("override") in _REMOVE_OVERRIDES
+        if override.get("override") in REMOVE_OVERRIDES
     ]
     # All MVP clients (claude-code/copilot/cursor) consume the same mcpServers /
     # managed allow-deny shapes, so one exporter covers them.

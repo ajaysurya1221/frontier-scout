@@ -353,6 +353,8 @@ def rank_candidates_for_repo(candidates: list[PackCandidate], profile: object) -
 
 
 _OVERRIDE_RANK = {"exclude": 3, "suppress": 3, "retire": 3, "pin": 2, "include": 1}
+# Overrides that remove a candidate from the pack (shared with pack_flow.export_config).
+REMOVE_OVERRIDES = frozenset({"exclude", "suppress", "retire"})
 
 
 def apply_pack_overrides(candidates: list[PackCandidate], overrides: list[dict]) -> list[PackCandidate]:
@@ -374,7 +376,7 @@ def apply_pack_overrides(candidates: list[PackCandidate], overrides: list[dict])
         rank = _OVERRIDE_RANK[action]
         if rank >= best_rank.get(identifier, 0):
             best_rank[identifier] = rank
-            effective[identifier] = "exclude" if action in ("exclude", "suppress", "retire") else action
+            effective[identifier] = "exclude" if action in REMOVE_OVERRIDES else action
     kept = [c for c in candidates if effective.get(c.tool_name) != "exclude"]
     pinned = [c for c in kept if effective.get(c.tool_name) == "pin"]
     rest = [c for c in kept if effective.get(c.tool_name) != "pin"]

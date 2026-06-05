@@ -251,7 +251,12 @@ def build_parser() -> argparse.ArgumentParser:
     packs_candidates = packs_sub.add_parser("candidates", help="List pack candidates (repo-ranked with --repo).")
     packs_candidates.add_argument("--pack", help="Pack slug (default: mcp when --repo is set).")
     packs_candidates.add_argument("--repo", default=None, help="Repository for repo-aware ranking + static safety.")
-    packs_candidates.add_argument("--client", default="claude-code", help="Coding-assistant client.")
+    packs_candidates.add_argument(
+        "--client",
+        default="claude-code",
+        choices=["claude-code", "copilot", "cursor"],
+        help="Coding-assistant client.",
+    )
     packs_candidates.add_argument(
         "--discover",
         action="store_true",
@@ -262,7 +267,12 @@ def build_parser() -> argparse.ArgumentParser:
     packs_sanction = packs_sub.add_parser("sanction", help="Sanction an MCP server for a client (risk-gated).")
     packs_sanction.add_argument("server", help="Server identifier (tool name).")
     packs_sanction.add_argument("--repo", default=".", help="Repository for repo-aware ranking.")
-    packs_sanction.add_argument("--client", default="claude-code", help="Coding-assistant client.")
+    packs_sanction.add_argument(
+        "--client",
+        default="claude-code",
+        choices=["claude-code", "copilot", "cursor"],
+        help="Coding-assistant client.",
+    )
     packs_sanction.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
     packs_sanction.add_argument("--approver", help="Approver label recorded in the decision.")
     packs_sanction.add_argument("--reason", help="Rationale recorded in the decision.")
@@ -275,13 +285,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     packs_unsanction = packs_sub.add_parser("unsanction", help="Reverse a sanction and exclude a server from exports.")
     packs_unsanction.add_argument("server", help="Server identifier (tool name).")
-    packs_unsanction.add_argument("--client", default="claude-code", help="Coding-assistant client.")
+    packs_unsanction.add_argument(
+        "--client",
+        default="claude-code",
+        choices=["claude-code", "copilot", "cursor"],
+        help="Coding-assistant client.",
+    )
     packs_unsanction.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
     packs_unsanction.add_argument("--reason", help="Rationale recorded in the decision.")
     packs_unsanction.add_argument("--json", action="store_true", help="Emit JSON.")
 
     packs_export = packs_sub.add_parser("export", help="Export the sanctioned set into client managed config.")
-    packs_export.add_argument("--client", default="claude-code", help="Coding-assistant client.")
+    packs_export.add_argument(
+        "--client",
+        default="claude-code",
+        choices=["claude-code", "copilot", "cursor"],
+        help="Coding-assistant client.",
+    )
     packs_export.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
     packs_export.add_argument("--target", required=True, help="Output directory for config files.")
     packs_export.add_argument("--json", action="store_true", help="Emit JSON.")
@@ -909,7 +929,7 @@ def main(argv: list[str] | None = None) -> int:
                         "verdict": summary["verdict"],
                         "risk": summary["risk"],
                         "requires_trial": summary["requires_trial"],
-                        "description": candidate.description,
+                        "description": summary["description"],  # already secret-redacted
                     }
                 )
             if args.json:
