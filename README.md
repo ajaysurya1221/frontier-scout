@@ -24,13 +24,7 @@
 
 <br />
 
-<a href="#quickstart"><b>Quickstart »</b></a>
-&nbsp; &middot; &nbsp;
-<a href="docs/examples/sanctioned-packs/">Gold-path example</a>
-&nbsp; &middot; &nbsp;
-<a href="docs/pivot/RESEARCH_PREVIEW_DECISION.md">Why a research preview</a>
-&nbsp; &middot; &nbsp;
-<a href="https://github.com/ajaysurya1221/frontier-scout/issues/new/choose">Send feedback</a>
+<sub><a href="#quickstart"><b>Quickstart »</b></a> &nbsp;&middot;&nbsp; <a href="docs/examples/sanctioned-packs/">Gold-path example</a> &nbsp;&middot;&nbsp; <a href="docs/pivot/RESEARCH_PREVIEW_DECISION.md">Why a research preview</a> &nbsp;&middot;&nbsp; <a href="https://github.com/ajaysurya1221/frontier-scout/issues/new/choose">Send feedback</a></sub>
 
 </div>
 
@@ -270,13 +264,13 @@ Distributed under the [MIT License](LICENSE).
 </div>
 
 <!-- MARKDOWN LINKS & IMAGES (reference-style) -->
-[release-shield]: https://img.shields.io/github/v/release/ajaysurya1221/frontier-scout?include_prereleases&color=24d6a8&labelColor=05080b&label=release&style=for-the-badge
+[release-shield]: https://img.shields.io/github/v/release/ajaysurya1221/frontier-scout?include_prereleases&color=24d6a8&labelColor=05080b&label=release&style=flat-square
 [release-url]: https://github.com/ajaysurya1221/frontier-scout/releases
-[python-shield]: https://img.shields.io/badge/python-3.11+-7aa6ff?style=for-the-badge&labelColor=05080b&logo=python&logoColor=white
-[preview-shield]: https://img.shields.io/badge/status-research%20preview-24d6a8?style=for-the-badge&labelColor=05080b
-[license-shield]: https://img.shields.io/badge/license-MIT-a9bccd?style=for-the-badge&labelColor=05080b
+[python-shield]: https://img.shields.io/badge/python-3.11+-7aa6ff?style=flat-square&labelColor=05080b&logo=python&logoColor=white
+[preview-shield]: https://img.shields.io/badge/status-research%20preview-24d6a8?style=flat-square&labelColor=05080b
+[license-shield]: https://img.shields.io/badge/license-MIT-a9bccd?style=flat-square&labelColor=05080b
 [license-url]: https://github.com/ajaysurya1221/frontier-scout/blob/main/LICENSE
-[telemetry-shield]: https://img.shields.io/badge/telemetry-none-e3c26f?style=for-the-badge&labelColor=05080b
+[telemetry-shield]: https://img.shields.io/badge/telemetry-none-e3c26f?style=flat-square&labelColor=05080b
 [built-python]: https://img.shields.io/badge/Python-3.11+-7aa6ff?style=flat-square&labelColor=05080b&logo=python&logoColor=white
 [built-textual]: https://img.shields.io/badge/Textual-TUI-24d6a8?style=flat-square&labelColor=05080b
 [built-treesitter]: https://img.shields.io/badge/tree--sitter-offline%20AST-7aa6ff?style=flat-square&labelColor=05080b
