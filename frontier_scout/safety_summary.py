@@ -20,6 +20,17 @@ from .policy import Policy, evaluate_policy
 # per the verification-gap demand signal: scrutiny for selected high-risk tools).
 RISKY_FLAGS = frozenset({"write", "shell", "credential", "network"})
 
+# The static pack flow surfaces a Tech-Radar verdict ring; in a static-only product the ring word
+# "trial" reads as execution, so human-facing packs output shows "review" instead. The raw tier
+# stays in ``verdict`` (data contract: adopt/trial/assess/hold); ``verdict_label`` is display-only.
+_PACKS_VERDICT_LABEL = {"trial": "review"}
+
+
+def pack_verdict_label(verdict: str) -> str:
+    """Human-facing packs label for a Tech-Radar verdict tier (display-only, no logic change)."""
+
+    return _PACKS_VERDICT_LABEL.get(verdict, verdict)
+
 
 def build_safety_summary(
     candidate: PackCandidate,
@@ -54,6 +65,7 @@ def build_safety_summary(
         "dangerous_flags": dangerous,
         "confidence": manifest.confidence if manifest else "low",
         "verdict": decision.verdict,
+        "verdict_label": pack_verdict_label(decision.verdict),
         "policy_summary": sanitize_sensitive_text(decision.summary),
         "findings": [{**f.model_dump(), "message": sanitize_sensitive_text(f.message)} for f in decision.findings],
     }
@@ -79,15 +91,20 @@ def render_safety_summary(summary: dict[str, Any]) -> str:
     finding_lines = [f"- [{f.get('severity')}] {f.get('rule_id')}: {f.get('message')}" for f in findings] or [
         "- (no policy findings)"
     ]
+    verdict_label = summary.get("verdict_label") or summary.get("verdict", "?")
+    policy_summary = summary.get("policy_summary", "")
+    if policy_summary.startswith("TRIAL"):
+        # mirror the verdict relabel into the policy-summary prefix (display-only)
+        policy_summary = "REVIEW" + policy_summary[len("TRIAL") :]
     lines = [
         f"## Static safety analysis — {summary.get('tool_name', '')}",
         "",
         "_Static analysis only — no server was started or executed._",
         "",
-        f"**Verdict:** {summary.get('verdict', '?')} · fit {summary.get('fit')} · "
+        f"**Verdict:** {verdict_label} · fit {summary.get('fit')} · "
         f"risk {summary.get('risk')} · source trust {summary.get('source_trust')} · "
         f"confidence {summary.get('confidence')}",
-        f"> {summary.get('policy_summary', '')}",
+        f"> {policy_summary}",
         "",
         f"Description: {summary.get('description') or '(none)'}",
         "",

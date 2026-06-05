@@ -70,7 +70,7 @@ Discovery is table stakes. **A sanctioned, repo-relevant, exportable set is the 
 | :-- | :-- |
 | **Repo-ranked curation** | The MCP servers that matter to _your_ code rise to the top — local tree-sitter ranking, your source never leaves the machine. |
 | **Static safety + risk-gating** | A capability + policy map for each server; write / shell / credential / network servers can't be sanctioned without an explicit risk acknowledgement. |
-| **One-step managed-config export** | The approved set becomes a fragment an admin deploys into Claude Code's managed config (`allowedMcpServers` / `deniedMcpServers`) — the surface that governs even user-scoped installs. Frontier Scout emits it; your platform deploys it. |
+| **One-step managed-config export** | The approved set becomes a fragment an admin deploys into Claude Code's managed config (`allowedMcpServers` / `deniedMcpServers`). Frontier Scout emits it; your platform deploys it — it doesn't deploy or enforce anything itself. |
 
 ## Quickstart
 

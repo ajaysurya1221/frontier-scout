@@ -319,7 +319,7 @@ def build_parser() -> argparse.ArgumentParser:
     packs_proof.add_argument(
         "--keep",
         choices=["approval_only", "static_safety_summary", "formal_receipt"],
-        help="Record which proof variant the partner chose to keep (opt-in telemetry).",
+        help="Record which proof variant you chose to keep (opt-in telemetry).",
     )
     packs_proof.add_argument("--json", action="store_true", help="Emit JSON.")
 
@@ -954,6 +954,7 @@ def main(argv: list[str] | None = None) -> int:
                         "category": candidate.category,
                         "transport": (candidate.server_meta or {}).get("transport"),
                         "verdict": summary["verdict"],
+                        "verdict_label": summary["verdict_label"],
                         "risk": summary["risk"],
                         "requires_review": summary["requires_review"],
                         "description": summary["description"],  # already secret-redacted
@@ -993,7 +994,10 @@ def main(argv: list[str] | None = None) -> int:
                         print(result.get("error", "sanction failed"))
                 return 1
             if not args.json:
-                print(f"Sanctioned {args.server} (static verdict: {result['verdict']}) for {args.client}.")
+                from .safety_summary import pack_verdict_label
+
+                vlabel = pack_verdict_label(result["verdict"])
+                print(f"Sanctioned {args.server} (static verdict: {vlabel}) for {args.client}.")
             return 0
         if args.packs_command == "unsanction":
             from . import pack_flow
@@ -1044,7 +1048,7 @@ def main(argv: list[str] | None = None) -> int:
                 for name, text in result["variants"].items():
                     print(f"\n===== proof variant: {name} =====")
                     print(text)
-                print("\nRecord the partner's choice: frontier-scout packs proof <server> --keep <variant>")
+                print("\nRecord your kept variant: frontier-scout packs proof <server> --keep <variant>")
             return 0
         parser.error("packs requires a subcommand")
         return 2

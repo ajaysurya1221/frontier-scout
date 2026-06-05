@@ -19,6 +19,7 @@ def test_proof_shows_three_variants(tmp_path, monkeypatch, capsys):
     assert rc == 0
     out = capsys.readouterr().out.lower()
     assert "approve" in out and "static analysis" in out and "static adoption assessment" in out
+    assert "partner" not in out  # shipped CLI must not leak the internal design-partner framing
 
 
 def test_proof_json_returns_all_variants(tmp_path, monkeypatch, capsys):

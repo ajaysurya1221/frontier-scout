@@ -114,3 +114,30 @@ def test_export_prints_static_disclaimer_and_writes_valid_json(tmp_path, monkeyp
     # the generated JSON stays valid + unaffected by the explanatory text
     managed = json.loads((target / "managed-settings.json").read_text())
     assert "allowedMcpServers" in managed
+
+
+# ── GATE 2 — Tech-Radar 'trial' ring shown as 'review' in packs human output ──
+def test_packs_verdict_displayed_as_review_not_trial(tmp_path, monkeypatch):
+    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path))
+    from frontier_scout.proof_variants import proof_variants
+    from frontier_scout.safety_summary import render_safety_summary
+
+    cand = PackCandidate(
+        pack_slug="mcp",
+        tool_name="acme-fs",
+        category="mcp_server",
+        description="Filesystem server that can write files.",
+    )
+    summary = build_safety_summary(cand)
+    assert summary["verdict"] == "trial"  # data contract: raw Tech-Radar tier preserved
+    assert summary["verdict_label"] == "review"  # human-facing relabel (display-only)
+
+    rendered = render_safety_summary(summary).lower()
+    assert "review" in rendered
+    assert "no server was started or executed" in rendered
+    assert "trial" not in rendered  # no bare radar 'trial' in human-readable static output
+
+    variants = proof_variants(summary)
+    assert "trial" not in variants["approval_only"].lower()
+    assert "trial" not in variants["formal_receipt"].lower()
+    assert "review" in variants["approval_only"].lower()

@@ -26,7 +26,7 @@ high-risk ones). ← what a partner reacts to in step 1.
 `frontier-scout packs proof io.modelcontextprotocol/filesystem --repo "$REPO"` renders all three:
 ```
 ===== proof variant: approval_only =====
-io.modelcontextprotocol/filesystem: ALLOW (verdict trial, risk medium). Approve this server for the team?
+io.modelcontextprotocol/filesystem: ALLOW (verdict review, risk medium). Approve this server for the team?
 ===== proof variant: static_safety_summary =====
 ## Static safety analysis — io.modelcontextprotocol/filesystem
 ===== proof variant: formal_receipt =====
@@ -37,8 +37,8 @@ STATIC ADOPTION ASSESSMENT
 
 ## Step 3 — sanction + export snap-in ✅
 ```
-Sanctioned io.modelcontextprotocol/time (assess) for claude-code.        # low-risk: direct
-Sanctioned io.modelcontextprotocol/filesystem (trial) for claude-code.   # high-risk: --acknowledge-risk
+Sanctioned io.modelcontextprotocol/time (static verdict: assess) for claude-code.        # low-risk: direct
+Sanctioned io.modelcontextprotocol/filesystem (static verdict: review) for claude-code.  # high-risk: --acknowledge-risk
 ```
 `frontier-scout packs export --client claude-code --target ./out` → `managed-settings.json`:
 ```json

@@ -26,17 +26,18 @@ def _approval_only(summary: dict[str, Any]) -> str:
     recommendation = "ALLOW" if summary.get("verdict") in ("adopt", "trial") else "HOLD"
     return sanitize_sensitive_text(
         f"{summary.get('tool_name', '')}: {recommendation} "
-        f"(verdict {summary.get('verdict')}, risk {summary.get('risk')}). "
+        f"(verdict {summary.get('verdict_label') or summary.get('verdict')}, risk {summary.get('risk')}). "
         f"Approve this server for the team?"
     )
 
 
 def _formal_receipt(summary: dict[str, Any]) -> str:
     caps = ", ".join(key for key, status in (summary.get("capabilities") or {}).items() if status != "unlikely")
+    verdict = summary.get("verdict_label") or summary.get("verdict")
     lines = [
         "STATIC ADOPTION ASSESSMENT",
         f"tool: {summary.get('tool_name', '')}",
-        f"verdict: {summary.get('verdict')}  risk: {summary.get('risk')}  fit: {summary.get('fit')}",
+        f"verdict: {verdict}  risk: {summary.get('risk')}  fit: {summary.get('fit')}",
         f"capabilities: {caps or 'none'}",
         f"dangerous flags: {', '.join(summary.get('dangerous_flags') or []) or 'none'}",
         f"confidence: {summary.get('confidence')}",
