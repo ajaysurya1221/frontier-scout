@@ -38,6 +38,9 @@
 > [!TIP]
 > **Hundreds of MCP servers. Which ones are safe for _your_ team?** Registries and catalogs tell you what _exists_ — they don't rank by your repo, classify each server's capabilities, or hand you a config fragment to approve them. **Frontier Scout builds a repo-ranked, sanctioned MCP-server pack and exports it straight into Claude Code's managed allow-list.**
 
+> [!NOTE]
+> **Research preview — technically coherent, not market-validated.** This is an early, research-driven preview of repo-aware sanctioned MCP-server packs; it makes **no** human-validation / PMF / adoption claim. Today it is **Claude Code managed-config export first**; the safety read is **static analysis only** (no MCP server is executed in the sanctioned-pack flow); and it **emits config fragments — it does not enforce runtime policy**. **Copilot / Cursor / Docker support is roadmap**, not built. See the [research-preview decision note](docs/pivot/RESEARCH_PREVIEW_DECISION.md).
+
 ---
 
 ## About
