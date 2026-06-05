@@ -29,8 +29,8 @@
   <text x="80" y="308" fill="#24d6a8" font-size="86" font-weight="700" letter-spacing="1">SCOUT</text>
 
 
-  <text x="86" y="362" fill="#a9bccd" font-size="19">Repo-rank approved MCP servers into a static safety map,</text>
-  <text x="86" y="389" fill="#a9bccd" font-size="19">then export a Claude Code managed-config fragment.</text>
+  <text x="86" y="361" fill="#a9bccd" font-size="16.5">Repo-rank approved MCP servers into a static safety map,</text>
+  <text x="86" y="387" fill="#a9bccd" font-size="16.5">then export a Claude Code managed-config fragment.</text>
 
   <text x="86" y="428" font-size="13.5" letter-spacing="0.5"><tspan fill="#46596b">Claude Code first</tspan><tspan fill="#1a2c41">   ·   </tspan><tspan fill="#46596b">static analysis</tspan><tspan fill="#1a2c41">   ·   </tspan><tspan fill="#46596b">keyless</tspan><tspan fill="#1a2c41">   ·   </tspan><tspan fill="#46596b">research preview</tspan><tspan fill="#1a2c41">   ·   </tspan><tspan fill="#46596b">MIT</tspan></text>
 
@@ -38,9 +38,9 @@
   <line x1="726" y1="92" x2="726" y2="430" stroke="#1a2c41"></line>
 
 
-  <text x="772" y="128" fill="#24d6a8" font-size="13" letter-spacing="3.5">RANK</text>
-  <text x="958" y="128" fill="#24d6a8" font-size="13" letter-spacing="3.5">CHECK</text>
-  <text x="1124" y="128" fill="#24d6a8" font-size="13" letter-spacing="3.5">EXPORT</text>
+  <text x="772" y="130" fill="#24d6a8" font-size="16.5" letter-spacing="3.2">RANK</text>
+  <text x="956" y="130" fill="#24d6a8" font-size="16.5" letter-spacing="3.2">CHECK</text>
+  <text x="1122" y="130" fill="#24d6a8" font-size="16.5" letter-spacing="3.2">EXPORT</text>
 
 
   <g>
