@@ -10,14 +10,16 @@ body:
         Your answer is **weak external signal** that helps prioritization. It is **not** market
         validation and does **not** count toward the project's real design-partner validation gate.
   - type: dropdown
-    id: client
+    id: control_plane
     attributes:
-      label: What client are you using?
+      label: Which control plane are you using today?
       options:
-        - Claude Code
+        - Claude Code managed settings
+        - GitHub MCP allow-list
+        - Docker catalog / profile / gateway
+        - ToolHive
         - Copilot
         - Cursor
-        - Docker
         - Other
     validations:
       required: true
@@ -58,6 +60,18 @@ body:
         - "Maybe / depends"
         - "No"
         - "We don't have a centralized config surface yet"
+  - type: dropdown
+    id: export_target
+    attributes:
+      label: If we built one more export target next, which would matter most to you?
+      options:
+        - "Claude Code (already supported — make it more routable)"
+        - GitHub MCP allow-list
+        - Docker catalog / profile / gateway
+        - ToolHive registry / gateway
+        - Copilot
+        - Cursor
+        - None / not relevant
   - type: textarea
     id: blocked
     attributes:
