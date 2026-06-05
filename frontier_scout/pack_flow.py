@@ -20,6 +20,7 @@ from .packs import (
     rank_candidates_for_repo,
 )
 from .profile import build_scout_profile
+from .proof_variants import proof_variants
 from .safety_summary import build_safety_summary, is_high_risk
 from .telemetry import record_event
 
@@ -179,3 +180,16 @@ def export_config(*, client: str = "claude-code", pack_slug: str = "mcp", target
         "denied_count": len(denied),
         "paths": paths,
     }
+
+
+def server_proof(
+    server_name: str, *, repo: str | Path = ".", client: str = "claude-code", pack_slug: str = "mcp"
+) -> dict[str, Any]:
+    """Render the three A/B/C proof variants for a server (validation step 2)."""
+
+    candidate = _find_candidate(server_name, repo=repo, client=client, pack_slug=pack_slug)
+    if candidate is None:
+        return {"ok": False, "error": f"unknown server: {server_name}"}
+    summary = build_safety_summary(candidate)
+    record_event("safety_viewed", server=server_name, client=client)
+    return {"ok": True, "server": server_name, "variants": proof_variants(summary)}

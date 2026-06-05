@@ -306,6 +306,23 @@ def build_parser() -> argparse.ArgumentParser:
     packs_export.add_argument("--target", required=True, help="Output directory for config files.")
     packs_export.add_argument("--json", action="store_true", help="Emit JSON.")
 
+    packs_proof = packs_sub.add_parser("proof", help="Show A/B/C proof variants for a server (validation step 2).")
+    packs_proof.add_argument("server", help="Server identifier (tool name).")
+    packs_proof.add_argument("--repo", default=".", help="Repository for repo-aware ranking.")
+    packs_proof.add_argument(
+        "--client",
+        default="claude-code",
+        choices=["claude-code", "copilot", "cursor"],
+        help="Coding-assistant client.",
+    )
+    packs_proof.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
+    packs_proof.add_argument(
+        "--keep",
+        choices=["approval_only", "sandbox_summary", "formal_receipt"],
+        help="Record which proof variant the partner chose to keep (opt-in telemetry).",
+    )
+    packs_proof.add_argument("--json", action="store_true", help="Emit JSON.")
+
     stats_cmd = sub.add_parser("stats", help="Show the local (opt-in) sanctioned-pack usage funnel.")
     stats_cmd.add_argument("--json", action="store_true", help="Emit JSON.")
 
@@ -988,6 +1005,31 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Exported {result['sanctioned_count']} sanctioned server(s) for {args.client}:")
                 print(f"  managed: {result['paths']['managed']}")
                 print(f"  project: {result['paths']['project']}")
+            return 0
+        if args.packs_command == "proof":
+            from . import pack_flow
+            from .proof_variants import record_preference
+
+            if args.keep:
+                record_preference(args.keep)
+                if args.json:
+                    print(json.dumps({"ok": True, "kept": args.keep}, indent=2))
+                else:
+                    print(f"Recorded proof-variant preference: {args.keep}")
+                return 0
+            result = pack_flow.server_proof(
+                args.server, repo=args.repo, client=args.client, pack_slug=args.pack or "mcp"
+            )
+            if not result["ok"]:
+                print(result["error"])
+                return 1
+            if args.json:
+                print(json.dumps(result, indent=2))
+            else:
+                for name, text in result["variants"].items():
+                    print(f"\n===== proof variant: {name} =====")
+                    print(text)
+                print("\nRecord the partner's choice: frontier-scout packs proof <server> --keep <variant>")
             return 0
         parser.error("packs requires a subcommand")
         return 2
