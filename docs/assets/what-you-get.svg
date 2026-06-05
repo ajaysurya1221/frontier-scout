@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" font-family="ui-monospace, &#39;SF Mono&#39;, &#39;JetBrains Mono&#39;, Menlo, Consolas, &#39;DejaVu Sans Mono&#39;, monospace" role="img" aria-label="What you get. Repo-ranked curation: the servers that matter to your code rise first via local tree-sitter; your source never leaves your machine. Static safety and risk-gating: a capability and policy map per server; write, shell, credential and network servers are gated; no server is executed. Managed-config export: the approved set becomes a Claude Code allow/deny fragment an admin deploys; it emits, it never enforces.">
+  <rect width="1280" height="320" fill="#05080b"></rect>
+
+  <rect x="32" y="40" width="381" height="252" rx="14" fill="#0b1117" stroke="#1a2c41"></rect>
+  <rect x="60" y="74" width="48" height="8" rx="4" fill="#24d6a8"></rect>
+  <rect x="60" y="89" width="36" height="8" rx="4" fill="#5d7184"></rect>
+  <rect x="60" y="104" width="25" height="8" rx="4" fill="#33485e"></rect>
+  <text x="60" y="162" fill="#d9f7ff" font-size="18.5" font-weight="600">Repo-ranked curation</text>
+  <rect x="60" y="174" width="44" height="2" fill="#24d6a8" fill-opacity="0.6"></rect>
+  <text x="60" y="206" fill="#a9bccd" font-size="15.5">Servers that matter to your code</text>
+  <text x="60" y="230" fill="#a9bccd" font-size="15.5">rise first via local tree-sitter.</text>
+  <text x="60" y="254" fill="#a9bccd" font-size="15.5">Source never leaves your machine.</text>
+
+  <rect x="449" y="40" width="381" height="252" rx="14" fill="#0b1117" stroke="#1a2c41"></rect>
+  <circle cx="489" cy="90" r="19" fill="#0b1117" stroke="#24d6a8" stroke-opacity="0.6"></circle>
+  <path d="M479 90 l7 7 l13 -14" fill="none" stroke="#24d6a8" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"></path>
+  <text x="477" y="162" fill="#d9f7ff" font-size="18.5" font-weight="600">Static safety + risk-gating</text>
+  <rect x="477" y="174" width="44" height="2" fill="#24d6a8" fill-opacity="0.6"></rect>
+  <text x="477" y="206" fill="#a9bccd" font-size="15.5">Capability + policy map per server.</text>
+  <text x="477" y="230" fill="#a9bccd" font-size="15.5">write/shell/credential/network are</text>
+  <text x="477" y="254" fill="#a9bccd" font-size="15.5">gated. No server is executed.</text>
+
+  <rect x="866" y="40" width="381" height="252" rx="14" fill="#0b1117" stroke="#1a2c41"></rect>
+  <text x="892" y="104" fill="#24d6a8" font-size="32" font-weight="600">{ }</text>
+  <text x="894" y="162" fill="#d9f7ff" font-size="18.5" font-weight="600">Managed-config export</text>
+  <rect x="894" y="174" width="44" height="2" fill="#24d6a8" fill-opacity="0.6"></rect>
+  <text x="894" y="206" fill="#a9bccd" font-size="15.5">The approved set becomes a Claude</text>
+  <text x="894" y="230" fill="#a9bccd" font-size="15.5">Code allow/deny fragment an admin</text>
+  <text x="894" y="254" fill="#a9bccd" font-size="15.5">deploys. It emits; never enforces.</text>
+</svg>
