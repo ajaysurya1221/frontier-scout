@@ -255,7 +255,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--client",
         default="claude-code",
         choices=["claude-code", "copilot", "cursor"],
-        help="Coding-assistant client.",
+        help="Coding-assistant client. Claude Code only today; copilot/cursor are roadmap (selecting them errors).",
     )
     packs_candidates.add_argument(
         "--discover",
@@ -271,7 +271,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--client",
         default="claude-code",
         choices=["claude-code", "copilot", "cursor"],
-        help="Coding-assistant client.",
+        help="Coding-assistant client. Claude Code only today; copilot/cursor are roadmap (selecting them errors).",
     )
     packs_sanction.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
     packs_sanction.add_argument("--approver", help="Approver label recorded in the decision.")
@@ -289,7 +289,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--client",
         default="claude-code",
         choices=["claude-code", "copilot", "cursor"],
-        help="Coding-assistant client.",
+        help="Coding-assistant client. Claude Code only today; copilot/cursor are roadmap (selecting them errors).",
     )
     packs_unsanction.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
     packs_unsanction.add_argument("--reason", help="Rationale recorded in the decision.")
@@ -300,7 +300,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--client",
         default="claude-code",
         choices=["claude-code", "copilot", "cursor"],
-        help="Coding-assistant client.",
+        help="Coding-assistant client. Claude Code only today; copilot/cursor are roadmap (selecting them errors).",
     )
     packs_export.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
     packs_export.add_argument("--target", required=True, help="Output directory for config files.")
@@ -313,12 +313,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--client",
         default="claude-code",
         choices=["claude-code", "copilot", "cursor"],
-        help="Coding-assistant client.",
+        help="Coding-assistant client. Claude Code only today; copilot/cursor are roadmap (selecting them errors).",
     )
     packs_proof.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
     packs_proof.add_argument(
         "--keep",
-        choices=["approval_only", "sandbox_summary", "formal_receipt"],
+        choices=["approval_only", "static_safety_summary", "formal_receipt"],
         help="Record which proof variant the partner chose to keep (opt-in telemetry).",
     )
     packs_proof.add_argument("--json", action="store_true", help="Emit JSON.")
@@ -890,6 +890,16 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "packs":
         save_builtin_packs_if_empty()
+        # Claim honesty: only Claude Code export is built today. Hard-gate copilot/cursor
+        # with a clear nonzero error rather than emitting Claude config under their name.
+        if args.packs_command in ("candidates", "sanction", "unsanction", "export", "proof"):
+            if getattr(args, "client", "claude-code") != "claude-code":
+                print(
+                    "Not implemented: Frontier Scout currently exports Claude Code "
+                    "managed-config fragments only. Copilot/Cursor export is roadmap.",
+                    file=sys.stderr,
+                )
+                return 2
         if args.packs_command == "list":
             for pack in list_packs():
                 definition = pack["definition"]
@@ -945,7 +955,7 @@ def main(argv: list[str] | None = None) -> int:
                         "transport": (candidate.server_meta or {}).get("transport"),
                         "verdict": summary["verdict"],
                         "risk": summary["risk"],
-                        "requires_trial": summary["requires_trial"],
+                        "requires_review": summary["requires_review"],
                         "description": summary["description"],  # already secret-redacted
                     }
                 )
@@ -954,8 +964,9 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(f"Repo-ranked {pack_slug} servers for {args.client} ({len(rows)}):")
                 for row in rows:
-                    flag = "  [trial required]" if row["requires_trial"] else ""
+                    flag = "  [needs review — static only]" if row["requires_review"] else ""
                     print(f"- {row['tool_name']}  fit={row['repo_fit']} risk={row['risk']} {row['transport']}{flag}")
+                print("\nStatic analysis only; no MCP server was executed.")
             return 0
         if args.packs_command == "sanction":
             from . import pack_flow
@@ -982,7 +993,7 @@ def main(argv: list[str] | None = None) -> int:
                         print(result.get("error", "sanction failed"))
                 return 1
             if not args.json:
-                print(f"Sanctioned {args.server} ({result['verdict']}) for {args.client}.")
+                print(f"Sanctioned {args.server} (static verdict: {result['verdict']}) for {args.client}.")
             return 0
         if args.packs_command == "unsanction":
             from . import pack_flow
@@ -1005,6 +1016,10 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"Exported {result['sanctioned_count']} sanctioned server(s) for {args.client}:")
                 print(f"  managed: {result['paths']['managed']}")
                 print(f"  project: {result['paths']['project']}")
+                print(
+                    "Generated Claude Code managed-config fragment for admin review; "
+                    "this is a static export, not runtime enforcement."
+                )
             return 0
         if args.packs_command == "proof":
             from . import pack_flow

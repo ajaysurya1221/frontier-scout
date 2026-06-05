@@ -12,14 +12,14 @@ Environment: a throwaway `FRONTIER_SCOUT_HOME`, a temp repo with a `.mcp.json`,
 `frontier-scout packs candidates --repo "$REPO" --client claude-code`
 ```
 Repo-ranked mcp servers for claude-code (6):
-- io.modelcontextprotocol/filesystem  fit=high risk=medium stdio  [trial required]
-- io.modelcontextprotocol/fetch  fit=high risk=medium stdio  [trial required]
+- io.modelcontextprotocol/filesystem  fit=high risk=medium stdio  [needs review — static only]
+- io.modelcontextprotocol/fetch  fit=high risk=medium stdio  [needs review — static only]
 - io.modelcontextprotocol/time  fit=high risk=medium stdio
-- io.modelcontextprotocol/sqlite  fit=high risk=medium stdio  [trial required]
-- com.github/github  fit=high risk=medium http  [trial required]
-- dev.sentry/sentry  fit=high risk=medium http  [trial required]
+- io.modelcontextprotocol/sqlite  fit=high risk=medium stdio  [needs review — static only]
+- com.github/github  fit=high risk=medium http  [needs review — static only]
+- dev.sentry/sentry  fit=high risk=medium http  [needs review — static only]
 ```
-*Artifact present:* a repo-ranked list with per-server static safety (`[trial required]` flags the
+*Artifact present:* a repo-ranked list with per-server static safety (`[needs review — static only]` flags the
 high-risk ones). ← what a partner reacts to in step 1.
 
 ## Step 2 — proof variant (A/B/C) ✅
@@ -27,12 +27,12 @@ high-risk ones). ← what a partner reacts to in step 1.
 ```
 ===== proof variant: approval_only =====
 io.modelcontextprotocol/filesystem: ALLOW (verdict trial, risk medium). Approve this server for the team?
-===== proof variant: sandbox_summary =====
+===== proof variant: static_safety_summary =====
 ## Static safety analysis — io.modelcontextprotocol/filesystem
 ===== proof variant: formal_receipt =====
-ADOPTION RECEIPT (static)
+STATIC ADOPTION ASSESSMENT
 ```
-`… --keep sandbox_summary` → `Recorded proof-variant preference: sandbox_summary`.
+`… --keep static_safety_summary` → `Recorded proof-variant preference: static_safety_summary`.
 *Artifact present:* three distinct faces + a recorded choice. ← the A/B/C the partner picks from.
 
 ## Step 3 — sanction + export snap-in ✅

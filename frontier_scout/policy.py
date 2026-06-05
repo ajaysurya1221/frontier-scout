@@ -130,7 +130,7 @@ def evaluate_policy(
                     PolicyFinding(
                         severity=severity,
                         rule_id=f"capability.{flag}",
-                        message=f"Tool exposes {flag} capability; sandbox evidence is required before adoption.",
+                        message=f"Tool exposes {flag} capability; behavioral evidence is recommended before adoption.",
                         tool_name=tool_name,
                     )
                 )
@@ -166,14 +166,14 @@ def evaluate_policy(
     if high_findings and not lab_passed:
         return PolicyDecision(
             verdict="trial",
-            summary="TRIAL - high-risk capability requires sandbox evidence.",
+            summary="TRIAL - high-risk capability; behavioral evidence recommended before adoption.",
             findings=findings,
         )
 
     if findings and not lab_passed:
         return PolicyDecision(
             verdict="trial",
-            summary="TRIAL - permission surface requires a stored sandbox receipt.",
+            summary="TRIAL - permission surface; behavioral evidence recommended before adoption.",
             findings=findings,
         )
 

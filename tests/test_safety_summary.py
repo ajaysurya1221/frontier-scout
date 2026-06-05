@@ -26,7 +26,7 @@ def test_build_static_safety_summary_classifies_capabilities_and_policy():
     assert summary["kind"] == "static"
     assert summary["verdict"] in {"adopt", "trial", "assess", "hold"}
     assert "write" in summary["dangerous_flags"] or "shell" in summary["dangerous_flags"]
-    assert summary["requires_trial"] is True
+    assert summary["requires_review"] is True
 
     rendered = render_safety_summary(summary)
     assert "static analysis" in rendered.lower()

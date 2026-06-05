@@ -16,8 +16,8 @@ from .evaluate import evaluate_url
 from .packs import PackCandidate
 from .policy import Policy, evaluate_policy
 
-# Capability flags that should require a sandbox trial before a server is sanctioned
-# (per the verification-gap demand signal: evidence for selected high-risk tools only).
+# Capability flags that gate sanction behind explicit human review (static analysis only;
+# per the verification-gap demand signal: scrutiny for selected high-risk tools).
 RISKY_FLAGS = frozenset({"write", "shell", "credential", "network"})
 
 
@@ -57,12 +57,12 @@ def build_safety_summary(
         "policy_summary": sanitize_sensitive_text(decision.summary),
         "findings": [{**f.model_dump(), "message": sanitize_sensitive_text(f.message)} for f in decision.findings],
     }
-    summary["requires_trial"] = is_high_risk(summary)  # single source of truth
+    summary["requires_review"] = is_high_risk(summary)  # single source of truth
     return summary
 
 
 def is_high_risk(summary: dict[str, Any]) -> bool:
-    """True when the server has a capability flag that should gate sanction behind a trial."""
+    """True when the server has a capability flag that should gate sanction behind review."""
 
     return bool(RISKY_FLAGS.intersection(summary.get("dangerous_flags") or []))
 

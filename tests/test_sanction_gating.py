@@ -17,7 +17,7 @@ def test_high_risk_server_blocks_without_acknowledge(tmp_path, monkeypatch):
     )
     assert result["ok"] is False
     assert result["blocked"] is True
-    assert "summary" in result and result["summary"]["requires_trial"] is True
+    assert "summary" in result and result["summary"]["requires_review"] is True
 
 
 def test_high_risk_server_sanctions_with_acknowledge(tmp_path, monkeypatch):

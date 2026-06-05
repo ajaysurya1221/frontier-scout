@@ -32,9 +32,9 @@ MCP server for your team today, and how long does it take?" (Slack thread, wiki 
    list. **Success metric: ≥3 of 5 say they would rather use this than hand-curate `.mcp.json` or
    Slack/wiki guidance.**
 2. **Proof variant (A/B/C).** Show the same server three ways — `approval_only`,
-   `sandbox_summary`, `formal_receipt` (`frontier_scout/proof_variants.py`). Ask which they would
+   `static_safety_summary`, `formal_receipt` (`frontier_scout/proof_variants.py`). Ask which they would
    *keep*. **Success metric: users voluntarily ask to keep one** (the research predicts the
-   sandbox summary wins; if they resist explicit receipts, kill "receipts" as a headline). Record
+   static safety summary wins; if they resist explicit receipts, kill "receipts" as a headline). Record
    the choice (`record_preference(...)`, opt-in telemetry).
 3. **Export snap-in.** Have them take the exported `managed-settings.json` / `.mcp.json` toward
    their real control plane. **Success metric: ≥1 team says "we could actually route this through

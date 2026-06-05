@@ -18,7 +18,7 @@ def test_proof_shows_three_variants(tmp_path, monkeypatch, capsys):
     rc = main(["packs", "proof", "io.modelcontextprotocol/filesystem", "--repo", str(repo)])
     assert rc == 0
     out = capsys.readouterr().out.lower()
-    assert "approve" in out and "static analysis" in out and "receipt" in out
+    assert "approve" in out and "static analysis" in out and "static adoption assessment" in out
 
 
 def test_proof_json_returns_all_variants(tmp_path, monkeypatch, capsys):
@@ -28,16 +28,17 @@ def test_proof_json_returns_all_variants(tmp_path, monkeypatch, capsys):
     rc = main(["packs", "proof", "io.modelcontextprotocol/time", "--repo", str(repo), "--json"])
     assert rc == 0
     data = json.loads(capsys.readouterr().out)
-    assert set(data["variants"]) == {"approval_only", "sandbox_summary", "formal_receipt"}
+    assert set(data["variants"]) == {"approval_only", "static_safety_summary", "formal_receipt"}
 
 
 def test_proof_keep_records_preference(tmp_path, monkeypatch):
     monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path))
     monkeypatch.setenv("FRONTIER_SCOUT_TELEMETRY", "1")
-    rc = main(["packs", "proof", "io.modelcontextprotocol/time", "--keep", "sandbox_summary"])
+    rc = main(["packs", "proof", "io.modelcontextprotocol/time", "--keep", "static_safety_summary"])
     assert rc == 0
     assert any(
-        e["event"] == "proof_variant_kept" and e.get("variant") == "sandbox_summary" for e in telemetry.read_events()
+        e["event"] == "proof_variant_kept" and e.get("variant") == "static_safety_summary"
+        for e in telemetry.read_events()
     )
 
 

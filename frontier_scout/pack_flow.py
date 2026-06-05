@@ -24,8 +24,6 @@ from .proof_variants import proof_variants
 from .safety_summary import build_safety_summary, is_high_risk
 from .telemetry import record_event
 
-SUPPORTED_CLIENTS = ("claude-code", "copilot", "cursor")
-
 
 def _client_allows(candidate: PackCandidate, client: str) -> bool:
     """A candidate is offered for a client unless it explicitly restricts its scope."""
@@ -169,8 +167,8 @@ def export_config(*, client: str = "claude-code", pack_slug: str = "mcp", target
         for override in store.list_pack_overrides(pack_slug)
         if override.get("override") in REMOVE_OVERRIDES
     ]
-    # All MVP clients (claude-code/copilot/cursor) consume the same mcpServers /
-    # managed allow-deny shapes, so one exporter covers them.
+    # Only Claude Code export is built today (managed allow/deny + project .mcp.json).
+    # The CLI hard-gates other clients; copilot/cursor exporters are roadmap.
     paths = export_claude_config(sanctioned, denied=denied, target_dir=target_dir)
     record_event("exported", client=client, count=len(sanctioned))
     return {

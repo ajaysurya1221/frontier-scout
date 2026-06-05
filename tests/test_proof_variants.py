@@ -27,19 +27,34 @@ def test_three_variants_render_distinctly():
     assert all(text.strip() for text in variants.values())
     # the three faces are genuinely different artifacts
     assert len({text.strip() for text in variants.values()}) == 3
-    assert "receipt" in variants["formal_receipt"].lower()
-    assert "static analysis" in variants["sandbox_summary"].lower()
+    # FIX 4: the formal variant is a generated STATIC assessment, not a signed/witnessed receipt
+    assert "static adoption assessment" in variants["formal_receipt"].lower()
+    assert "generated-by" in variants["formal_receipt"].lower()
+    assert "signed-by" not in variants["formal_receipt"].lower()
+    # FIX 3: the static variant is named for what it is (static safety, not a sandbox)
+    assert "static analysis" in variants["static_safety_summary"].lower()
     assert "approve" in variants["approval_only"].lower()
 
 
 def test_variant_preference_recorded(tmp_path, monkeypatch):
     monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path))
     monkeypatch.setenv("FRONTIER_SCOUT_TELEMETRY", "1")
-    assert record_preference("sandbox_summary") is True
+    assert record_preference("static_safety_summary") is True
     assert any(
-        e["event"] == "proof_variant_kept" and e.get("variant") == "sandbox_summary"
+        e["event"] == "proof_variant_kept" and e.get("variant") == "static_safety_summary"
         for e in telemetry.read_events()
     )
+
+
+def test_legacy_sandbox_summary_alias_normalizes(tmp_path, monkeypatch):
+    # back-compat: a persisted/legacy "sandbox_summary" is accepted but normalized so
+    # no user-facing/recorded artifact shows the misleading "sandbox" name.
+    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path))
+    monkeypatch.setenv("FRONTIER_SCOUT_TELEMETRY", "1")
+    assert record_preference("sandbox_summary") is True
+    events = telemetry.read_events()
+    assert any(e.get("variant") == "static_safety_summary" for e in events)
+    assert not any(e.get("variant") == "sandbox_summary" for e in events)
 
 
 def test_unknown_variant_rejected():

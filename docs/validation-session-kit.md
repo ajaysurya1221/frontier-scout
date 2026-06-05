@@ -30,12 +30,12 @@ hand-curate `.mcp.json` / a Slack thread / a wiki page?"* Record **prefer / neut
 ```bash
 frontier-scout packs proof <server> --repo "$REPO"          # shows all 3 variants
 ```
-Show the three faces (approval-only · sandbox-summary · formal-receipt). Ask: *"Which of these would
+Show the three faces (approval-only · static-safety-summary · formal-receipt). Ask: *"Which of these would
 you actually keep on file?"* Then record their pick:
 ```bash
-frontier-scout packs proof <server> --repo "$REPO" --keep <approval_only|sandbox_summary|formal_receipt>
+frontier-scout packs proof <server> --repo "$REPO" --keep <approval_only|static_safety_summary|formal_receipt>
 ```
-(The research predicts `sandbox_summary` wins; if they resist `formal_receipt`, that's the signal to
+(The research predicts `static_safety_summary` wins; if they resist `formal_receipt`, that's the signal to
 drop "receipts" as a headline.)
 
 **3 · Export snap-in** — *success: ≥1 team says "we could route this through our process."*
@@ -56,7 +56,7 @@ committed `.mcp.json`)?"* Record **yes (which surface) / no**.
 Partner #: ____   Role: ____   Client: claude-code/copilot   Repo archetype: ____
 Baseline: current process = ____________   time/steps = ____
 Step 1 pack-pull preference:   prefer / neutral / no        notes: ____
-Step 2 kept variant:           approval_only / sandbox_summary / formal_receipt   notes: ____
+Step 2 kept variant:           approval_only / static_safety_summary / formal_receipt   notes: ____
 Step 3 export snap-in:         yes (managed / project) / no    notes: ____
 Verbatim quote: "________________________________________"
 ```
@@ -73,7 +73,7 @@ Tally across partners:
 
 - **GO (build Phase-4 V1):** Step 1 **and** Step 3 pass. Then build, in order: the behavioral MCP
   probe (high-risk servers only, `docs/spike-mcp-probe.md`), Copilot + GitHub allow-list exporter,
-  non-blocking notifier. If Step 2's modal choice is `sandbox_summary`, keep it as the headline and
+  non-blocking notifier. If Step 2's modal choice is `static_safety_summary`, keep it as the headline and
   drop formal receipts; if `formal_receipt`, build selective auto-receipts for high-risk servers.
 - **KILL / re-scope (do NOT keep polishing):**
   - Step 1 **< 3/5** → curation+repo-fit isn't pulling; re-scope to the narrowest sub-problem with
