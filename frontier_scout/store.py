@@ -355,14 +355,13 @@ def init_db(path: Path | None = None) -> Path:
                 """
             )
             # Explicit columns (not SELECT *) so the rebuild is robust to column
-            # drift in the live table (review finding I-1).
-            conn.execute(
-                "INSERT INTO pack_candidates__v7 "
-                "(id, pack_id, tool_id, state, freshness_score, consensus_score, "
-                "state_changed_at, evidence_json) "
-                "SELECT id, pack_id, tool_id, state, freshness_score, consensus_score, "
-                "state_changed_at, evidence_json FROM pack_candidates"
-            )
+            # drift in the live table (review finding I-1). Preserve a pre-existing
+            # payload_json (a legacy table that already has the v9 column) so the
+            # CHECK-widening rebuild never resets it to '{}'.
+            legacy_has_payload = "payload_json" in row[0]
+            base_cols = "id, pack_id, tool_id, state, freshness_score, consensus_score, state_changed_at, evidence_json"
+            cols = base_cols + (", payload_json" if legacy_has_payload else "")
+            conn.execute(f"INSERT INTO pack_candidates__v7 ({cols}) SELECT {cols} FROM pack_candidates")
             conn.execute("DROP TABLE pack_candidates")
             conn.execute("ALTER TABLE pack_candidates__v7 RENAME TO pack_candidates")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_pack_candidates_pack ON pack_candidates(pack_id)")

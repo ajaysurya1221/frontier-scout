@@ -959,7 +959,10 @@ def main(argv: list[str] | None = None) -> int:
                         "transport": (candidate.server_meta or {}).get("transport"),
                         "verdict": summary["verdict"],
                         "verdict_label": summary["verdict_label"],
+                        "readiness": summary["readiness"],
+                        "fit": summary["fit"],
                         "risk": summary["risk"],
+                        "source_url": summary["source_url"],
                         "requires_review": summary["requires_review"],
                         "description": summary["description"],  # already secret-redacted
                     }

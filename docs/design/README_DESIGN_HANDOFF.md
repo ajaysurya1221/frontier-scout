@@ -221,10 +221,10 @@ on the steps path · a slow gradient shimmer on the wordmark. Keep `dur` 3–6s,
 - Roadmap lead: `Current direction — research preview: repo-aware sanctioned MCP-server packs for Claude Code.`
 - Honesty footer: `Research preview — technically coherent, not market-validated. Human design-partner gate: 0/5.`
 
-Acceptance grep (run on every new asset):
+Acceptance grep (run on every new asset; requires `rsvg-convert` (librsvg) on PATH):
 ```bash
 grep -icE "radar|receipt|sandbox|enforce|runtime polic|cross-client|copilot|cursor|\bdocker\b|market.?valid|\bpmf\b|see new AI|bring your own LLM" docs/assets/<file>.svg   # must be 0
-/opt/homebrew/bin/rsvg-convert -w 1280 docs/assets/<file>.svg -o /tmp/check.png   # then eyeball it
+rsvg-convert -w 1280 docs/assets/<file>.svg -o /tmp/check.png   # then eyeball it
 ```
 
 ---

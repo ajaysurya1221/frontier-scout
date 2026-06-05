@@ -18,7 +18,18 @@ def test_candidates_repo_client_demo_json(tmp_path, monkeypatch, capsys):
     assert rc == 0
     out = json.loads(capsys.readouterr().out)
     assert isinstance(out, list) and len(out) >= 5
-    assert all("tool_name" in c and "repo_fit" in c and "requires_review" in c for c in out)
+    # Load-bearing verdict-schema fields the consumer (export/proof/handoff) relies on.
+    required = {
+        "tool_name",
+        "repo_fit",
+        "requires_review",
+        "category",
+        "risk",
+        "fit",
+        "readiness",
+        "source_url",
+    }
+    assert all(required <= c.keys() for c in out)
 
 
 def test_candidates_text_output_offline(tmp_path, monkeypatch, capsys):

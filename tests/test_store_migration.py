@@ -75,3 +75,46 @@ def test_legacy_pack_candidates_migrated_preserving_rows(tmp_path):
     got = conn.execute("SELECT state FROM pack_candidates WHERE tool_id = 2").fetchone()[0]
     assert got == "sanctioned"
     conn.close()
+
+
+# A legacy DB that predates 'sanctioned' (so the CHECK-widening rebuild fires) but already
+# carries a populated payload_json column (e.g. a v9-then-downgrade-then-upgrade path). The
+# rebuild must NOT reset that payload to '{}'.
+_LEGACY_SCHEMA_WITH_PAYLOAD = """
+CREATE TABLE tools (id INTEGER PRIMARY KEY AUTOINCREMENT, tool_name TEXT UNIQUE NOT NULL);
+CREATE TABLE packs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT UNIQUE NOT NULL,
+    display_name TEXT NOT NULL, description TEXT, definition_json TEXT NOT NULL,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE pack_candidates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pack_id INTEGER NOT NULL REFERENCES packs(id) ON DELETE CASCADE,
+    tool_id INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
+    state TEXT NOT NULL CHECK (state IN ('candidate','watched','core','retired')),
+    freshness_score REAL NOT NULL, consensus_score REAL NOT NULL,
+    state_changed_at TEXT NOT NULL, evidence_json TEXT NOT NULL,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    UNIQUE(pack_id, tool_id));
+CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+INSERT INTO tools(id, tool_name) VALUES (1, 'legacy-server');
+INSERT INTO packs(id, slug, display_name, description, definition_json, created_at, updated_at)
+    VALUES (1, 'mcp', 'MCP', 'x', '{}', '2026-01-01', '2026-01-01');
+INSERT INTO pack_candidates(pack_id, tool_id, state, freshness_score, consensus_score,
+    state_changed_at, evidence_json, payload_json)
+    VALUES (1, 1, 'core', 1.0, 1.0, '2026-01-01', '[]', '{"category": "mcp_server"}');
+"""
+
+
+def test_legacy_check_rebuild_preserves_existing_payload_json(tmp_path):
+    path = tmp_path / "legacy_payload.sqlite"
+    conn = sqlite3.connect(path)
+    conn.executescript(_LEGACY_SCHEMA_WITH_PAYLOAD)
+    conn.commit()
+    conn.close()
+
+    store.init_db(path)  # CHECK-widening rebuild fires AND payload_json pre-exists
+
+    conn = sqlite3.connect(path)
+    payload = conn.execute("SELECT payload_json FROM pack_candidates WHERE tool_id = 1").fetchone()[0]
+    conn.close()
+    assert payload == '{"category": "mcp_server"}', "rebuild must preserve a pre-existing payload_json"

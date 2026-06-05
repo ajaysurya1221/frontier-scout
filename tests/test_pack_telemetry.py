@@ -50,6 +50,21 @@ def test_telemetry_makes_no_network_call(tmp_path, monkeypatch):
     assert telemetry.record_event("exported", client="claude-code") is True
 
 
+def test_summarize_tolerates_non_hashable_event_value(tmp_path, monkeypatch):
+    # A tampered/corrupt ledger line whose "event" is a dict/list is non-hashable;
+    # summarize() must not raise on it (it is simply ignored from the funnel counts).
+    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path))
+    monkeypatch.setenv("FRONTIER_SCOUT_TELEMETRY", "1")
+    telemetry.record_event("sanctioned", server="ok")
+    path = telemetry.events_path()
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"ts": "2026-01-01T00:00:00+00:00", "event": {"weird": 1}}) + "\n")
+        handle.write(json.dumps({"ts": "2026-01-01T00:00:00+00:00", "event": ["also", "weird"]}) + "\n")
+    summary = telemetry.summarize()  # must not raise on the non-hashable events
+    assert summary["sanctioned"] == 1
+    assert summary["total_events"] == 3
+
+
 def test_stats_cli(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path))
     monkeypatch.setenv("FRONTIER_SCOUT_TELEMETRY", "1")

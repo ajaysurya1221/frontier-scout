@@ -51,3 +51,19 @@ def test_high_risk_detection_uses_trial_gating_set():
     assert is_high_risk({"dangerous_flags": ["read"]}) is False
     # 'unknown' is fail-closed by policy but is not in the trial-gating set.
     assert is_high_risk({"dangerous_flags": ["unknown"]}) is False
+
+
+def test_summary_carries_load_bearing_verdict_schema_fields():
+    cand = PackCandidate(
+        pack_slug="mcp",
+        tool_name="acme-fs",
+        description="Filesystem server.",
+        category="mcp_server",
+        server_meta={"transport": "stdio", "url": "https://acme.example.com/mcp"},
+    )
+    summary = build_safety_summary(cand)
+    for field in ("category", "risk", "fit", "readiness", "source_url"):
+        assert field in summary, f"summary missing load-bearing field: {field}"
+    # readiness falls back to the raw verdict tier when no separate tier exists.
+    assert summary["readiness"] == summary["verdict"]
+    assert summary["source_url"]

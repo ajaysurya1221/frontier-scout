@@ -35,7 +35,10 @@ def test_i1_sanction_json_does_not_leak_secret(tmp_path, monkeypatch, capsys):
             server_meta={"transport": "stdio", "command": "uvx", "args": ["x"], "env": {}},
         )
     )
-    main(["packs", "sanction", "leaky", "--repo", str(tmp_path), "--json"])
+    # 'leaky' trips the 'credential' capability flag (secret-token text), so sanction is
+    # blocked as high-risk and returns 1; the blocked-summary JSON must still be redacted.
+    rc = main(["packs", "sanction", "leaky", "--repo", str(tmp_path), "--json"])
+    assert rc == 1
     assert _SECRET not in capsys.readouterr().out
 
 

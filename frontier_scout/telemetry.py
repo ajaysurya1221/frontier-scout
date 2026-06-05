@@ -83,7 +83,9 @@ def summarize() -> dict[str, Any]:
     """Aggregate the local funnel for ``frontier-scout stats``."""
 
     events = read_events()
-    counts = Counter(e.get("event") for e in events)
+    # A tampered/corrupt ledger line may carry a non-hashable "event" (dict/list);
+    # only count string event names so summarize() never raises on bad input.
+    counts = Counter(e.get("event") for e in events if isinstance(e.get("event"), str))
     summary: dict[str, Any] = {
         "enabled": is_enabled(),
         "total_events": len(events),

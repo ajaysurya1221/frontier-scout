@@ -33,6 +33,6 @@ def test_demo_mcp_servers_are_offline_and_runnable():
     assert 5 <= len(servers) <= 12
     assert all(s.category == "mcp_server" for s in servers)
     assert all(s.server_meta.get("transport") in {"stdio", "http", "sse"} for s in servers)
-    # a mix of transports keeps the demo representative
+    # a mix of transports keeps the demo representative — both must be present
     transports = {s.server_meta["transport"] for s in servers}
-    assert {"stdio", "http"} & transports
+    assert {"stdio", "http"} <= transports
