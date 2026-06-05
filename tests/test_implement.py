@@ -15,6 +15,7 @@ invariants without spending on a live LLM or running the full test runner:
 from __future__ import annotations
 
 import subprocess
+import sys
 import types
 from pathlib import Path
 
@@ -136,7 +137,7 @@ def test_live_run_applies_and_tests(tmp_path, monkeypatch):
                 "contents": "from hello import hello\n\ndef test_hello():\n    assert hello() == 'hi'\n",
             },
         ],
-        "test_command": "python -m pytest -q test_hello.py",
+        "test_command": f"{sys.executable} -m pytest -q test_hello.py",
     }
     monkeypatch.setattr(
         implement, "_generate_change", lambda *a, **k: (change, 0.0)
@@ -172,7 +173,7 @@ def test_live_run_reports_failure(tmp_path, monkeypatch):
                 "contents": "def test_fail():\n    assert False\n",
             }
         ],
-        "test_command": "python -m pytest -q test_fail.py",
+        "test_command": f"{sys.executable} -m pytest -q test_fail.py",
     }
     monkeypatch.setattr(implement, "_generate_change", lambda *a, **k: (change, 0.0))
     result = run_implement(
@@ -268,7 +269,7 @@ def test_keep_with_failed_status_still_discards(tmp_path, monkeypatch):
         "files": [
             {"path": "test_x.py", "action": "create", "contents": "def test_x():\n    assert False\n"}
         ],
-        "test_command": "python -m pytest -q test_x.py",
+        "test_command": f"{sys.executable} -m pytest -q test_x.py",
     }
     monkeypatch.setattr(implement, "_generate_change", lambda *a, **k: (change, 0.0))
     result = run_implement(repo=repo, tool_name="bad", provider=types.SimpleNamespace())

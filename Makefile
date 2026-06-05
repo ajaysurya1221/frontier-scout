@@ -3,8 +3,10 @@
 setup:
 	python -m pip install -e ".[dev]"
 
+# `demo` smoke-tests the Incident Change Scout slice, which the sanctioned-packs pivot parked
+# behind FRONTIER_SCOUT_EXPERIMENTAL — CI opts in here so the parked code keeps running.
 demo:
-	frontier-scout incident demo
+	FRONTIER_SCOUT_EXPERIMENTAL=1 frontier-scout incident demo
 
 test:
 	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q

@@ -1,0 +1,85 @@
+name: Sanctioned-pack feedback
+description: Tried the repo-aware sanctioned MCP-server pack? Tell us what happened (weak signal — not a validation gate).
+title: "[feedback] "
+labels: ["feedback", "sanctioned-packs"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying Frontier Scout's sanctioned-pack flow — this is an **early research preview**.
+        Your answer is **weak external signal** that helps prioritization. It is **not** market
+        validation and does **not** count toward the project's real design-partner validation gate.
+  - type: dropdown
+    id: control_plane
+    attributes:
+      label: Which control plane are you using today?
+      options:
+        - Claude Code managed settings
+        - GitHub MCP allow-list
+        - Docker catalog / profile / gateway
+        - ToolHive
+        - Copilot
+        - Cursor
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: prefer
+    attributes:
+      label: Would this have saved you time versus hand-curating `.mcp.json` or internal docs?
+      options:
+        - "Yes — I'd prefer this"
+        - "Neutral / unsure"
+        - "No — my current process is fine"
+    validations:
+      required: true
+  - type: dropdown
+    id: safety_helped
+    attributes:
+      label: Did the static safety summary help your decision?
+      options:
+        - "Yes"
+        - "Somewhat"
+        - "No"
+        - "I'd need behavioral evidence (actually running the server), not static"
+  - type: dropdown
+    id: keep_artifact
+    attributes:
+      label: Would you keep the generated artifact?
+      options:
+        - "Yes — approval-only"
+        - "Yes — static safety summary"
+        - "Yes — formal (static) record"
+        - "No — none of them"
+  - type: dropdown
+    id: export_routable
+    attributes:
+      label: Could the exported Claude managed-config fragment fit your process (Jamf / Intune / committed .mcp.json / dotfiles)?
+      options:
+        - "Yes — note which surface below"
+        - "Maybe / depends"
+        - "No"
+        - "We don't have a centralized config surface yet"
+  - type: dropdown
+    id: export_target
+    attributes:
+      label: If we built one more export target next, which would matter most to you?
+      options:
+        - "Claude Code (already supported — make it more routable)"
+        - GitHub MCP allow-list
+        - Docker catalog / profile / gateway
+        - ToolHive registry / gateway
+        - Copilot
+        - Cursor
+        - None / not relevant
+  - type: textarea
+    id: blocked
+    attributes:
+      label: What blocked adoption? Anything we got wrong?
+      description: The most useful box — be blunt.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else? (which export surface, a quote, your repo archetype)

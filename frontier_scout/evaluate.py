@@ -144,6 +144,16 @@ def _fit(category: str, text: str, stack: dict) -> str:
     return "low"
 
 
+def repo_fit(category: str, text: str, stack: dict) -> str:
+    """Public wrapper over the deterministic repo-fit heuristic.
+
+    Lets callers (e.g. the pack ranker) reuse the fit scorer without importing
+    the private ``_fit``.
+    """
+
+    return _fit(category, text, stack)
+
+
 def _risk(category: str, source_trust: str, manifest: PermissionManifest) -> str:
     if (
         "unknown" in manifest.dangerous_flags

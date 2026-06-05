@@ -1,0 +1,68 @@
+[
+  {
+    "tool_name": "io.modelcontextprotocol/filesystem",
+    "repo_fit": "high",
+    "category": "mcp_server",
+    "transport": "stdio",
+    "verdict": "trial",
+    "verdict_label": "review",
+    "risk": "medium",
+    "requires_review": true,
+    "description": "Local filesystem access: read, write, and list files in a directory."
+  },
+  {
+    "tool_name": "io.modelcontextprotocol/fetch",
+    "repo_fit": "high",
+    "category": "mcp_server",
+    "transport": "stdio",
+    "verdict": "trial",
+    "verdict_label": "review",
+    "risk": "medium",
+    "requires_review": true,
+    "description": "Fetch a URL and convert the web page to markdown over the network."
+  },
+  {
+    "tool_name": "io.modelcontextprotocol/time",
+    "repo_fit": "high",
+    "category": "mcp_server",
+    "transport": "stdio",
+    "verdict": "assess",
+    "verdict_label": "assess",
+    "risk": "medium",
+    "requires_review": false,
+    "description": "Read the current time and convert between timezones. Read-only."
+  },
+  {
+    "tool_name": "io.modelcontextprotocol/sqlite",
+    "repo_fit": "high",
+    "category": "mcp_server",
+    "transport": "stdio",
+    "verdict": "trial",
+    "verdict_label": "review",
+    "risk": "medium",
+    "requires_review": true,
+    "description": "Query and modify a local SQLite database: read and write rows."
+  },
+  {
+    "tool_name": "com.github/github",
+    "repo_fit": "high",
+    "category": "mcp_server",
+    "transport": "http",
+    "verdict": "trial",
+    "verdict_label": "review",
+    "risk": "medium",
+    "requires_review": true,
+    "description": "GitHub issues, pull requests, and code search over an authenticated API."
+  },
+  {
+    "tool_name": "dev.sentry/sentry",
+    "repo_fit": "high",
+    "category": "mcp_server",
+    "transport": "http",
+    "verdict": "trial",
+    "verdict_label": "review",
+    "risk": "medium",
+    "requires_review": true,
+    "description": "Read Sentry errors and monitoring data over the network."
+  }
+]

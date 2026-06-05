@@ -73,12 +73,8 @@ def init_db(path: Path | None = None) -> Path:
             )
             """
         )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_verdicts_scan ON verdicts(scan_id)"
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_verdicts_tool ON verdicts(tool_name)"
-        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_verdicts_scan ON verdicts(scan_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_verdicts_tool ON verdicts(tool_name)")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -183,6 +179,8 @@ def init_db(path: Path | None = None) -> Path:
                 approver_label TEXT,
                 rationale TEXT,
                 revisit_after TEXT,
+                pack_slug TEXT,
+                client TEXT,
                 payload_json TEXT NOT NULL DEFAULT '{}'
             )
             """
@@ -244,11 +242,12 @@ def init_db(path: Path | None = None) -> Path:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 pack_id INTEGER NOT NULL REFERENCES packs(id) ON DELETE CASCADE,
                 tool_id INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
-                state TEXT NOT NULL CHECK (state IN ('candidate','watched','core','retired')),
+                state TEXT NOT NULL CHECK (state IN ('candidate','watched','core','retired','sanctioned')),
                 freshness_score REAL NOT NULL,
                 consensus_score REAL NOT NULL,
                 state_changed_at TEXT NOT NULL,
                 evidence_json TEXT NOT NULL,
+                payload_json TEXT NOT NULL DEFAULT '{}',
                 UNIQUE(pack_id, tool_id)
             )
             """
@@ -332,6 +331,64 @@ def init_db(path: Path | None = None) -> Path:
             "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
             (6, _now()),
         )
+        # v7 (pivot — sanctioned MCP packs): widen pack_candidates.state to allow
+        # 'sanctioned'. CREATE TABLE IF NOT EXISTS cannot alter an existing CHECK,
+        # so rebuild the table in place when the new state isn't permitted yet.
+        # pack_candidates is a leaf (nothing references it), so the rebuild is safe
+        # with foreign keys on; existing rows are copied verbatim.
+        row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='pack_candidates'").fetchone()
+        if row and row[0] and "sanctioned" not in row[0]:
+            conn.execute(
+                """
+                CREATE TABLE pack_candidates__v7 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pack_id INTEGER NOT NULL REFERENCES packs(id) ON DELETE CASCADE,
+                    tool_id INTEGER NOT NULL REFERENCES tools(id) ON DELETE CASCADE,
+                    state TEXT NOT NULL CHECK (state IN ('candidate','watched','core','retired','sanctioned')),
+                    freshness_score REAL NOT NULL,
+                    consensus_score REAL NOT NULL,
+                    state_changed_at TEXT NOT NULL,
+                    evidence_json TEXT NOT NULL,
+                    payload_json TEXT NOT NULL DEFAULT '{}',
+                    UNIQUE(pack_id, tool_id)
+                )
+                """
+            )
+            # Explicit columns (not SELECT *) so the rebuild is robust to column
+            # drift in the live table (review finding I-1). Preserve a pre-existing
+            # payload_json (a legacy table that already has the v9 column) so the
+            # CHECK-widening rebuild never resets it to '{}'.
+            legacy_has_payload = "payload_json" in row[0]
+            base_cols = "id, pack_id, tool_id, state, freshness_score, consensus_score, state_changed_at, evidence_json"
+            cols = base_cols + (", payload_json" if legacy_has_payload else "")
+            conn.execute(f"INSERT INTO pack_candidates__v7 ({cols}) SELECT {cols} FROM pack_candidates")
+            conn.execute("DROP TABLE pack_candidates")
+            conn.execute("ALTER TABLE pack_candidates__v7 RENAME TO pack_candidates")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_pack_candidates_pack ON pack_candidates(pack_id)")
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            (7, _now()),
+        )
+        # v8 (pivot): scope adoption_decisions to a pack + client. The table was
+        # dormant (no writers), so existing DBs just gain two nullable columns.
+        adoption_cols = {r[1] for r in conn.execute("PRAGMA table_info(adoption_decisions)").fetchall()}
+        if "pack_slug" not in adoption_cols:
+            conn.execute("ALTER TABLE adoption_decisions ADD COLUMN pack_slug TEXT")
+        if "client" not in adoption_cols:
+            conn.execute("ALTER TABLE adoption_decisions ADD COLUMN client TEXT")
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            (8, _now()),
+        )
+        # v9 (pivot): persist enriched candidate fields (category/description/tags/
+        # server_meta/repo_fit) the exporter needs, in pack_candidates.payload_json.
+        pc_cols = {r[1] for r in conn.execute("PRAGMA table_info(pack_candidates)").fetchall()}
+        if "payload_json" not in pc_cols:
+            conn.execute("ALTER TABLE pack_candidates ADD COLUMN payload_json TEXT NOT NULL DEFAULT '{}'")
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+            (9, _now()),
+        )
     return path
 
 
@@ -396,14 +453,11 @@ def latest_scan(repo: Path | str | None = None) -> dict[str, Any] | None:
         return None
     with _connect(path) as conn:
         if repo is None:
-            row = conn.execute(
-                "SELECT payload_json FROM scans ORDER BY id DESC LIMIT 1"
-            ).fetchone()
+            row = conn.execute("SELECT payload_json FROM scans ORDER BY id DESC LIMIT 1").fetchone()
         else:
             resolved = str(Path(str(repo)).expanduser().resolve())
             row = conn.execute(
-                "SELECT payload_json FROM scans WHERE repo = ? "
-                "ORDER BY id DESC LIMIT 1",
+                "SELECT payload_json FROM scans WHERE repo = ? ORDER BY id DESC LIMIT 1",
                 (resolved,),
             ).fetchone()
     if not row:
@@ -850,19 +904,29 @@ def save_pack_candidate(candidate: Any) -> int:
         pack = get_pack(payload["pack_slug"])
     tool_id = upsert_tool(payload["tool_name"])
     evidence_json = json.dumps(payload.get("evidence") or [])
+    enriched_json = json.dumps(
+        {
+            "category": payload.get("category"),
+            "description": payload.get("description", ""),
+            "tags": payload.get("tags") or [],
+            "server_meta": payload.get("server_meta") or {},
+            "repo_fit": payload.get("repo_fit"),
+        }
+    )
     with _connect(init_db()) as conn:
         cur = conn.execute(
             """
             INSERT INTO pack_candidates(
                 pack_id, tool_id, state, freshness_score, consensus_score,
-                state_changed_at, evidence_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                state_changed_at, evidence_json, payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(pack_id, tool_id) DO UPDATE SET
                 state = excluded.state,
                 freshness_score = excluded.freshness_score,
                 consensus_score = excluded.consensus_score,
                 state_changed_at = excluded.state_changed_at,
-                evidence_json = excluded.evidence_json
+                evidence_json = excluded.evidence_json,
+                payload_json = excluded.payload_json
             """,
             (
                 int(pack["id"]),
@@ -872,6 +936,7 @@ def save_pack_candidate(candidate: Any) -> int:
                 float(payload.get("consensus_score") or 0),
                 _now(),
                 evidence_json,
+                enriched_json,
             ),
         )
         return int(cur.lastrowid or tool_id)
@@ -897,6 +962,12 @@ def list_pack_candidates(pack_slug: str | None = None) -> list[dict[str, Any]]:
     for row in rows:
         item = dict(row)
         item["evidence"] = json.loads(item.pop("evidence_json") or "[]")
+        enriched = json.loads(item.pop("payload_json", None) or "{}")
+        item["category"] = enriched.get("category")
+        item["description"] = enriched.get("description", "")
+        item["tags"] = enriched.get("tags") or []
+        item["server_meta"] = enriched.get("server_meta") or {}
+        item["repo_fit"] = enriched.get("repo_fit")
         out.append(item)
     return out
 
@@ -1002,6 +1073,92 @@ def save_pack_override(
         return int(cur.lastrowid)
 
 
+def list_pack_overrides(pack_slug: str | None = None) -> list[dict[str, Any]]:
+    """Read pack overrides (include/exclude/pin/suppress/retire).
+
+    Matches the given pack plus the wildcard ``*`` pack used by dossier-level
+    overrides. Previously the ``pack_overrides`` table had a writer but no reader.
+    """
+
+    query = "SELECT * FROM pack_overrides"
+    params: tuple[Any, ...] = ()
+    if pack_slug is not None:
+        query += " WHERE pack_slug = ? OR pack_slug = '*'"
+        params = (pack_slug,)
+    query += " ORDER BY created_at DESC, id DESC"
+    with _connect(init_db()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def save_adoption_decision(
+    tool_name: str,
+    decision: str,
+    *,
+    pack_slug: str | None = None,
+    client: str | None = None,
+    approver_label: str | None = None,
+    rationale: str | None = None,
+    revisit_after: str | None = None,
+    payload: dict[str, Any] | None = None,
+) -> int:
+    """Record a human sanction/adoption decision, scoped to a pack + client."""
+
+    tool_id = upsert_tool(tool_name)
+    with _connect(init_db()) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO adoption_decisions(
+                tool_id, created_at, decision, approver_label, rationale,
+                revisit_after, pack_slug, client, payload_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                tool_id,
+                _now(),
+                decision,
+                approver_label,
+                rationale,
+                revisit_after,
+                pack_slug,
+                client,
+                json.dumps(payload or {}),
+            ),
+        )
+        return int(cur.lastrowid)
+
+
+def list_adoption_decisions(*, pack_slug: str | None = None, client: str | None = None) -> list[dict[str, Any]]:
+    """Read adoption/sanction decisions, optionally filtered by pack + client."""
+
+    query = """
+        SELECT ad.*, t.tool_name
+        FROM adoption_decisions ad
+        JOIN tools t ON t.id = ad.tool_id
+    """
+    clauses: list[str] = []
+    params: list[Any] = []
+    if pack_slug is not None:
+        clauses.append("ad.pack_slug = ?")
+        params.append(pack_slug)
+    if client is not None:
+        clauses.append("ad.client = ?")
+        params.append(client)
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
+    query += " ORDER BY ad.created_at DESC, ad.id DESC"
+    with _connect(init_db()) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(query, tuple(params)).fetchall()
+    out = []
+    for row in rows:
+        item = dict(row)
+        item["payload"] = json.loads(item.pop("payload_json") or "{}")
+        out.append(item)
+    return out
+
+
 def clear_scans_for_repo(repo: Path | str) -> int:
     """Delete every stored scan + verdict for ``repo``. Returns the number of
     scan rows removed. Idempotent.
@@ -1018,9 +1175,7 @@ def clear_scans_for_repo(repo: Path | str) -> int:
     target = str(Path(str(repo)).expanduser().resolve())
     with _connect(path) as conn:
         conn.execute(
-            "DELETE FROM verdicts WHERE scan_id IN ("
-            "  SELECT id FROM scans WHERE repo = ?"
-            ")",
+            "DELETE FROM verdicts WHERE scan_id IN (  SELECT id FROM scans WHERE repo = ?)",
             (target,),
         )
         cur = conn.execute("DELETE FROM scans WHERE repo = ?", (target,))

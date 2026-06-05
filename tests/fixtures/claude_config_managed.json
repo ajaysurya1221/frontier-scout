@@ -1,0 +1,10 @@
+{
+  "allowManagedMcpServersOnly": true,
+  "allowedMcpServers": [
+    { "serverUrl": "https://api.githubcopilot.com/*" },
+    { "serverCommand": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "."] }
+  ],
+  "deniedMcpServers": [
+    { "serverName": "dangerous-server" }
+  ]
+}

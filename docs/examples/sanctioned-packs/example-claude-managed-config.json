@@ -1,0 +1,15 @@
+{
+  "allowManagedMcpServersOnly": true,
+  "allowedMcpServers": [
+    {
+      "serverUrl": "https://mcp.sentry.dev/*"
+    },
+    {
+      "serverCommand": [
+        "uvx",
+        "mcp-server-time"
+      ]
+    }
+  ],
+  "deniedMcpServers": []
+}
