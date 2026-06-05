@@ -540,18 +540,19 @@ def _stdio_meta_from_package(pkg: dict) -> dict:
         for item in (pkg.get("environment_variables") or [])
         if isinstance(item, dict) and item.get("name")
     }
-    if registry == "npm":
+    if registry == "npm" and pkg_name:
         command, args = "npx", ["-y", pkg_name]
-    elif registry in ("pypi", "pip"):
+    elif registry in ("pypi", "pip") and pkg_name:
         command, args = "uvx", [pkg_name]
-    elif registry in ("docker", "oci"):
+    elif registry in ("docker", "oci") and pkg_name:
         command, args = "docker", ["run", "-i", "--rm", pkg_name]
     elif runtime_hint:
         command, args = runtime_hint, [pkg_name] if pkg_name else []
     elif pkg_name:
         command, args = pkg_name, []
     else:
-        # Nothing runnable derivable — fail closed rather than emit a fake command.
+        # No package name for a known registry (or nothing runnable derivable) —
+        # fail closed rather than emit a fake command like ``npx -y ""``.
         return {"transport": "unknown"}
     return {"transport": "stdio", "command": command, "args": args, "env": env}
 

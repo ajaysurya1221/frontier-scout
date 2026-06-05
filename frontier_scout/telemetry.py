@@ -71,9 +71,11 @@ def read_events() -> list[dict[str, Any]]:
         if not line:
             continue
         try:
-            out.append(json.loads(line))
+            obj = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if isinstance(obj, dict):  # ignore valid-JSON-but-non-object lines (corruption/tamper)
+            out.append(obj)
     return out
 
 

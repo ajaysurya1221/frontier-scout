@@ -25,11 +25,16 @@ def _server_key(name: str) -> str:
 
 
 def _url_pattern(url: str) -> str:
-    """Collapse a server URL to a ``scheme://host/*`` allowlist wildcard."""
+    """Collapse a server URL to a ``scheme://host/*`` allowlist wildcard.
+
+    Uses the bare host (never ``netloc``) so an embedded ``user:pass@`` userinfo
+    can't leak credentials into the exported managed config.
+    """
 
     parsed = urlparse(url)
-    if parsed.scheme and parsed.netloc:
-        return f"{parsed.scheme}://{parsed.netloc}/*"
+    if parsed.scheme and parsed.hostname:
+        host = f"{parsed.hostname}:{parsed.port}" if parsed.port else parsed.hostname
+        return f"{parsed.scheme}://{host}/*"
     return url or "*"
 
 
@@ -51,7 +56,7 @@ def _project_entry(server) -> dict | None:
     if transport in ("http", "sse") and meta.get("url"):
         entry: dict = {"type": "http" if transport == "http" else "sse", "url": str(meta["url"])}
         headers = meta.get("headers")
-        if headers:
+        if isinstance(headers, dict) and headers:
             entry["headers"] = dict(headers)
         return entry
     if transport == "stdio" and meta.get("command"):

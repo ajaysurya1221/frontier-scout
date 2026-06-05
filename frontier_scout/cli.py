@@ -931,8 +931,12 @@ def main(argv: list[str] | None = None) -> int:
         if args.packs_command == "candidates":
             if args.repo is None:
                 # Legacy: list stored candidates filtered by --pack.
-                for candidate in list_pack_candidates(args.pack):
-                    print(f"{candidate['pack_slug']} {candidate['state']} {candidate['tool_name']}")
+                stored = list_pack_candidates(args.pack)
+                if args.json:
+                    print(json.dumps(stored, indent=2))
+                else:
+                    for candidate in stored:
+                        print(f"{candidate['pack_slug']} {candidate['state']} {candidate['tool_name']}")
                 return 0
             from . import pack_flow
             from .safety_summary import build_safety_summary
@@ -1040,7 +1044,10 @@ def main(argv: list[str] | None = None) -> int:
                 args.server, repo=args.repo, client=args.client, pack_slug=args.pack or "mcp"
             )
             if not result["ok"]:
-                print(result["error"])
+                if args.json:
+                    print(json.dumps(result, indent=2))
+                else:
+                    print(result["error"])
                 return 1
             if args.json:
                 print(json.dumps(result, indent=2))
