@@ -75,7 +75,7 @@ agent task, and keep an audit trail — **executing nothing**. Built this sprint
 for receipt metadata); secrets by name/path only; offline + keyless; **emit not enforce** (`block` is advisory
 output, never a runtime kill-switch); the loader and decision engine **fail closed** (a missing/malformed
 policy denies by default; every dangerous capability escalates to approval). Every persisted/emitted string is
-redacted via `scrub_secrets`. See `docs/strategy/{repo-reality-check,security-review,autonomous-implementation-report}.md`.
+redacted via `scrub_secrets`.
 
 ## The engine underneath (the adoption radar)
 
@@ -88,8 +88,7 @@ engine (`scout` · `evaluate` · `dossier` · `lab` · `trial` · `guard` · `po
 - A **bare `frontier-scout` prints help** (it no longer auto-launches the TUI — a
   stray invocation shouldn't drop you into a full-screen app). The TUI is launched
   explicitly via `open` / `--ui mission`.
-- `--ui {mission,briefing,classic}` selects the UI (`mission` = tui3 when launched,
-  `briefing` = tui2, `classic` = tui); `--demo` runs fully offline.
+- `--ui mission` selects the UI (Mission Control / tui3 — the only UI); `--demo` runs fully offline.
 - Every renderable goes through `app._paint` (color↔mono) and `glyphs(unicode)`
   (unicode↔ASCII); layout reflows by breakpoint (`kit.breakpoint_for`). New
   widgets must route through these, or the fallbacks break.
@@ -102,15 +101,6 @@ engine (`scout` · `evaluate` · `dossier` · `lab` · `trial` · `guard` · `po
   Measure display width with `kit.cell_width` (Rich `cell_len`), **never `len()`** —
   multi-cell ASCII glyphs (`(o)`=3 cells, `->`=2) drift otherwise. Build per-mode
   (`unicode=state.unicode`); never build-unicode-then-asciify (re-widens `(o)`).
-
-## Experimental / parked
-
-`incident` (**Incident Change Scout**, `frontier_scout/platform/incident_change_scout/`,
-with fixtures under `examples/`, `prompts/`, and `evals/incident_change_scout/`) is a
-**separate** incident-forensics vertical — a different problem/buyer — **parked during
-the sanctioned-packs pivot** behind `FRONTIER_SCOUT_EXPERIMENTAL=1` (`cli.py`). The code
-is kept, not deleted; it is **not** part of the packs product. Don't surface or extend it
-as a headline feature.
 
 ## LLM backends (provider abstraction)
 

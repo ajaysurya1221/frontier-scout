@@ -15,7 +15,7 @@ frontier_scout/        # installable CLI package
   cli.py               # entry point + --ui/--provider/--demo. Subcommands include:
                        #   packs (candidates/sanction/unsanction/export/proof/list/show/refresh),
                        #   scan report evaluate dossier lab trial guard policy deps profile stats,
-                       #   incident (PARKED, experimental)
+                       #   agent (scan/policy/check/receipts/export)
 
   # --- the sanctioned-packs product (the headline) ---
   packs.py             # pack model, candidate discovery, registry parse, repo-ranked rows
@@ -41,16 +41,15 @@ frontier_scout/        # installable CLI package
   exporters/policy_snippets.py   # advisory CLAUDE.md / AGENTS.md / PR-checklist snippet exporters
 
   tui3/                # Mission Control TUI (Textual) — launched by `frontier-scout open` / `--ui mission`
-  tui2/  tui/          # alternative UIs: --ui briefing (tui2) / --ui classic (tui)
   providers/           # LLM provider abstraction: anthropic / openai / claude-cli / codex-cli
-  platform/incident_change_scout/   # PARKED experimental vertical (FRONTIER_SCOUT_EXPERIMENTAL=1)
+  platform/            # shared agent-runtime primitives (authz, orchestration, observability, gateway)
 
 scripts/               # mature engine modules (fetch -> score -> verdict -> judge -> validate; lab_runner; ...)
 outputs/               # shared rendering helpers
 tests/                 # non-live regression tests
 demo/                  # generated public demo artifacts
-docs/                  # docs/pivot (decisions) · docs/examples/sanctioned-packs (gold path) · docs/assets (SVGs)
-examples/  prompts/  evals/incident_change_scout/   # fixtures for the PARKED incident vertical only
+docs/                  # docs/examples/sanctioned-packs (gold path) · docs/assets (SVGs)
+examples/  prompts/  evals/   # platform_fixtures + radar eval sets (release_classification, pack_promotion, repo_fit)
 ```
 
 ## Local run
@@ -73,7 +72,7 @@ frontier-scout agent receipts list              # local audit trail (.frontier-s
 
 # the radar engine underneath
 frontier-scout                 # prints help (bare command no longer auto-launches the TUI)
-frontier-scout open            # opens Mission Control TUI; --ui briefing|classic, --demo offline
+frontier-scout open            # opens Mission Control TUI (--ui mission); --demo offline
 frontier-scout demo
 frontier-scout scan --dry-run --repo .
 frontier-scout guard --repo .
@@ -113,9 +112,6 @@ Live radar scans need `ANTHROPIC_API_KEY` (the sanctioned-pack flow does not).
 - **Scout Profile is metadata, not code upload.** Profile/dossier/ranking features use
   manifests, config filenames, local history, and policy signals; do not read
   `.env.local` or upload source content for personalization.
-- **`incident` (Incident Change Scout) is parked.** A separate experimental vertical
-  behind `FRONTIER_SCOUT_EXPERIMENTAL=1`; keep the code, don't surface or extend it as
-  part of the packs product.
 - **The agent adoption firewall (`agent` group) is static + advisory.** `agent scan` / `check`
   **execute nothing** (no subprocess/network/LLM — the only subprocess is a guarded read-only
   `git rev-parse` for receipt metadata); secret-likely files are matched **by name/path only**
