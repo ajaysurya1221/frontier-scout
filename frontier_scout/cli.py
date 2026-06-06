@@ -423,6 +423,67 @@ def build_parser() -> argparse.ArgumentParser:
         help="Simulate explicit approval for the high-risk action.",
     )
 
+    agent_cmd = sub.add_parser(
+        "agent",
+        help="Static, advisory AI-agent adoption firewall + audit trail (research preview).",
+    )
+    agent_sub = agent_cmd.add_subparsers(dest="agent_command")
+
+    agent_scan = agent_sub.add_parser("scan", help="Enumerate repo agent-risk surfaces (static).")
+    agent_scan.add_argument("--repo", default=".", help="Repository to scan.")
+    agent_scan.add_argument("--json", action="store_true", help="Emit JSON.")
+    agent_scan.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero if any high-risk surface is found.",
+    )
+
+    agent_policy = agent_sub.add_parser("policy", help="Generate or explain the advisory agent policy.")
+    agent_policy_sub = agent_policy.add_subparsers(dest="agent_policy_command")
+    agent_policy_init = agent_policy_sub.add_parser(
+        "init", help="Generate a conservative frontier-scout.policy.json from a scan."
+    )
+    agent_policy_init.add_argument("--repo", default=".", help="Repository to scan and write into.")
+    agent_policy_init.add_argument(
+        "--path", default=None, help="Policy file path (default: <repo>/frontier-scout.policy.json)."
+    )
+    agent_policy_init.add_argument("--force", action="store_true", help="Overwrite an existing policy file.")
+    agent_policy_explain = agent_policy_sub.add_parser("explain", help="Render the policy in human-readable form.")
+    agent_policy_explain.add_argument("--repo", default=".", help="Repository whose policy to explain.")
+    agent_policy_explain.add_argument("--policy", default=None, help="Policy file path.")
+    agent_policy_explain.add_argument("--json", action="store_true", help="Emit JSON.")
+
+    agent_check = agent_sub.add_parser(
+        "check", help="Evaluate a proposed agent task against the policy (executes nothing)."
+    )
+    agent_check.add_argument("task", help="The proposed agent task text.")
+    agent_check.add_argument("--repo", default=".", help="Repository whose policy to use.")
+    agent_check.add_argument("--policy", default=None, help="Policy file path.")
+    agent_check.add_argument(
+        "--changed-files", nargs="*", default=None, help="Paths the task would touch."
+    )
+    agent_check.add_argument("--json", action="store_true", help="Emit JSON.")
+
+    agent_receipts = agent_sub.add_parser("receipts", help="Inspect local audit receipts.")
+    agent_receipts_sub = agent_receipts.add_subparsers(dest="agent_receipts_command")
+    agent_receipts_list = agent_receipts_sub.add_parser("list", help="List receipts (newest first).")
+    agent_receipts_list.add_argument("--repo", default=".", help="Repository to read receipts from.")
+    agent_receipts_list.add_argument("--json", action="store_true", help="Emit JSON.")
+    agent_receipts_show = agent_receipts_sub.add_parser("show", help="Show one receipt by id.")
+    agent_receipts_show.add_argument("receipt_id", help="Receipt id (with or without .json).")
+    agent_receipts_show.add_argument("--repo", default=".", help="Repository to read receipts from.")
+    agent_receipts_show.add_argument("--json", action="store_true", help="Emit JSON.")
+
+    agent_export = agent_sub.add_parser(
+        "export", help="Emit an advisory policy snippet (a format, not a client)."
+    )
+    agent_export.add_argument(
+        "format", choices=["claude", "agents-md", "pr-checklist"], help="Snippet format."
+    )
+    agent_export.add_argument("--repo", default=".", help="Repository whose policy to render.")
+    agent_export.add_argument("--policy", default=None, help="Policy file path.")
+    agent_export.add_argument("--target", default=".", help="Output directory.")
+
     return parser
 
 
@@ -1174,6 +1235,119 @@ def main(argv: list[str] | None = None) -> int:
                 print("approval: interrupted before high-risk action")
             return 0
         parser.error("incident requires a subcommand")
+        return 2
+    if args.command == "agent":
+        # Static, advisory AI-agent adoption firewall + audit trail. Lazy-import
+        # the package so the CLI stays cheap to load. Nothing here executes an
+        # agent task, runs an MCP server, or reaches the network.
+        # Alias the agent-firewall helpers so they never shadow the module-level
+        # ``load_policy`` (from ``.policy``) the packs block above relies on —
+        # a function-local import of that name would make it a local everywhere.
+        from .agent_firewall.decision import evaluate_task as agent_evaluate_task
+        from .agent_firewall.policy import default_policy_path as agent_default_policy_path
+        from .agent_firewall.policy import explain_policy as agent_explain_policy
+        from .agent_firewall.policy import generate_policy as agent_generate_policy
+        from .agent_firewall.policy import load_policy as agent_load_policy
+        from .agent_firewall.policy import save_policy as agent_save_policy
+        from .agent_firewall.receipts import list_receipts as agent_list_receipts
+        from .agent_firewall.receipts import show_receipt as agent_show_receipt
+        from .agent_firewall.receipts import write_receipt as agent_write_receipt
+        from .agent_firewall.scan import scan_repo as agent_scan_repo
+        from .exporters.policy_snippets import export_policy_snippets as agent_export_snippets
+
+        verb = args.agent_command
+        if verb == "scan":
+            result = agent_scan_repo(args.repo)
+            if args.json:
+                print(result.model_dump_json(indent=2))
+            else:
+                print(f"Static agent-risk scan of {result.repo} (advisory; nothing executed):")
+                for surface in result.surfaces:
+                    print(f"  [{surface.risk}] {surface.kind}: {surface.path}")
+                counts = ", ".join(f"{k}={v}" for k, v in sorted(result.counts.items()))
+                print(f"  {len(result.surfaces)} surface(s){' · ' + counts if counts else ''}")
+                if result.detected_checks:
+                    print(f"  detected checks: {', '.join(result.detected_checks)}")
+            if args.strict and any(s.risk == "high" for s in result.surfaces):
+                return 1
+            return 0
+        if verb == "policy":
+            pverb = args.agent_policy_command
+            if pverb == "init":
+                path = args.path or agent_default_policy_path(args.repo)
+                if os.path.exists(path) and not args.force:
+                    print(f"Policy already exists: {path} (use --force to overwrite).")
+                    return 0
+                policy = agent_generate_policy(agent_scan_repo(args.repo))
+                agent_save_policy(policy, path)
+                print(f"Wrote conservative advisory policy: {path}")
+                return 0
+            if pverb == "explain":
+                policy_path = args.policy or agent_default_policy_path(args.repo)
+                policy, warnings = agent_load_policy(policy_path)
+                if args.json:
+                    print(json.dumps(policy.model_dump(), indent=2))
+                else:
+                    for warning in warnings:
+                        print(f"warning: {warning}")
+                    print(agent_explain_policy(policy))
+                return 0
+            parser.error("agent policy requires a subcommand (init | explain)")
+            return 2
+        if verb == "check":
+            policy_path = args.policy or agent_default_policy_path(args.repo)
+            policy, warnings = agent_load_policy(policy_path)
+            decision = agent_evaluate_task(args.task, policy, changed_files=args.changed_files)
+            agent_write_receipt(decision, repo=args.repo, task=args.task, policy_path=policy_path)
+            if args.json:
+                print(decision.model_dump_json(indent=2))
+            else:
+                for warning in warnings:
+                    print(f"warning: {warning}")
+                print(f"verdict: {decision.verdict} (advisory — Frontier Scout does not enforce this)")
+                print(decision.summary)
+                for reason in decision.reasons:
+                    print(f"  [{reason.severity}] {reason.rule_id}: {reason.message}")
+                if decision.required_checks:
+                    print(f"  required checks: {', '.join(decision.required_checks)}")
+            exit_codes = {"allow": 0, "needs_approval": 3, "block": 4}
+            return exit_codes.get(decision.verdict, 0)
+        if verb == "receipts":
+            rverb = args.agent_receipts_command
+            if rverb == "list":
+                receipts = agent_list_receipts(args.repo)
+                if args.json:
+                    print(json.dumps(receipts, indent=2))
+                else:
+                    if not receipts:
+                        print("No receipts yet.")
+                    for receipt in receipts:
+                        print(
+                            f"{receipt.get('receipt_id')} · {receipt.get('verdict')} · "
+                            f"{receipt.get('timestamp')}"
+                        )
+                return 0
+            if rverb == "show":
+                receipt = agent_show_receipt(args.repo, args.receipt_id)
+                if receipt is None:
+                    print(f"Receipt not found: {args.receipt_id}")
+                    return 1
+                if args.json:
+                    print(json.dumps(receipt, indent=2))
+                else:
+                    print(json.dumps(receipt, indent=2))
+                return 0
+            parser.error("agent receipts requires a subcommand (list | show)")
+            return 2
+        if verb == "export":
+            policy_path = args.policy or agent_default_policy_path(args.repo)
+            policy, _ = agent_load_policy(policy_path)
+            written = agent_export_snippets(policy, args.target, formats=[args.format])
+            print("Wrote advisory snippet(s) (emitted, not enforced):")
+            for name, out_path in written.items():
+                print(f"  {name}: {out_path}")
+            return 0
+        parser.error("agent requires a subcommand (scan | policy | check | receipts | export)")
         return 2
     parser.error(f"unknown command: {args.command}")
     return 2

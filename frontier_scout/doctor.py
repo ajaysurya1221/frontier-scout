@@ -44,6 +44,9 @@ def run_doctor() -> list[Check]:
         _check_cron_runner(),
         _check_optional_clis(),
         _check_optional_notifiers(),
+        _check_agent_policy(),
+        _check_agent_policy_valid(),
+        _check_agent_receipts_writable(),
     ]
 
 
@@ -237,6 +240,66 @@ def _check_optional_notifiers() -> Check:
         "no terminal-notifier or notify-send found — file notifications still work",
         fix="brew install terminal-notifier (macOS) or apt install libnotify-bin (Linux).",
     )
+
+
+def _check_agent_policy() -> Check:
+    from pathlib import Path
+
+    path = Path.cwd() / "frontier-scout.policy.json"
+    if path.exists():
+        return Check("agent policy", "ok", f"{path.name} present")
+    return Check(
+        "agent policy",
+        "warn",
+        "no frontier-scout.policy.json in this repo (advisory firewall not configured)",
+        fix="Run `frontier-scout agent policy init` to generate a conservative starter policy.",
+    )
+
+
+def _check_agent_policy_valid() -> Check:
+    from pathlib import Path
+
+    path = Path.cwd() / "frontier-scout.policy.json"
+    if not path.exists():
+        return Check("agent policy valid", "ok", "no policy file to validate")
+    try:
+        from frontier_scout.agent_firewall.policy import load_policy
+
+        _, warnings = load_policy(str(path))
+    except Exception as exc:  # noqa: BLE001
+        return Check(
+            "agent policy valid",
+            "fail",
+            f"could not load {path.name}: {exc}",
+            fix="Inspect or regenerate with `frontier-scout agent policy init --force`.",
+        )
+    if warnings:
+        return Check(
+            "agent policy valid",
+            "fail",
+            f"{path.name} did not parse cleanly: {warnings[0]}",
+            fix="Regenerate with `frontier-scout agent policy init --force`.",
+        )
+    return Check("agent policy valid", "ok", f"{path.name} parsed cleanly")
+
+
+def _check_agent_receipts_writable() -> Check:
+    from pathlib import Path
+
+    root = Path.cwd() / ".frontier-scout"
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        test = root / ".doctor-write-test"
+        test.write_text("ok")
+        test.unlink()
+        return Check("agent receipts", "ok", f"{root} writable")
+    except OSError as exc:
+        return Check(
+            "agent receipts",
+            "warn",
+            f"{root} not writable: {exc}",
+            fix="Check filesystem permissions on the repo's .frontier-scout/ directory.",
+        )
 
 
 __all__ = ["Check", "render_json", "render_text", "run_doctor"]
