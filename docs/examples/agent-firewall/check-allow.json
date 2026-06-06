@@ -1,0 +1,22 @@
+{
+  "verdict": "allow",
+  "summary": "Allowed: no blocking or approval-gated signals detected (static, advisory).",
+  "reasons": [],
+  "capabilities": {
+    "read": "likely",
+    "write": "unlikely",
+    "network": "unlikely",
+    "browser": "unlikely",
+    "shell": "unlikely",
+    "credential": "unlikely",
+    "unknown": "unlikely"
+  },
+  "dangerous_flags": [],
+  "files_considered": [],
+  "required_checks": [
+    "pytest",
+    "ruff check ."
+  ],
+  "warnings": [],
+  "static_only": true
+}

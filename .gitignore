@@ -43,6 +43,11 @@ Thumbs.db
 *.db-shm
 costs.jsonl
 quality-log.jsonl
+
+# In-repo Frontier Scout runtime state (agent-firewall receipts, profile.json,
+# policy.toml). The intentional, committable agent policy is
+# `frontier-scout.policy.json` at the repo root — keep that tracked.
+.frontier-scout/
 signals-log.jsonl
 
 # Lab subprocess scratch workspaces (created under /tmp, but symlinks

@@ -1,0 +1,73 @@
+{
+  "repo": "/var/folders/2d/9kwfbw554ygbr2fkgss4f6300000gn/T/tmp.zcs5wyyjwN",
+  "surfaces": [
+    {
+      "path": ".env",
+      "kind": "secret-likely",
+      "risk": "high",
+      "reason": "Secret-bearing file detected by name (contents never read).",
+      "policy_implication": "Never allow agents to read or modify; add to protected_file_globs and blocked surfaces.",
+      "suggested_checks": []
+    },
+    {
+      "path": ".github/workflows",
+      "kind": "ci",
+      "risk": "high",
+      "reason": "CI/CD configuration controls builds, releases, and secrets.",
+      "policy_implication": "Gate agent changes to CI behind human approval; add to protected_file_globs.",
+      "suggested_checks": [
+        "pytest"
+      ]
+    },
+    {
+      "path": "Dockerfile",
+      "kind": "deploy-config",
+      "risk": "high",
+      "reason": "Deploy/infra config can ship code or change running systems.",
+      "policy_implication": "Gate agent changes behind human approval; add to protected_file_globs.",
+      "suggested_checks": []
+    },
+    {
+      "path": "migrations",
+      "kind": "protected-path",
+      "risk": "high",
+      "reason": "Sensitive area (data migrations, auth, billing, or secrets).",
+      "policy_implication": "Require human approval for agent edits; add to protected_file_globs.",
+      "suggested_checks": []
+    },
+    {
+      "path": ".mcp.json",
+      "kind": "mcp-config",
+      "risk": "medium",
+      "reason": "Declares MCP servers an agent may connect to.",
+      "policy_implication": "Review server capabilities; keep mcp_server_allowlist deny-by-default.",
+      "suggested_checks": []
+    },
+    {
+      "path": "CLAUDE.md",
+      "kind": "agent-config",
+      "risk": "info",
+      "reason": "Agent instruction/config file shapes assistant behavior.",
+      "policy_implication": "Document the policy here; review for over-broad instructions.",
+      "suggested_checks": []
+    },
+    {
+      "path": "pyproject.toml",
+      "kind": "build-manifest",
+      "risk": "info",
+      "reason": "Build/dependency manifest defines tooling and checks.",
+      "policy_implication": "Source detected checks (tests/lint) into required_checks.",
+      "suggested_checks": []
+    }
+  ],
+  "detected_checks": [
+    "pytest",
+    "ruff check ."
+  ],
+  "counts": {
+    "high": 4,
+    "medium": 1,
+    "info": 2
+  },
+  "static_only": true
+}

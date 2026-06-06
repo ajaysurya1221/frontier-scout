@@ -62,3 +62,21 @@ def sanitize_sensitive_text(text: str | None) -> str:
     for pattern, repl in _SECRET_PATTERNS:
         out = pattern.sub(repl, out)
     return out
+
+
+# A length-floor-free backstop: ``sanitize_sensitive_text`` requires 20+ chars on
+# most shapes, so a *short* secret-shaped token (e.g. a leaked test key) can slip
+# through. ``scrub_secrets`` collapses the same key prefixes regardless of length
+# and is the redactor to use for durable/emitted artifacts (receipts, snippets).
+_KEY_SHAPE = re.compile(r"\b(sk-ant-|sk-|ghp_|github_pat_|xox[baprs]-|npm_)[A-Za-z0-9\-_]+")
+
+
+def scrub_secrets(text: str | None) -> str:
+    """Redact secret-shaped tokens, including short ones below the length floor.
+
+    Runs :func:`sanitize_sensitive_text` first, then a length-floor-free prefix
+    pass. Use for any string persisted to disk or written into an emitted
+    artifact (audit receipts, exported policy snippets).
+    """
+    out = sanitize_sensitive_text(text)
+    return _KEY_SHAPE.sub(lambda m: m.group(1) + "REDACTED", out)

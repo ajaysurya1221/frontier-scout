@@ -5,6 +5,22 @@ Frontier Scout is repositioning from a broad "AI-adoption radar" into a focused
 `docs/pivot/REVISED_IMPLEMENTATION_PLAN.md`). Nothing below is deleted yet — these are
 *notices* so the change is reversible and compatibility is preserved.
 
+## Naming — two distinct "Adoption Firewall" concepts (disambiguated)
+
+The legacy radar slice (`evaluate` / `trial` / `guard` / `policy`) historically carried the label
+"Adoption Firewall" (e.g. the `policy` command help). The new **static agent adoption firewall** ships
+under a separate, collision-free **`frontier-scout agent`** command group (`agent scan` / `policy` /
+`check` / `receipts` / `export`) with a distinct policy object (`frontier-scout.policy.json`, JSON) and
+distinct receipts (`<repo>/.frontier-scout/receipts/`). The two do **not** share state or schema:
+
+- **Legacy radar `policy` / `trial` / `guard`** — tool-*adoption* tuning (TOML `.frontier-scout/policy.toml`,
+  verdicts `adopt/trial/assess/hold`). `trial` and `deps trial` **execute** a sandboxed subprocess. Kept,
+  untouched, de-emphasized.
+- **New `agent` group** — task-*authorization* pre-checks (JSON policy, verdicts `allow/needs_approval/block`).
+  **Executes nothing**; advisory only. This is the product surface going forward for agent governance.
+
+The new `agent check` is deliberately **not** named `trial` to avoid implying execution.
+
 ## Parked (kept, de-emphasized — not removed)
 
 - **Incident Change Scout** (`frontier_scout/platform/incident_change_scout/*`, the `incident`

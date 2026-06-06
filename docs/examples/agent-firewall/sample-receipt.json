@@ -1,0 +1,46 @@
+{
+  "receipt_id": "2026-06-06T07-35-47-230622Z-modify-the-ci-workflow-to-add-a-deploy-s",
+  "timestamp": "2026-06-06T07:35:47.231256+00:00",
+  "repo": "/var/folders/2d/9kwfbw554ygbr2fkgss4f6300000gn/T/tmp.zcs5wyyjwN",
+  "git_branch": null,
+  "git_commit": null,
+  "task_summary": "modify the CI workflow to add a deploy step and run rm -rf build",
+  "policy_path": "docs/examples/agent-firewall/frontier-scout.policy.json",
+  "verdict": "block",
+  "reasons": [
+    {
+      "severity": "high",
+      "rule_id": "shell.blocked",
+      "message": "Task references a blocked shell command: rm -rf",
+      "tool_name": ""
+    },
+    {
+      "severity": "medium",
+      "rule_id": "capability.shell",
+      "message": "Task implies the 'shell' capability; human approval is gated.",
+      "tool_name": ""
+    },
+    {
+      "severity": "medium",
+      "rule_id": "capability.write",
+      "message": "Task implies the 'write' capability; human approval is gated.",
+      "tool_name": ""
+    },
+    {
+      "severity": "high",
+      "rule_id": "path.protected",
+      "message": "Proposed change touches a protected path: .github/workflows/ci.yml",
+      "tool_name": ""
+    }
+  ],
+  "files_considered": [
+    ".github/workflows/ci.yml"
+  ],
+  "required_checks": [
+    "pytest",
+    "ruff check ."
+  ],
+  "warnings": [],
+  "frontier_scout_version": "1.8.1",
+  "kind": "static-policy-assessment"
+}

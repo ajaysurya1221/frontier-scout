@@ -41,6 +41,7 @@
     <li><a href="#how-it-works">How it works</a></li>
     <li><a href="#what-you-get">What you get</a></li>
     <li><a href="#quickstart">Quickstart</a></li>
+    <li><a href="#agent-adoption-firewall--audit-trail-research-preview">Agent adoption firewall + audit trail</a></li>
     <li><a href="#safety-model">Safety model</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#the-engine-underneath">The engine underneath</a></li>
@@ -130,6 +131,64 @@ frontier-scout --help
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+## Agent adoption firewall + audit trail (research preview)
+
+A second, **static and advisory** surface that sits beside the packs flow under `frontier-scout agent`. Where
+packs answers *"which MCP servers belong in this repo?"*, the agent firewall answers *"before an AI coding
+agent touches code, credentials, CI, or deploy config — what's risky here, what should the agent be allowed
+to do, and what did a proposed task ask for?"*
+
+**Who it's for:** a platform / AppSec lead or repo owner enabling AI coding agents who wants conservative
+defaults, a pre-flight check for proposed agent tasks, and a reviewable audit trail — **without** running
+anything.
+
+**The problem it solves:** agents can read secrets, edit CI, touch migrations, and run shell. This gives you
+a repo risk map, a conservative starter policy, a per-task `allow / needs_approval / block` pre-check, and a
+local receipt for each decision — all static, all local.
+
+### 60-second quickstart (keyless, offline)
+
+```bash
+frontier-scout agent scan                       # repo risk surfaces (secrets by name only — never read)
+frontier-scout agent policy init                # -> conservative frontier-scout.policy.json
+frontier-scout agent check "upgrade requests and run the tests"   # -> allow / needs_approval / block + reasons
+frontier-scout agent receipts list              # the local audit trail (.frontier-scout/receipts/)
+frontier-scout agent export claude              # -> an advisory CLAUDE.md policy snippet
+```
+
+Gold-path example (generated from the CLI): [docs/examples/agent-firewall/](docs/examples/agent-firewall/).
+
+### Example workflow
+
+`scan` finds `.env`, `.github/workflows`, `migrations/` → `policy init` writes a policy that protects those
+and gates shell/credential/CI/deploy → `agent check "modify the CI workflow and run rm -rf build"` returns
+**block** (`shell.blocked` + `path.protected`) and writes a receipt a reviewer can inspect later.
+
+### Commands (chosen to avoid collisions with the radar's existing verbs)
+
+| Job | Command |
+| :-- | :-- |
+| Scan repo risk surfaces | `frontier-scout agent scan [--json]` |
+| Generate / read a policy | `frontier-scout agent policy init` · `agent policy explain` |
+| Pre-check a proposed task | `frontier-scout agent check "<task>" [--changed-files …]` |
+| Inspect the audit trail | `frontier-scout agent receipts list` · `receipts show <id>` |
+| Emit an advisory snippet | `frontier-scout agent export claude\|agents-md\|pr-checklist` |
+
+> The non-executing task pre-check is `agent check` (**not** `trial`) — `trial`/`deps trial` already *run* a
+> sandboxed subprocess, so the firewall uses a distinct, execution-free verb. See
+> [DEPRECATIONS.md](DEPRECATIONS.md) for the naming note.
+
+### What this is **not**
+
+- **Not runtime enforcement.** A `block` verdict is *advisory output*, not a kill-switch. Frontier Scout
+  **emits** policy and evidence; it does **not** enforce anything at runtime.
+- **Nothing is executed** — `scan` and `check` run no subprocess, no MCP server, no agent task, no network.
+- **No secret values** — secret-likely files are detected by name only; contents are never read; persisted
+  task text is redacted.
+- **Not enterprise-grade / compliance / complete protection / market-validated.** Research preview.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
 ## Safety model
 
 Frontier Scout handles untrusted public content, and the engine can optionally run untrusted packages in a hermetic lab — so the rails are load-bearing. **The sanctioned-pack flow itself is static: it reads, ranks, and exports; it never executes an MCP server.**
@@ -140,6 +199,7 @@ Frontier Scout handles untrusted public content, and the engine can optionally r
 | **Source text is data, not instructions** | Fetched release/incident text can never become a tool recommendation. |
 | **No hallucinated tools** | Tool names are checked against the source pool; source URLs must pass a domain allowlist. |
 | **`guard` never writes** | It only reads local evidence and policy; CI-friendly exit codes, non-blocking by default. |
+| **The `agent` firewall is static** | `agent scan` / `check` run no subprocess, no MCP server, no agent task, and no network; secret-likely files are matched by name only (contents never read); `block` is advisory output, not runtime enforcement. |
 | **The engine's lab is hermetic** | Where the radar _does_ run a package: stripped environment, wall-clock timeout, size caps, generated-script secret scanning, fails **closed** on unknown capability surfaces. |
 
 See [SECURITY.md](SECURITY.md) for the full threat model.

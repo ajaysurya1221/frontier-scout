@@ -31,6 +31,24 @@ Shipped today:
 - `frontier-scout stats` — the local, opt-in sanctioned-pack funnel
   (candidates → safety → sanction → export).
 
+### Also shipped (research preview) — agent adoption firewall + audit trail
+
+A **static, advisory** sibling surface under `frontier-scout agent`, reusing the same risk taxonomy and
+profiler. It is, like the packs flow, a **research preview** — built to make the wedge concrete, **not** a
+claim of validation, and **not** a substitute for the design-partner pull described below.
+
+- `frontier-scout agent scan` — enumerate repo agent-risk surfaces (agent/MCP configs, CI, deploy config,
+  protected paths, secret-likely files **by name only**) + detected test/lint/build checks.
+- `frontier-scout agent policy init` / `policy explain` — a conservative `frontier-scout.policy.json`.
+- `frontier-scout agent check "<task>"` — pre-check a *proposed* task → `allow / needs_approval / block`
+  with reasons. **Executes nothing.**
+- `frontier-scout agent receipts list` / `show` — local JSON audit receipts.
+- `frontier-scout agent export claude|agents-md|pr-checklist` — advisory policy snippets (emit, not enforce).
+
+It **emits** policy and evidence; it does **not** enforce at runtime, run any agent task, start an MCP
+server, hit the network, or read secret values. See
+[docs/examples/agent-firewall/](docs/examples/agent-firewall/).
+
 The local-first **adoption radar** that powers ranking, the safety map, and the
 TUI (`scout` / `evaluate` / `dossier` / `lab` / `trial` / `guard` / `policy` /
 `report` / Mission Control) is the **engine underneath** the packs product — kept

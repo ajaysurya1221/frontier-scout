@@ -1,0 +1,39 @@
+{
+  "verdict": "needs_approval",
+  "summary": "Needs approval: approval-gated signals detected (static, advisory).",
+  "reasons": [
+    {
+      "severity": "medium",
+      "rule_id": "capability.shell",
+      "message": "Task implies the 'shell' capability; human approval is gated.",
+      "tool_name": ""
+    },
+    {
+      "severity": "info",
+      "rule_id": "path.allowed",
+      "message": "Proposed change is within an allowed path: tests/test_x.py",
+      "tool_name": ""
+    }
+  ],
+  "capabilities": {
+    "read": "unlikely",
+    "write": "unlikely",
+    "network": "unlikely",
+    "browser": "unlikely",
+    "shell": "likely",
+    "credential": "unlikely",
+    "unknown": "unlikely"
+  },
+  "dangerous_flags": [
+    "shell"
+  ],
+  "files_considered": [
+    "tests/test_x.py"
+  ],
+  "required_checks": [
+    "pytest",
+    "ruff check ."
+  ],
+  "warnings": [],
+  "static_only": true
+}

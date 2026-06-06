@@ -35,7 +35,12 @@ frontier_scout/        # installable CLI package
   store.py             # local SQLite store under ~/.frontier-scout (packs, adoption_decisions)
   dependencies.py dep_trial.py imports.py   # dependency intel + AST import names
 
-  tui3/                # Mission Control TUI (Textual) — the DEFAULT `frontier-scout` UX
+  # --- the agent adoption firewall (static, advisory; research preview) ---
+  agent_firewall/      # scan repo risk surfaces, conservative policy, task check, JSON receipts
+    models.py scan.py policy.py decision.py receipts.py
+  exporters/policy_snippets.py   # advisory CLAUDE.md / AGENTS.md / PR-checklist snippet exporters
+
+  tui3/                # Mission Control TUI (Textual) — launched by `frontier-scout open` / `--ui mission`
   tui2/  tui/          # alternative UIs: --ui briefing (tui2) / --ui classic (tui)
   providers/           # LLM provider abstraction: anthropic / openai / claude-cli / codex-cli
   platform/incident_change_scout/   # PARKED experimental vertical (FRONTIER_SCOUT_EXPERIMENTAL=1)
@@ -60,8 +65,15 @@ frontier-scout packs candidates --repo . --client claude-code
 frontier-scout packs sanction <server> --repo .        # high-risk needs --acknowledge-risk
 frontier-scout packs export --client claude-code --target ./out
 
+# the agent adoption firewall (static, advisory; keyless, offline)
+frontier-scout agent scan                       # repo risk surfaces (secrets by name only)
+frontier-scout agent policy init                # -> conservative frontier-scout.policy.json
+frontier-scout agent check "upgrade requests and run the tests"   # -> allow/needs_approval/block
+frontier-scout agent receipts list              # local audit trail (.frontier-scout/receipts/)
+
 # the radar engine underneath
-frontier-scout                 # opens Mission Control TUI (default); --ui briefing|classic, --demo offline
+frontier-scout                 # prints help (bare command no longer auto-launches the TUI)
+frontier-scout open            # opens Mission Control TUI; --ui briefing|classic, --demo offline
 frontier-scout demo
 frontier-scout scan --dry-run --repo .
 frontier-scout guard --repo .
@@ -76,6 +88,7 @@ Live radar scans need `ANTHROPIC_API_KEY` (the sanctioned-pack flow does not).
   (local conda: `/opt/miniconda3/bin/python`; the 3 `tests/test_implement.py` fails are env-only).
 - Sanctioned packs: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_packs_*.py tests/test_pack_*.py tests/test_safety_summary.py tests/test_sanction_gating.py tests/test_exporters_*.py`
 - Adoption Firewall: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_policy.py tests/test_mcp_audit.py tests/test_trials.py tests/test_guard.py`
+- Agent firewall (the `agent` group): `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_agent_*.py`
 - Personalized Scout: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_profile_dossier.py`
 - tui3 convergence (golden-frame + cell-width gates): `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -k "tui3 and (golden or cells or bridging)"`. The `pytest-textual-snapshot` SVG snapshots are **local-only** (add `-p pytest_textual_snapshot`); CI skips them via `tests/conftest.py`.
 - Syntax sweep: `python -m compileall scripts outputs tests frontier_scout`
@@ -103,6 +116,14 @@ Live radar scans need `ANTHROPIC_API_KEY` (the sanctioned-pack flow does not).
 - **`incident` (Incident Change Scout) is parked.** A separate experimental vertical
   behind `FRONTIER_SCOUT_EXPERIMENTAL=1`; keep the code, don't surface or extend it as
   part of the packs product.
+- **The agent adoption firewall (`agent` group) is static + advisory.** `agent scan` / `check`
+  **execute nothing** (no subprocess/network/LLM — the only subprocess is a guarded read-only
+  `git rev-parse` for receipt metadata); secret-likely files are matched **by name/path only**
+  (contents never read); exporters and snippets **emit**, they do **not enforce**; the policy loader
+  and decision engine **fail closed** (a missing/malformed `frontier-scout.policy.json` denies by
+  default). The non-executing task check is `agent check`, **never** `trial`. It reuses the existing
+  risk taxonomy (`mcp_audit`, `RISKY_FLAGS`, `PolicyFinding`) and redacts every emitted/persisted
+  string via `outputs/_text.scrub_secrets`.
 
 ## Working principles
 
