@@ -1,8 +1,8 @@
 # Code of Conduct
 
 Frontier Scout is a small-maintainer open-source project. The goal is a useful,
-source-grounded local AI adoption radar, and the collaboration style should
-make that easier.
+local-first CLI for sanctioned MCP-server packs, with a source-grounded adoption-radar
+engine underneath, and the collaboration style should make that easier.
 
 ## Expected behavior
 

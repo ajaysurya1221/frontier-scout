@@ -1,14 +1,22 @@
 # Security Posture
 
-Frontier Scout is a local-first CLI. It scans public AI-tooling sources,
-asks an LLM to rank and judge candidates, writes a local SQLite database, and
-renders static reports. There is no hosted service, no multi-tenant backend,
-and no required webhook surface.
+Frontier Scout is a local-first CLI for **sanctioned MCP-server packs** (Claude
+Code first): it repo-ranks approved MCP servers into a **static** capability +
+policy safety map, then exports a Claude Code managed-config fragment an admin
+deploys. The sanctioned-pack flow is **static — it reads, ranks, and exports; it
+never executes an MCP server**, and it **emits** config rather than enforcing
+runtime policy. Underneath, the **adoption radar** engine that powers ranking scans
+public AI-tooling sources, asks an LLM to rank and judge candidates, optionally runs
+untrusted packages in a hermetic lab, writes a local SQLite database, and renders
+static reports. There is no hosted service, no multi-tenant backend, and no required
+webhook surface.
 
 ## Threat model
 
 | Threat | Vector | Mitigation |
 |---|---|---|
+| MCP server code execution during sanctioning | A candidate MCP server is malicious and could run hostile code if started | The pack flow is **static-only**: capability + policy classification from registry metadata and a local tree-sitter pass. No MCP server is ever started or executed while ranking, building the safety map, sanctioning, or exporting — so sanctioning carries no runtime / code-exec risk. |
+| Export mistaken for runtime enforcement | A team assumes the exported allow/deny fragment is self-enforcing | The managed-config fragment is an **admin-applied artifact**, not a control plane. Frontier Scout **emits** `allowedMcpServers` / `deniedMcpServers` + a project `.mcp.json` for review; it never grants runtime permissions, never auto-deploys, and never enforces policy at the assistant. Enforcement happens only once an admin reviews and applies it. |
 | Prompt injection from public content | A hostile README, blog post, HN item, or model card says "ignore previous instructions" | Prompts treat source text as untrusted data. `scripts/validators.py` rejects known injection signatures in generated prose. |
 | Source poisoning | A low-quality or malicious project trends briefly and gets promoted | The funnel uses source quotas, an optional Opus judge, readiness scoring, and deterministic policy gates before anything is stored. |
 | Hallucinated tools or fake URLs | The model emits a verdict for a tool that was not in the source pool | `validate_verdicts()` fuzzy-matches `tool_name` against source titles and checks `source_url` against an explicit domain allowlist. |
