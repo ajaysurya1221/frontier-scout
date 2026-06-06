@@ -47,7 +47,7 @@ invariant). The non-executing evaluator is `check`, not `trial`. See [DEPRECATIO
 
 ## 4. Tests added
 
-**46 new tests** (full suite 672 → **718, 0 failures**), all in the broad CI pytest step:
+**49 new tests** (full suite 672 → **721, 0 failures**), all in the broad CI pytest step:
 `test_agent_models` (4), `test_agent_scan` (4), `test_agent_policy` (6), `test_agent_decision` (6),
 `test_agent_receipts` (4), `test_agent_exporters` (4), `test_agent_cli` (5), `test_agent_honesty` (4),
 `test_agent_security` (9). TDD throughout (red → green → refactor). Coverage includes the load-bearing
@@ -59,7 +59,7 @@ receipts/exports redact secrets; path traversal rejected; honesty copy guards.
 | Check | Command | Result |
 |---|---|---|
 | Baseline | `pytest -q` | 672 passed, 0 failed |
-| Full suite (final) | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q` | **718 passed, 0 failed** (99s) |
+| Full suite (final) | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q` | **721 passed, 0 failed** (93s) |
 | Lint | `ruff check` (all new/changed) | clean |
 | Types | `mypy frontier_scout/agent_firewall/` | **0 errors in new code** (pre-existing errors remain in `store.py`/`packs.py`/`evaluate.py`, none CI-gated) |
 | Live E2E | `agent scan → policy init → check(allow/needs_approval/block) → receipts → export` on temp repos | works; **no secret leak**; traversal rejected |
@@ -137,7 +137,7 @@ next week is about **proving the artifact with real people**, not more code:
 > widen `make lint` and `make type` in the Makefile to include `frontier_scout/agent_firewall/` so the new
 > code is CI-gated, and add a `frontier-scout.policy.json` JSON-schema doc under `docs/`. Keep everything
 > static and advisory; do not add runtime enforcement, a second export target, or any new dependency until a
-> design partner asks for it. Run `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q` and confirm 718+
+> design partner asks for it. Run `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q` and confirm 721+
 > green before committing.
 
 ---
@@ -146,6 +146,15 @@ next week is about **proving the artifact with real people**, not more code:
 
 A user can install/run Frontier Scout locally → `agent scan` a repo → `agent policy init` (conservative
 policy) → `agent check "<task>"` (allow/needs_approval/block) → `agent receipts show` → read a README
-explaining the new product and its non-claims → run `pytest` for the core behavior (46 new tests, 718/0). All
+explaining the new product and its non-claims → run `pytest` for the core behavior (49 new tests, 721/0). All
 honesty invariants hold; the security review's HIGH findings are fixed. **Shipped as a research preview;
 validation is the explicit next step.**
+
+### Addendum — final holistic code review
+
+A final before-merge code review (full-branch, `requesting-code-review`) found **1 Important + 5 Minor**
+issues, all fixed: implemented the spec's `mcp.not_allowlisted` rule (the `mcp_server_allowlist` field had
+been dead in the decision path); made the `browser` capability escalate (it was excluded by `RISKY_FLAGS`
+despite being a documented gate); corrected `scan.py`'s docstring (no longer calls `build_scout_profile`);
+made the `doctor` writability probe clean up after itself; gave `agent receipts show` a human-readable view;
+and de-vacuumed the exporter redaction test. **3 tests added → 49 new, full suite 721/0.**

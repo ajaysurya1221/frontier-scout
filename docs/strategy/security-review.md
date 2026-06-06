@@ -5,8 +5,8 @@
 multi-agent review across five dimensions (secret leakage · unsafe execution / destructive ops · overclaim /
 honesty · untrusted input · policy-loader / fail-closed), each finding independently verified against the
 real code (and several reproduced end-to-end). **Result:** **6 findings confirmed, 3 refuted; all 6 fixed
-and pinned by regression tests** in `tests/test_agent_security.py`. Full suite after fixes: **718 passed, 0
-failed.**
+and pinned by regression tests** in `tests/test_agent_security.py`. Full suite (after the subsequent
+code-review fixes too): **721 passed, 0 failed.**
 
 ## Findings & dispositions
 
