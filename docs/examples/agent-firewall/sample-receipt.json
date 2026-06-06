@@ -1,7 +1,7 @@
 {
   "receipt_id": "2026-06-06T07-35-47-230622Z-modify-the-ci-workflow-to-add-a-deploy-s",
   "timestamp": "2026-06-06T07:35:47.231256+00:00",
-  "repo": "/var/folders/2d/9kwfbw554ygbr2fkgss4f6300000gn/T/tmp.zcs5wyyjwN",
+  "repo": ".",
   "git_branch": null,
   "git_commit": null,
   "task_summary": "modify the CI workflow to add a deploy step and run rm -rf build",

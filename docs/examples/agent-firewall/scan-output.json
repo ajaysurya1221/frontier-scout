@@ -1,5 +1,5 @@
 {
-  "repo": "/var/folders/2d/9kwfbw554ygbr2fkgss4f6300000gn/T/tmp.zcs5wyyjwN",
+  "repo": ".",
   "surfaces": [
     {
       "path": ".env",
