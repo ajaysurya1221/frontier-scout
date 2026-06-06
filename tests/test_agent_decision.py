@@ -14,6 +14,30 @@ def test_read_only_task_is_allowed():
     assert d.static_only is True
 
 
+def test_browser_capability_escalates():
+    # `browser` is dangerous and a documented gate token — it must escalate,
+    # even though it is not in safety_summary.RISKY_FLAGS.
+    d = evaluate_task("open the browser, navigate to the admin page and click submit", _policy())
+    assert "browser" in d.dangerous_flags
+    assert d.verdict in ("needs_approval", "block")
+    assert any(r.rule_id == "capability.browser" for r in d.reasons)
+
+
+def test_mcp_server_not_on_allowlist_needs_approval():
+    # Deny-by-default: a task invoking an MCP server absent from the (empty)
+    # allowlist needs approval.
+    d = evaluate_task("connect to the postgres mcp server and query users", _policy())
+    assert d.verdict in ("needs_approval", "block")
+    assert any(r.rule_id == "mcp.not_allowlisted" for r in d.reasons)
+
+
+def test_mcp_server_on_allowlist_not_flagged_by_allowlist_rule():
+    from frontier_scout.agent_firewall.models import AgentPolicy
+    policy = AgentPolicy(mcp_server_allowlist=["github"])
+    d = evaluate_task("use the github mcp server to open a pull request", policy)
+    assert not any(r.rule_id == "mcp.not_allowlisted" for r in d.reasons)
+
+
 def test_blocked_shell_command_is_blocked():
     d = evaluate_task("run rm -rf / to clean up", _policy())
     assert d.verdict == "block"

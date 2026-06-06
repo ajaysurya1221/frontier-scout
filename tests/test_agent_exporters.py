@@ -11,11 +11,16 @@ from frontier_scout.exporters.policy_snippets import (
 def _policy():
     return AgentPolicy(
         blocked_shell_commands=["rm -rf"],
-        protected_file_globs=["**/.env*", ".github/workflows/**"],
+        # Planted secret in a RENDERED field so the export-redaction test is not
+        # vacuous (policy_notes is never rendered by the builders).
+        protected_file_globs=[
+            "**/.env*",
+            ".github/workflows/**",
+            "**/dump-sk-ant-PLANTEDSECRETLONGENOUGH00.key",
+        ],
         approval_gates=["shell", "credential", "ci"],
         required_checks=["pytest", "ruff check ."],
         mcp_server_allowlist=["github"],
-        policy_notes="use sk-ant-PLANTEDSECRET as the token",  # planted
     )
 
 

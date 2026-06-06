@@ -287,6 +287,7 @@ def _check_agent_receipts_writable() -> Check:
     from pathlib import Path
 
     root = Path.cwd() / ".frontier-scout"
+    created = not root.exists()
     try:
         root.mkdir(parents=True, exist_ok=True)
         test = root / ".doctor-write-test"
@@ -300,6 +301,13 @@ def _check_agent_receipts_writable() -> Check:
             f"{root} not writable: {exc}",
             fix="Check filesystem permissions on the repo's .frontier-scout/ directory.",
         )
+    finally:
+        # Don't leave a probe directory behind if we created it (read-only check).
+        if created:
+            try:
+                root.rmdir()
+            except OSError:
+                pass
 
 
 __all__ = ["Check", "render_json", "render_text", "run_doctor"]

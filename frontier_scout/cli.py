@@ -1335,7 +1335,20 @@ def main(argv: list[str] | None = None) -> int:
                 if args.json:
                     print(json.dumps(receipt, indent=2))
                 else:
-                    print(json.dumps(receipt, indent=2))
+                    print(f"Receipt {receipt.get('receipt_id')} (static policy assessment)")
+                    print(f"  verdict:   {receipt.get('verdict')}")
+                    print(f"  timestamp: {receipt.get('timestamp')}")
+                    print(f"  task:      {receipt.get('task_summary')}")
+                    branch = receipt.get("git_branch")
+                    commit = receipt.get("git_commit")
+                    if branch or commit:
+                        print(f"  git:       {branch or '?'} @ {commit or '?'}")
+                    for reason in receipt.get("reasons", []):
+                        print(f"  - [{reason.get('severity')}] {reason.get('rule_id')}: "
+                              f"{reason.get('message')}")
+                    checks = receipt.get("required_checks") or []
+                    if checks:
+                        print(f"  required checks: {', '.join(checks)}")
                 return 0
             parser.error("agent receipts requires a subcommand (list | show)")
             return 2

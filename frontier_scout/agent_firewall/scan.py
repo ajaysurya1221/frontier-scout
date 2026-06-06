@@ -4,9 +4,10 @@ Enumerates agent-relevant risk surfaces (agent configs, MCP config, CI, deploy
 config, secret-likely files, protected paths, build manifests) and detected
 test/lint/build checks. Strictly static and read-only:
 
-- It reuses the offline, read-only :func:`frontier_scout.profile.build_scout_profile`.
 - Surfaces are detected by **root-level existence checks** (the profiler's walker
   skips dot-dirs, so ``.github``/``.cursor``/``.windsurf`` need explicit checks).
+  The secret-file walk reuses the profiler's ``_SKIP_DIRS`` prune set so it never
+  descends ``node_modules``/``.venv``/``.git``.
 - Secret-likely files are enumerated **by name/path only** — their contents are
   **never opened or read**.
 

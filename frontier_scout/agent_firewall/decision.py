@@ -22,7 +22,7 @@ from __future__ import annotations
 import fnmatch
 
 from frontier_scout.mcp_audit import classify_mcp_capabilities
-from frontier_scout.policy import PolicyFinding
+from frontier_scout.policy import PolicyFinding, Severity
 from frontier_scout.safety_summary import RISKY_FLAGS
 
 from .models import AgentPolicy, TaskDecision, Verdict
@@ -118,12 +118,15 @@ def evaluate_task(
             )
             has_block = True
 
-    # Capability gates (fail-closed): any dangerous flag in the high-risk set
-    # escalates to approval. If its gate token is explicitly enabled we say so;
-    # if not, we STILL require approval (a dangerous capability is never silently
-    # allowed just because the policy omitted its gate).
+    # Capability gates (fail-closed): EVERY dangerous capability (write, network,
+    # browser, shell, credential — anything in DANGEROUS_KEYS except the unknown
+    # sentinel, which has its own branch) escalates to approval. If its gate token
+    # is explicitly enabled we say so; if not, we STILL require approval (a
+    # dangerous capability is never silently allowed just because the policy
+    # omitted its gate). ``RISKY_FLAGS`` is the documented subset; ``browser`` is
+    # dangerous too, so we gate on the full dangerous set, not just RISKY_FLAGS.
     for flag in dangerous:
-        if flag not in RISKY_FLAGS:
+        if flag == "unknown":
             continue
         if flag in gates:
             message = f"Task implies the '{flag}' capability; human approval is gated."
@@ -132,10 +135,28 @@ def evaluate_task(
                 f"Task implies the '{flag}' capability; not explicitly gated — "
                 "defaulting to approval (fail-closed)."
             )
+        severity: Severity = "high" if flag in RISKY_FLAGS else "medium"
         reasons.append(
-            PolicyFinding(severity="medium", rule_id=f"capability.{flag}", message=message)
+            PolicyFinding(severity=severity, rule_id=f"capability.{flag}", message=message)
         )
         has_approval = True
+
+    # MCP allowlist (deny-by-default): a task that invokes an MCP server which is
+    # not on the allowlist needs approval. Server names are hard to extract from
+    # free text, so this is conservative — any mention of "mcp" without naming an
+    # allowlisted server escalates.
+    if "mcp" in task_lower:
+        named = [s for s in policy.mcp_server_allowlist if s and s.lower() in task_lower]
+        if not named:
+            reasons.append(
+                PolicyFinding(
+                    severity="medium",
+                    rule_id="mcp.not_allowlisted",
+                    message="Task references an MCP server not on the allowlist; "
+                    "human approval required (deny-by-default).",
+                )
+            )
+            has_approval = True
 
     # Fail-closed: an unclassifiable non-trivial task needs approval.
     if (
