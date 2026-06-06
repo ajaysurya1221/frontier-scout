@@ -2,7 +2,7 @@
 """Security regression tests for the agent-firewall MVP.
 
 Each test reproduces a finding from the Phase-6 adversarial security review
-(docs/strategy/security-review.md) and pins the fix.
+and pins the fix.
 """
 
 from frontier_scout.agent_firewall.decision import evaluate_task

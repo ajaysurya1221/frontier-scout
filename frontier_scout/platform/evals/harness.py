@@ -1,4 +1,4 @@
-"""Small deterministic eval harness for Incident Change Scout."""
+"""Small deterministic eval harness for platform agent workflows."""
 
 from __future__ import annotations
 

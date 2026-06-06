@@ -1,8 +1,7 @@
 # Deprecations & repositioning notices
 
 Frontier Scout is repositioning from a broad "AI-adoption radar" into a focused
-**sanctioned MCP-server packs** product for coding assistants (see
-`docs/pivot/REVISED_IMPLEMENTATION_PLAN.md`). Nothing below is deleted yet — these are
+**sanctioned MCP-server packs** product for coding assistants. Nothing below is deleted yet — these are
 *notices* so the change is reversible and compatibility is preserved.
 
 ## Naming — two distinct "Adoption Firewall" concepts (disambiguated)
@@ -22,12 +21,6 @@ distinct receipts (`<repo>/.frontier-scout/receipts/`). The two do **not** share
 The new `agent check` is deliberately **not** named `trial` to avoid implying execution.
 
 ## Parked (kept, de-emphasized — not removed)
-
-- **Incident Change Scout** (`frontier_scout/platform/incident_change_scout/*`, the `incident`
-  CLI subcommand). A distinct second problem (different trigger/workflow/buyer). Both research
-  passes agree it should leave the opening narrative. It is moving **behind an experimental flag**
-  (`FRONTIER_SCOUT_EXPERIMENTAL=1`); the code stays. Revisit only after a live control plane +
-  real usage data.
 
 - **The hard, blocking CI `guard`** as a *product surface*. The follow-up research finds a
   gate-with-no-sanctioned-path reads as friction, not relief. `frontier_scout/guard.py` remains

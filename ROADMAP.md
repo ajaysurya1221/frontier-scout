@@ -89,7 +89,7 @@ export target). `packs proof` + `frontier-scout stats` exist to capture that sig
 
 ## Demand-gated V1 (build only on validated pull)
 
-These are weighed in [`docs/pivot/`](docs/pivot/) and the
+These are weighed in the
 [open issues](https://github.com/ajaysurya1221/frontier-scout/issues); none are built,
 and none ships ahead of validation:
 

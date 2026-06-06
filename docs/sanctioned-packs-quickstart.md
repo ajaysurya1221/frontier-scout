@@ -56,5 +56,4 @@ frontier-scout stats                  # candidates_viewed -> sanctioned/blocked 
 ## Not yet (validated-then-built)
 
 A **behavioral** sandbox trial (actually starting an MCP server and listing its tools) is a gated
-V1 build — today's safety read is **static** (capability + policy). See `docs/spike-mcp-probe.md`
-and `docs/validation-protocol.md`.
+V1 build — today's safety read is **static** (capability + policy). See `docs/spike-mcp-probe.md`.

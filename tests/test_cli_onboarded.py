@@ -16,7 +16,6 @@ every time, and the bare ``frontier-scout`` ignored
 
 from __future__ import annotations
 
-import io
 import os
 
 import pytest
@@ -38,64 +37,6 @@ def _stub_runner(record):
         return 0
 
     return runner
-
-
-# ---------------------------------------------------------------------------
-# Bare ``frontier-scout``
-# ---------------------------------------------------------------------------
-
-
-def test_bare_run_skips_wizard_for_onboarded_user(fresh_home, monkeypatch):
-    mark_wizard_complete()  # writes config.toml in the fresh home
-
-    record: dict = {"wizard_called": False, "tui_called": False}
-
-    class _FakeWizard:
-        def run(self):  # pragma: no cover — must NOT run
-            record["wizard_called"] = True
-            return "open-tui"
-
-    def _fake_run_setup(**kwargs):
-        record["tui_called"] = True
-        record["tui_kwargs"] = kwargs
-        return 0
-
-    monkeypatch.setattr("frontier_scout.wizard.app.WizardApp", _FakeWizard)
-    monkeypatch.setattr("frontier_scout.tui.runner.run_setup", _fake_run_setup)
-    monkeypatch.setattr("sys.stdin", io.StringIO(""))
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
-    monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
-
-    # v1.5.0 makes the Briefing the bare-run default; the wizard +
-    # run_setup onboarding contract this test pins lives on the classic UI.
-    rc = cli.main(["--ui", "classic"])
-    assert rc == 0
-    assert record["wizard_called"] is False
-    assert record["tui_called"] is True
-
-
-def test_bare_run_invokes_wizard_for_first_time_user(fresh_home, monkeypatch):
-    record: dict = {"wizard_called": False, "tui_called": False}
-
-    class _FakeWizard:
-        def run(self):
-            record["wizard_called"] = True
-            return "open-tui"
-
-    def _fake_run_setup(**kwargs):
-        record["tui_called"] = True
-        return 0
-
-    monkeypatch.setattr("frontier_scout.wizard.app.WizardApp", _FakeWizard)
-    monkeypatch.setattr("frontier_scout.tui.runner.run_setup", _fake_run_setup)
-    monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
-    monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
-
-    # First-run wizard onboarding is a classic-UI contract (the Briefing,
-    # the v1.5.0 default, is self-contained).
-    cli.main(["--ui", "classic"])
-    assert record["wizard_called"] is True
-    assert record["tui_called"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +95,7 @@ def test_setup_force_overrides_onboarded(fresh_home, monkeypatch):
         return 0
 
     monkeypatch.setattr("frontier_scout.wizard.app.WizardApp", _FakeWizard)
-    monkeypatch.setattr("frontier_scout.tui.runner.run_setup", _fake_run_setup)
+    monkeypatch.setattr("frontier_scout.tui3.run_mission_control", _fake_run_setup)
 
     rc = cli.main(["setup", "--force"])
     assert rc == 0
@@ -238,12 +179,12 @@ def test_reconfigure_exit_code_relaunches_wizard(fresh_home, monkeypatch):
             calls.append("wizard")
             return "open-tui"
 
-    monkeypatch.setattr("frontier_scout.tui.runner.run_setup", _fake_run_setup)
+    monkeypatch.setattr("frontier_scout.tui3.run_mission_control", _fake_run_setup)
     monkeypatch.setattr("frontier_scout.wizard.app.WizardApp", _FakeWizard)
     monkeypatch.setattr("sys.stdin.isatty", lambda: True, raising=False)
     monkeypatch.setattr("sys.stdout.isatty", lambda: True, raising=False)
 
-    # The reconfigure (exit-42) relaunch loop wraps the classic UI.
-    rc = cli.main(["--ui", "classic"])
+    # The reconfigure (exit-42) relaunch loop wraps Mission Control.
+    rc = cli.main(["--ui", "mission"])
     assert rc == 0
     assert calls == ["tui", "wizard", "tui"]

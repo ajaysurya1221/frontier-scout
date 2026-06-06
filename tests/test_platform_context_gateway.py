@@ -33,7 +33,7 @@ def test_context_compiler_keeps_static_prefix_hash_stable():
 
 
 def test_prompt_registry_requires_metadata():
-    prompt = load_prompt(Path("prompts/incident_change_scout/remediation_plan.md"))
+    prompt = load_prompt(Path("prompts/platform_fixtures/remediation_plan.md"))
 
     assert prompt.eval_id == "incident-cache-storm-001"
 
