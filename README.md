@@ -41,6 +41,7 @@
     <li><a href="#how-it-works">How it works</a></li>
     <li><a href="#what-you-get">What you get</a></li>
     <li><a href="#quickstart">Quickstart</a></li>
+    <li><a href="#agent-adoption-firewall--audit-trail-research-preview">Agent adoption firewall + audit trail</a></li>
     <li><a href="#safety-model">Safety model</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#the-engine-underneath">The engine underneath</a></li>

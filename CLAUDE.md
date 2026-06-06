@@ -52,6 +52,31 @@ not built; **research preview** — no PMF / adoption claim. The verdict schema
 (`category`, `risk`, `fit`, `readiness`, `source_url`) stays aligned across the safety
 summary, candidates `--json`, exporters, and tests.
 
+## The agent adoption firewall (static, advisory — research preview)
+
+A **second, static, advisory** surface beside the packs flow: `frontier-scout agent`. It helps a repo owner
+adopt AI coding agents safely — scan repo risk surfaces, generate a conservative policy, pre-check a proposed
+agent task, and keep an audit trail — **executing nothing**. Built this sprint; a research preview, not validated.
+
+- `agent scan` — enumerate agent-risk surfaces (agent/MCP configs, CI, deploy, protected paths, secret-likely
+  files **by name only — contents never read**) + detected test/lint/build checks. `--json` supported.
+- `agent policy init | explain` — a conservative `frontier-scout.policy.json` (repo root; **JSON**; a distinct
+  object from the radar's tool-adoption `.frontier-scout/policy.toml`).
+- `agent check "<task>"` — evaluate a proposed task → `allow | needs_approval | block` (exit `0/3/4`). **Not
+  named `trial`** — the radar's `trial`/`deps trial` *execute* a subprocess; `check` executes nothing.
+- `agent receipts list | show` — JSON audit receipts under `<repo>/.frontier-scout/receipts/` (gitignored).
+- `agent export claude | agents-md | pr-checklist` — advisory policy snippets (a format, not a client).
+- **Key modules:** `agent_firewall/` (`models` · `scan` · `policy` · `decision` · `receipts`),
+  `exporters/policy_snippets.py`; shared redaction `outputs/_text.scrub_secrets`; `doctor` gained
+  agent-policy/receipts checks. Reuses `mcp_audit` (capability taxonomy), `safety_summary.RISKY_FLAGS`,
+  `policy.PolicyFinding`, and the profiler's `_SKIP_DIRS` — no parallel taxonomy.
+
+**Honesty invariants (load-bearing):** static only (no subprocess except a guarded read-only `git rev-parse`
+for receipt metadata); secrets by name/path only; offline + keyless; **emit not enforce** (`block` is advisory
+output, never a runtime kill-switch); the loader and decision engine **fail closed** (a missing/malformed
+policy denies by default; every dangerous capability escalates to approval). Every persisted/emitted string is
+redacted via `scrub_secrets`. See `docs/strategy/{repo-reality-check,security-review,autonomous-implementation-report}.md`.
+
 ## The engine underneath (the adoption radar)
 
 Bare `frontier-scout` opens **Mission Control** (`frontier_scout/tui3/`, Textual) —
