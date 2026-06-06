@@ -806,10 +806,10 @@ def test_decision_is_static_only():
   new, 0 fail); `ruff check frontier_scout/agent_firewall frontier_scout/exporters/policy_snippets.py
   tests/test_agent_*.py`; `mypy frontier_scout/agent_firewall` (best-effort, document if env-limited);
   `frontier-scout agent --help` + a live end-to-end dry run on this repo.
-- **Security & honesty review (Phase 6):** `docs/strategy/security-review.md` — secret leakage, unsafe
+- **Security & honesty review (Phase 6):** an adversarial review — secret leakage, unsafe
   shell, overclaiming, destructive ops, policy-bypass confusion, untrusted diff/path handling, receipt
   contents. Fix serious issues.
-- **Final report (Phase 7):** `docs/strategy/autonomous-implementation-report.md` — all 11 required sections.
+- **Final report (Phase 7):** a final implementation report — all 11 required sections.
 - **Commit coherently** per task group; run `git status -sb` + `detect_changes` before finishing.
 
 ## Self-review (against the design spec)

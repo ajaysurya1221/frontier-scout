@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+### Repo cleanup — pruned parked surfaces and superseded strategy docs
+
+Removed surfaces that were parked or superseded, to keep the repo focused on the sanctioned-packs
+product and its engine:
+
+- **Removed the parked Incident Change Scout vertical** (`frontier_scout/platform/incident_change_scout/`,
+  the `incident` CLI command, its fixtures/evals, and the `FRONTIER_SCOUT_EXPERIMENTAL` gate). The shared
+  `platform/*` primitives (authz, orchestration, context, retrieval, gateway, observability) stay; the
+  platform test fixtures moved to `examples/platform_fixtures/` and `prompts/platform_fixtures/`.
+- **Removed the legacy terminal UIs `tui/` (classic setup) and `tui2/` (Briefing).** Mission Control
+  (`tui3`) is now the only UI; `--ui` accepts `mission` only. `setup --plain`/`--json` still emit
+  non-interactive diagnostics (via the relocated `frontier_scout/setup_diagnostics.py`).
+- **Removed superseded strategy/pivot/validation docs** (`docs/strategy/`, `docs/pivot/`,
+  `docs/product-thesis.md`, `docs/research-synthesis.md`, `docs/validation-*.md`) and fixed all
+  references.
+
 ### Agent adoption firewall + audit trail (research preview)
 
 A new **static, advisory** `frontier-scout agent` command group that helps teams safely adopt AI coding
@@ -33,7 +49,6 @@ taxonomy), `safety_summary.RISKY_FLAGS`, `policy.PolicyFinding`, the profiler sk
 Repositioning from a broad "AI-adoption radar" into a focused product: **repo-ranked, sanctioned
 MCP-server packs** with a **static safety map** and a **one-step export into Claude Code managed
 config** (`allowedMcpServers` / `deniedMcpServers`). Driven by follow-up market research; see
-[`docs/pivot/REVISED_IMPLEMENTATION_PLAN.md`](docs/pivot/REVISED_IMPLEMENTATION_PLAN.md) and
 [`DEPRECATIONS.md`](DEPRECATIONS.md). Phase 0: repositioned README/CLI copy, deprecation notices,
 feasibility spikes (`docs/spike-mcp-probe.md`, `docs/spike-claude-config.md`). No behavior removed;
 the radar/scan/TUI remain as the ranking engine behind the product.

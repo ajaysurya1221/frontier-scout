@@ -6,8 +6,8 @@ Guard, Packs, Deps, Reports, Settings), each wired to real Frontier Scout
 backends. Renders flawlessly from 36×11 up to 200+ columns, with unicode/ASCII
 and color/mono fallbacks.
 
-``run_mission_control`` is the entry point; the CLI selects it as the default UI
-(``--ui briefing`` → tui2, ``--ui classic`` → tui).
+``run_mission_control`` is the entry point; the CLI selects it as the only UI
+(``--ui mission``).
 """
 
 from __future__ import annotations

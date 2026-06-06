@@ -50,8 +50,6 @@ jobs:
           FRONTIER_SCOUT_HOME=.scratch/ci-home frontier-scout evaluate https://github.com/modelcontextprotocol/servers --json > /dev/null
           FRONTIER_SCOUT_HOME=.scratch/ci-home frontier-scout trial browser-use/browser-use --url https://github.com/browser-use/browser-use --dry-run --json > /dev/null
           FRONTIER_SCOUT_HOME=.scratch/ci-home frontier-scout guard --repo . --format github || true
-          make eval
-          make demo
           python -m build
       - name: Dependency audit
         run: make audit

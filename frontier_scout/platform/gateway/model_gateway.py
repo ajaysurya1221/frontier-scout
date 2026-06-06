@@ -37,7 +37,7 @@ class LocalDeterministicProvider:
             else ""
         )
         text = (
-            "Incident Change Scout recommends: validate the cache dependency, "
+            "Recommendation: validate the cache dependency, "
             f"{redis_clause}"
             "reduce risky rollout blast radius, and require owner approval before "
             f"any write action. Evidence citations: {citation_ids}. "

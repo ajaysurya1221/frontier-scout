@@ -40,7 +40,7 @@ class ContextCompiler:
         allowed_tools: list[ToolCall],
     ) -> ExecutionPacket:
         static_prefix = [
-            PromptBlock(name="identity", content="You are Frontier Scout Incident Change Scout."),
+            PromptBlock(name="identity", content="You are Frontier Scout."),
             PromptBlock(name="policy", content=policy),
             PromptBlock(name="schemas", content="Return a remediation plan with citations and approval state."),
             PromptBlock(

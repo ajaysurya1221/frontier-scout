@@ -8,12 +8,11 @@ ProgressReporter | None = None`` kwarg and emit a small number of
 ``stage`` / ``advance`` / ``log`` events as they progress.
 
 The TUI fans these events out to a status strip, a progress bar, and
-the activity log (``frontier_scout.tui.progress_view``). The CLI
-``--progress`` flag attaches a stderr reporter (single ``\r`` line
-that's safe in pipelines and CI logs). Default ``None`` is a true
-no-op — every existing CLI caller is unaffected.
+an activity log. The CLI ``--progress`` flag attaches a stderr reporter
+(single ``\r`` line that's safe in pipelines and CI logs). Default
+``None`` is a true no-op — every existing CLI caller is unaffected.
 
-Why the abstraction lives outside ``tui/``: workers in
+Why the abstraction lives outside the UI layer: workers in
 ``frontier_scout/`` and ``scripts/`` cannot import textual at module
 load — the lab runner ships without the textual extra in some
 deployments. Keeping the protocol in plain ``frontier_scout.progress``

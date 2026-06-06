@@ -147,7 +147,7 @@ A landing-page order that keeps the honest identity first. Anchors in parenthese
     (already done). Validation-gated next, only on real pull.
 11. **Legacy radar engine** *(optional, collapsed `<details>`)* — the Mission Control screenshots + `demo`,
     clearly labelled "the ranking/safety engine underneath, not the product."
-12. **Footer** — MIT · "research preview, not market-validated" · link to `docs/pivot/RESEARCH_3_EXECUTION_DECISION.md`.
+12. **Footer** — MIT · "research preview, not market-validated".
 
 ---
 

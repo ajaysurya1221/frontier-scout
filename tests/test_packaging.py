@@ -1,10 +1,10 @@
 """Guard against the v1.5.1 packaging regression.
 
-v1.5.1 shipped a wheel/sdist that omitted the Textual stylesheets
-(``tui2/theme.tcss``, ``tui3/theme.tcss``) because ``pyproject.toml`` declared
-no ``package-data``. Every ``pip install`` then crashed on launch with
-``StylesheetError: unable to read CSS file '.../theme.tcss'``. These tests lock
-the fix in place. See CHANGELOG 1.5.2.
+v1.5.1 shipped a wheel/sdist that omitted the Textual stylesheet
+(``tui3/theme.tcss``) because ``pyproject.toml`` declared no ``package-data``.
+Every ``pip install`` then crashed on launch with ``StylesheetError: unable to
+read CSS file '.../theme.tcss'``. These tests lock the fix in place. See
+CHANGELOG 1.5.2.
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ ROOT = PKG.parent
 def test_textual_stylesheets_live_beside_their_apps() -> None:
     """Each App subclass sets ``CSS_PATH = "theme.tcss"`` resolved next to its
     module, so the file must exist there in both source and installed layouts."""
-    for sub in ("tui2", "tui3"):
+    for sub in ("tui3",):
         css = PKG / sub / "theme.tcss"
         assert css.is_file(), f"missing Textual stylesheet: {css}"
 

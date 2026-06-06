@@ -3,9 +3,8 @@
 **Date:** 2026-06-06 · **Status:** approved direction (user pre-approved; reality check found no
 contradiction) · **Branch:** `feat/agent-firewall-mvp`
 
-**Read first:** [`docs/strategy/repo-reality-check.md`](../../strategy/repo-reality-check.md) (Phase 1) and
-[`docs/strategy/frontier-scout-strategy-research-2026.md`](../../strategy/frontier-scout-strategy-research-2026.md)
-(strategy source of truth).
+**Status:** historical planning artifact for the shipped agent-firewall MVP. (The strategy and
+reality-check docs that informed it have since been superseded and removed.)
 
 ---
 
@@ -282,8 +281,7 @@ All tests land in the broad CI step (no `live` marker). Isolate with `tmp_path` 
 - **docs/examples/agent-firewall/** — gold-path example (sample `frontier-scout.policy.json`, a scan
   excerpt, a `check` decision, a receipt, the three snippets) + a "What this IS / is NOT" README mirroring
   `docs/examples/sanctioned-packs/`.
-- **docs/strategy/security-review.md** (Phase 6) and **docs/strategy/autonomous-implementation-report.md**
-  (Phase 7).
+- An adversarial security/honesty review (Phase 6) and a final implementation report (Phase 7).
 
 ## 15. Migration / deprecation decisions for stale surfaces
 

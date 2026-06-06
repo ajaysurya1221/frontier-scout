@@ -18,7 +18,6 @@ from .guard import format_findings, run_guard
 from .lab import run_lab
 from .mcp_audit import classify_mcp_capabilities
 from .packs import candidate_rows_for_pack
-from .platform.incident_change_scout.workflow import run_incident_demo
 from .policy import default_policy_toml, evaluate_policy, load_policy
 from .profile import build_scout_profile, export_profile
 from .report import load_verdict_file, render_html, serve_demo, write_demo
@@ -124,7 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     setup_cmd.add_argument(
         "--tab",
         default="scout",
-        help="Landing tab slug (scout, trials, receipts, guard, reports, packs, deps, incident, settings).",
+        help="Landing tab slug (scout, trials, receipts, guard, reports, packs, deps, settings).",
     )
     setup_cmd.add_argument(
         "--no-scout",
@@ -402,30 +401,6 @@ def build_parser() -> argparse.ArgumentParser:
     policy_init.add_argument("--home-only", action="store_true", help="Write to ~/.frontier-scout/policy.toml.")
     policy_init.add_argument("--repo", default=".", help="Repository for .frontier-scout/policy.toml.")
 
-    incident_cmd = sub.add_parser("incident", help="Run the Engineering Scout incident-forensics vertical slice.")
-    incident_sub = incident_cmd.add_subparsers(dest="incident_command")
-    incident_demo = incident_sub.add_parser("demo", help="Run the local Incident Change Scout demo.")
-    incident_demo.add_argument(
-        "--corpus",
-        default="examples/incident_change_scout/corpus",
-        help="Seed corpus directory.",
-    )
-    incident_demo.add_argument(
-        "--ticket",
-        default="examples/incident_change_scout/tickets/cache-storm.md",
-        help="Incident ticket path.",
-    )
-    incident_demo.add_argument(
-        "--output",
-        default=".scratch/incident-demo",
-        help="Output directory for answer, trace, audit, and eval.",
-    )
-    incident_demo.add_argument(
-        "--approved",
-        action="store_true",
-        help="Simulate explicit approval for the high-risk action.",
-    )
-
     agent_cmd = sub.add_parser(
         "agent",
         help="Static, advisory AI-agent adoption firewall + audit trail (research preview).",
@@ -549,12 +524,10 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(2)
         os.environ["FRONTIER_SCOUT_PROVIDER"] = value
 
-    # ``--ui {mission,briefing,classic}`` selects the terminal UI. v1.5.0 ships
-    # Mission Control (tui3, dense tabbed dashboard) as default; ``briefing``
-    # reaches the calm Briefing (tui2); ``classic`` the previous setup TUI.
-    # Pulled from argv (any position) like ``--provider``, and also honoured via
-    # the ``FRONTIER_SCOUT_UI`` env var.
-    valid_uis = ("mission", "briefing", "classic")
+    # ``--ui mission`` selects the terminal UI (Mission Control, tui3 — the only
+    # supported UI). Pulled from argv (any position) like ``--provider``, and also
+    # honoured via the ``FRONTIER_SCOUT_UI`` env var.
+    valid_uis = ("mission",)
     ui_value: str | None = None
 
     def _check_ui(value: str | None) -> str:
@@ -608,41 +581,12 @@ def main(argv: list[str] | None = None) -> int:
         # wizard is ``frontier-scout setup``.
         explicit_ui = ui_value is not None or bool(os.environ.get("FRONTIER_SCOUT_UI"))
         if explicit_ui and sys.stdin.isatty() and sys.stdout.isatty():
-            # Explicit ``--ui`` / ``FRONTIER_SCOUT_UI`` launches the chosen UI:
-            # mission = Mission Control (tui3), briefing = tui2, classic = setup TUI.
-            if ui_choice == "mission":
-                from .tui3 import run_mission_control
+            # Explicit ``--ui mission`` / ``FRONTIER_SCOUT_UI`` launches Mission Control.
+            from .tui3 import run_mission_control
 
-                # Wrap in the reconfigure loop so the Settings "Reconfigure"
-                # action (Mission Control exits with code 42) relaunches the
-                # setup wizard, mirroring the classic/setup launch sites.
-                return _run_tui_with_reconfigure_loop(run_mission_control, repo=Path("."))
-            if ui_choice == "briefing":
-                from .tui2 import run_briefing
-
-                return run_briefing(repo=Path("."))
-
-            from .tui.runner import run_setup
-            from .wizard.config import is_onboarded
-
-            # Stream I — first-launch UX: if the user has never run the
-            # wizard, route them through it once. After that, every bare
-            # ``frontier-scout`` goes straight to Mission Control.
-            if not is_onboarded():
-                from .wizard.app import WizardApp
-
-                wizard_result = WizardApp().run()
-                # Whatever the wizard returns, we then enter the TUI on
-                # the current directory — that's the user's expectation
-                # of "do the thing".
-                _ = wizard_result
-            return _run_tui_with_reconfigure_loop(
-                run_setup,
-                repo=Path("."),
-                plain=False,
-                json_output=False,
-                ollama_url="http://localhost:11434",
-            )
+            # Wrap in the reconfigure loop so the Settings "Reconfigure" action
+            # (Mission Control exits with code 42) relaunches the setup wizard.
+            return _run_tui_with_reconfigure_loop(run_mission_control, repo=Path("."))
         parser.print_help()
         return 0
     if args.command == "setup":
@@ -689,9 +633,9 @@ def main(argv: list[str] | None = None) -> int:
             app = WizardApp()
             result = app.run()
             if result == "open-tui":
-                from .tui.runner import run_setup as _run_setup
+                from .tui3 import run_mission_control
 
-                return _run_tui_with_reconfigure_loop(_run_setup, repo=Path("."))
+                return _run_tui_with_reconfigure_loop(run_mission_control, repo=Path("."))
             return 0
         if args.automation:
             from .wizard.headless import run_headless
@@ -705,20 +649,28 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(json.dumps(payload, indent=2, default=str))
             return 0
-        from .tui.runner import run_setup
+        # --plain / --json → non-interactive setup diagnostics (no TUI).
+        if args.plain or args.json:
+            from .setup_diagnostics import diagnostics_to_plain, setup_diagnostics
 
-        packs = [slug.strip() for slug in args.packs.split(",") if slug.strip()] if args.packs else None
+            packs = [slug.strip() for slug in args.packs.split(",") if slug.strip()] if args.packs else None
+            diagnostics = setup_diagnostics(
+                Path(args.repo) if args.repo else Path("."),
+                ollama_url=args.ollama_url,
+                selected_packs=packs,
+                scan_imports=args.scan_imports,
+            )
+            if args.json:
+                print(json.dumps(diagnostics.model_dump(), indent=2, default=str))
+            else:
+                print(diagnostics_to_plain(diagnostics))
+            return 0
+        # Interactive setup on a repo → Mission Control.
+        from .tui3 import run_mission_control
+
         return _run_tui_with_reconfigure_loop(
-            run_setup,
+            run_mission_control,
             repo=Path(args.repo) if args.repo else Path("."),
-            plain=args.plain,
-            json_output=args.json,
-            ollama_url=args.ollama_url,
-            packs=packs,
-            scan_imports=args.scan_imports,
-            show_splash=args.show_splash,
-            initial_tab=args.tab,
-            auto_scout=args.auto_scout,
         )
     if args.command == "open":
         from .tui3 import run_mission_control
@@ -1212,37 +1164,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Wrote policy: {path}")
             return 0
         parser.error("policy requires a subcommand")
-        return 2
-    if args.command == "incident":
-        # Incident Change Scout is parked during the sanctioned-packs pivot (it's a
-        # separate problem/buyer). Keep the code, gate it behind an experimental flag.
-        if os.environ.get("FRONTIER_SCOUT_EXPERIMENTAL", "").strip().lower() not in (
-            "1",
-            "true",
-            "yes",
-            "on",
-        ):
-            print(
-                "incident is an experimental module, parked during the sanctioned-packs "
-                "pivot. Set FRONTIER_SCOUT_EXPERIMENTAL=1 to enable it."
-            )
-            return 2
-        if args.incident_command == "demo":
-            summary = run_incident_demo(
-                corpus_dir=Path(args.corpus),
-                ticket_path=Path(args.ticket),
-                output_dir=Path(args.output),
-                approved=args.approved,
-            )
-            print(f"Incident demo run: {summary['run_id']}")
-            print(f"answer: {summary['answer_path']}")
-            print(f"trace: {summary['trace_path']}")
-            print(f"audit: {summary['audit_path']}")
-            print(f"eval: {summary['eval_path']} score={summary['eval']['score']}")
-            if summary["interrupted"]:
-                print("approval: interrupted before high-risk action")
-            return 0
-        parser.error("incident requires a subcommand")
         return 2
     if args.command == "agent":
         # Static, advisory AI-agent adoption firewall + audit trail. Lazy-import

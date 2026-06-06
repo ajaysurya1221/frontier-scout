@@ -55,7 +55,7 @@ Scope it to **high-risk servers only** (`dangerous_flags ∈ {write,shell,creden
 
 Estimated effort: ~1–2 focused tasks, plus a new dependency and hermetic-lab hardening for a
 long-lived server process. **Deferred** behind the Phase-3 A/B/C gate (does sandbox evidence earn
-pull?) — see `docs/validation-protocol.md`.
+pull?).
 
 ## Recommendation
 

@@ -26,7 +26,7 @@ from frontier_scout.scheduling import (
     is_valid_cron_expr,
     load_schedules,
 )
-from frontier_scout.tui.setup_diagnostics import detect_providers
+from frontier_scout.setup_diagnostics import detect_providers
 from frontier_scout.wizard.config import (
     mark_wizard_complete,
     update_llm,
