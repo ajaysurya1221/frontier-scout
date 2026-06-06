@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Agent adoption firewall + audit trail (research preview)
+
+A new **static, advisory** `frontier-scout agent` command group that helps teams safely adopt AI coding
+agents — sitting beside the sanctioned-packs engine and reusing its risk taxonomy:
+
+- **`agent scan`** — enumerate repo agent-risk surfaces (agent/MCP configs, CI, deploy config, protected
+  paths, and secret-likely files **by name only — contents never read**) plus detected test/lint/build
+  checks. `--json` supported.
+- **`agent policy init` / `policy explain`** — generate and read a conservative `frontier-scout.policy.json`
+  (protects secrets/CI/deploy/migrations, blocks dangerous shell, deny-by-default MCP allowlist, gates risky
+  capability surfaces).
+- **`agent check "<task>"`** — evaluate a *proposed* agent task against the policy →
+  `allow` / `needs_approval` / `block` with reasons. **Executes nothing** (exit 0 / 3 / 4). Writes a receipt.
+- **`agent receipts list` / `receipts show <id>`** — local JSON audit receipts under
+  `.frontier-scout/receipts/` (one static-assessment record per decision; task text redacted).
+- **`agent export claude | agents-md | pr-checklist`** — emit an **advisory** policy snippet (a format, not a
+  client; emitted, never enforced).
+- **`doctor`** gains agent-policy presence/validity and receipts-writable checks.
+
+Static and offline by design: no MCP server, agent task, or network call is ever run; exporters **emit** but
+do not **enforce**; nothing claims compliance or complete protection. Reuses `mcp_audit` (capability
+taxonomy), `safety_summary.RISKY_FLAGS`, `policy.PolicyFinding`, the profiler skip-set, and
+`sanitize_sensitive_text`. 37 new tests. See
+[`docs/examples/agent-firewall/`](docs/examples/agent-firewall/) and
+[`docs/superpowers/specs/2026-06-06-frontier-scout-agent-firewall-mvp-design.md`](docs/superpowers/specs/2026-06-06-frontier-scout-agent-firewall-mvp-design.md).
+
 ### Pivot — sanctioned MCP-server packs for coding assistants
 
 Repositioning from a broad "AI-adoption radar" into a focused product: **repo-ranked, sanctioned
