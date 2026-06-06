@@ -79,13 +79,16 @@ redacted via `scrub_secrets`. See `docs/strategy/{repo-reality-check,security-re
 
 ## The engine underneath (the adoption radar)
 
-Bare `frontier-scout` opens **Mission Control** (`frontier_scout/tui3/`, Textual) —
-a dense, keyboard- **and** mouse-driven, 8-tab dashboard
+`frontier-scout open` (or `--ui mission`) opens **Mission Control**
+(`frontier_scout/tui3/`, Textual) — a dense, keyboard- **and** mouse-driven, 8-tab dashboard
 (Scout · Schedule · Receipts · Guard · Packs · Deps · Reports · Settings). The radar
 engine (`scout` · `evaluate` · `dossier` · `lab` · `trial` · `guard` · `policy` ·
 `report`) ranks and audits tools/MCP servers; the packs product sits on top of it.
 
-- `--ui {mission,briefing,classic}` selects the UI (`mission` = tui3 default,
+- A **bare `frontier-scout` prints help** (it no longer auto-launches the TUI — a
+  stray invocation shouldn't drop you into a full-screen app). The TUI is launched
+  explicitly via `open` / `--ui mission`.
+- `--ui {mission,briefing,classic}` selects the UI (`mission` = tui3 when launched,
   `briefing` = tui2, `classic` = tui); `--demo` runs fully offline.
 - Every renderable goes through `app._paint` (color↔mono) and `glyphs(unicode)`
   (unicode↔ASCII); layout reflows by breakpoint (`kit.breakpoint_for`). New

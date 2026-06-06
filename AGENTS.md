@@ -40,7 +40,7 @@ frontier_scout/        # installable CLI package
     models.py scan.py policy.py decision.py receipts.py
   exporters/policy_snippets.py   # advisory CLAUDE.md / AGENTS.md / PR-checklist snippet exporters
 
-  tui3/                # Mission Control TUI (Textual) — the DEFAULT `frontier-scout` UX
+  tui3/                # Mission Control TUI (Textual) — launched by `frontier-scout open` / `--ui mission`
   tui2/  tui/          # alternative UIs: --ui briefing (tui2) / --ui classic (tui)
   providers/           # LLM provider abstraction: anthropic / openai / claude-cli / codex-cli
   platform/incident_change_scout/   # PARKED experimental vertical (FRONTIER_SCOUT_EXPERIMENTAL=1)
@@ -72,7 +72,8 @@ frontier-scout agent check "upgrade requests and run the tests"   # -> allow/nee
 frontier-scout agent receipts list              # local audit trail (.frontier-scout/receipts/)
 
 # the radar engine underneath
-frontier-scout                 # opens Mission Control TUI (default); --ui briefing|classic, --demo offline
+frontier-scout                 # prints help (bare command no longer auto-launches the TUI)
+frontier-scout open            # opens Mission Control TUI; --ui briefing|classic, --demo offline
 frontier-scout demo
 frontier-scout scan --dry-run --repo .
 frontier-scout guard --repo .
