@@ -12,7 +12,8 @@
 - **ASI08 cascading failures:** DCG runtime has bounded steps/retries and
   interrupts. Tests: `tests/test_platform_orchestration_tools.py`.
 - **ASI09 trust exploitation:** output includes citations, trace, audit log,
-  and approval state. Tests: `tests/test_incident_change_scout.py`.
+  and approval state. Tests: `tests/test_platform_context_gateway.py`,
+  `tests/test_platform_orchestration_tools.py`.
 
 ## Defaults
 

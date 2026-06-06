@@ -1,25 +1,6 @@
 # Evals
 
-The Incident Change Scout eval lives in `evals/incident_change_scout/golden.json`.
-
-Thresholds:
-
-- Required terms must appear in the final answer.
-- At least two citations must be bound to the answer.
-- Overall score must be at least `0.8`.
-
-Run:
-
-```bash
-make eval
-```
-
-The eval writes `.scratch/incident-eval/eval.json`.
-
-## v0.2 Living Radar Evals
-
-The Living Scout Packs and Dependency Intelligence release adds three fixture
-eval sets:
+Frontier Scout ships fixture-backed eval sets under `evals/`:
 
 - `evals/release_classification/golden.json`
   - Goal: classify release notes as `security`, `hardening`, `breaking`,
