@@ -205,7 +205,7 @@ Classifications: **strategic asset** · **useful but needs refactor** · **aspir
 | High-risk set | `RISKY_FLAGS = {write,shell,credential,network}` | `safety_summary.py:21` |
 | Decision/reason shape | `PolicyFinding(severity,rule_id,message,tool_name)` | `policy.py:30` |
 | Decision-engine pattern | `evaluate_policy` ordered-precedence + `evaluate_url` pure scorer | `policy.py:87`, `evaluate.py:32` |
-| Finding rendering | `format_findings(... text|json|github)` | `guard.py:84` |
+| Finding rendering | `format_findings(... text\|json\|github)` | `guard.py:84` |
 | Repo profiling | `build_scout_profile`, `_walk_manifests`, `_SKIP_DIRS`, `ignored_paths` | `profile.py:442,132,101,62` |
 | Local-data roots | `home_dir()` (home) + `<repo>/.frontier-scout/` (in-repo) | `store.py:13`, `policy.py:51` |
 | Receipt-per-record pattern | `notifications.py` glob/stamp/tolerant-read | `notifications.py:25-108` |

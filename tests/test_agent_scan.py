@@ -29,8 +29,10 @@ def test_scan_detects_each_surface_kind(tmp_path):
             "protected-path", "deploy-config"} <= kinds
     paths = {s.path for s in result.surfaces}
     assert "CLAUDE.md" in paths and ".cursorrules" in paths
-    assert ".env" in paths and ".github/workflows" in {p.rstrip("/") for p in paths} or \
-        any(p.startswith(".github") for p in paths)
+    # Assert each surface independently — a single combined `and/or` expression
+    # let the `.github` clause short-circuit the `.env` check (vacuous assertion).
+    assert ".env" in paths
+    assert any(p.startswith(".github") for p in paths)
 
 
 def test_scan_never_reads_secret_file_contents(tmp_path):
