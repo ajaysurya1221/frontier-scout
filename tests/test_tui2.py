@@ -321,7 +321,10 @@ def test_finding_from_verdict_tolerates_missing_keys():
 # ── 7. CLI routing: Mission Control is the default; briefing/classic reachable ─
 
 
-def test_cli_routes_to_mission_by_default(monkeypatch):
+def test_cli_ui_mission_routes_to_mission(monkeypatch):
+    # Mission Control is now reached via an explicit `--ui mission` (or the
+    # `open` command); a bare `frontier-scout` prints help instead
+    # (see tests/test_cli_bare_help.py).
     from frontier_scout import cli
 
     monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
@@ -335,7 +338,7 @@ def test_cli_routes_to_mission_by_default(monkeypatch):
     import frontier_scout.tui3 as tui3
 
     monkeypatch.setattr(tui3, "run_mission_control", fake_run_mission_control)
-    rc = cli.main([])
+    rc = cli.main(["--ui", "mission"])
     assert rc == 0
     assert "mission" in called
 

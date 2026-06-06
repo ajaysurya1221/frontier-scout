@@ -47,6 +47,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Sanctioned MCP-server packs for coding assistants: repo-rank approved MCP "
         "servers, read each server's static safety map, and export the approved set into your "
         "Claude Code managed config.",
+        epilog="Tip: `frontier-scout open` launches Mission Control (the interactive TUI); "
+        "`frontier-scout agent scan` runs the static agent firewall; `frontier-scout setup` "
+        "(re)configures. Run `frontier-scout <command> -h` for command help.",
     )
     parser.add_argument("--version", action="version", version=f"frontier-scout {__version__}")
     # Stream I: top-level alias matches the mental model `frontier-scout --setup`.
@@ -598,10 +601,15 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(raw)
 
     if args.command is None:
-        if sys.stdin.isatty() and sys.stdout.isatty():
-            # v1.5.0 default: Mission Control (tui3), the dense tabbed dashboard.
-            # ``--ui briefing`` → the calm Briefing (tui2); ``--ui classic`` →
-            # the previous setup TUI. Also honoured via FRONTIER_SCOUT_UI.
+        # A bare ``frontier-scout`` (no subcommand, no explicit ``--ui``) prints
+        # help rather than auto-launching a full-screen TUI — accidentally typing
+        # the bare command shouldn't drop you into Mission Control. The TUI stays
+        # one explicit step away: ``frontier-scout open`` / ``--ui mission``; the
+        # wizard is ``frontier-scout setup``.
+        explicit_ui = ui_value is not None or bool(os.environ.get("FRONTIER_SCOUT_UI"))
+        if explicit_ui and sys.stdin.isatty() and sys.stdout.isatty():
+            # Explicit ``--ui`` / ``FRONTIER_SCOUT_UI`` launches the chosen UI:
+            # mission = Mission Control (tui3), briefing = tui2, classic = setup TUI.
             if ui_choice == "mission":
                 from .tui3 import run_mission_control
 
