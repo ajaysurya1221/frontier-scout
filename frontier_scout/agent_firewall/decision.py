@@ -118,28 +118,24 @@ def evaluate_task(
             )
             has_block = True
 
-    # Capability gates: a dangerous flag in the high-risk set escalates to
-    # approval when its gate token is enabled; otherwise it is surfaced as info.
+    # Capability gates (fail-closed): any dangerous flag in the high-risk set
+    # escalates to approval. If its gate token is explicitly enabled we say so;
+    # if not, we STILL require approval (a dangerous capability is never silently
+    # allowed just because the policy omitted its gate).
     for flag in dangerous:
         if flag not in RISKY_FLAGS:
             continue
         if flag in gates:
-            reasons.append(
-                PolicyFinding(
-                    severity="medium",
-                    rule_id=f"capability.{flag}",
-                    message=f"Task implies the '{flag}' capability; human approval is gated.",
-                )
-            )
-            has_approval = True
+            message = f"Task implies the '{flag}' capability; human approval is gated."
         else:
-            reasons.append(
-                PolicyFinding(
-                    severity="info",
-                    rule_id=f"capability.{flag}",
-                    message=f"Task implies the '{flag}' capability (allowed, surfaced for review).",
-                )
+            message = (
+                f"Task implies the '{flag}' capability; not explicitly gated — "
+                "defaulting to approval (fail-closed)."
             )
+        reasons.append(
+            PolicyFinding(severity="medium", rule_id=f"capability.{flag}", message=message)
+        )
+        has_approval = True
 
     # Fail-closed: an unclassifiable non-trivial task needs approval.
     if (

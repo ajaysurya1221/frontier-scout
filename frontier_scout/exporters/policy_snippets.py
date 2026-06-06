@@ -8,7 +8,7 @@ this guidance, it does **not** enforce it at runtime.
 These are output *formats* (not coding-assistant clients), so — unlike the sanctioned-pack
 ``exporters/claude_config.py`` flow — they are deliberately **not** routed through the
 ``--client`` hard-gate. ``export_policy_snippets`` redacts every snippet through
-``sanitize_sensitive_text`` at the write boundary.
+``scrub_secrets`` (secret-shaped tokens, including short ones) at the write boundary.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from frontier_scout.agent_firewall.models import AgentPolicy
-from outputs._text import sanitize_sensitive_text
+from outputs._text import scrub_secrets
 
 __all__ = [
     "build_claude_md_snippet",
@@ -125,6 +125,6 @@ def export_policy_snippets(
         if formats is not None and name not in formats:
             continue
         path = target / fname
-        path.write_text(sanitize_sensitive_text(text))
+        path.write_text(scrub_secrets(text))
         out[name] = str(path)
     return out

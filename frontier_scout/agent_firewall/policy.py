@@ -19,6 +19,7 @@ from .models import AgentPolicy, ScanResult
 __all__ = [
     "default_policy_path",
     "generate_policy",
+    "conservative_default_policy",
     "load_policy",
     "save_policy",
     "explain_policy",
@@ -28,6 +29,10 @@ __all__ = [
 ]
 
 POLICY_FILENAME = "frontier-scout.policy.json"
+
+# Hard cap on a policy file we will read into memory (a JSON policy is tiny;
+# this is a memory-amplification guard on the operator-supplied --policy path).
+MAX_POLICY_BYTES = 1_000_000
 
 # Conservative defaults (design §8) -----------------------------------------
 
@@ -181,6 +186,28 @@ def generate_policy(scan: ScanResult) -> AgentPolicy:
     )
 
 
+def conservative_default_policy() -> AgentPolicy:
+    """A deny-by-default policy used whenever a policy file can't be loaded.
+
+    This is the **fail-closed** fallback: it blocks dangerous shell, protects
+    secrets/CI/deploy/migrations, gates every risky surface, and keeps the MCP
+    allowlist empty. Never return a bare ``AgentPolicy()`` for a load failure —
+    an empty policy is fail-*open* (it allows everything).
+    """
+
+    return AgentPolicy(
+        allowed_shell_commands=list(DEFAULT_ALLOWED_SHELL),
+        blocked_shell_commands=list(DEFAULT_BLOCKED_SHELL),
+        allowed_file_globs=list(DEFAULT_ALLOWED_FILE_GLOBS),
+        protected_file_globs=list(DEFAULT_PROTECTED),
+        approval_gates=list(DEFAULT_APPROVAL_GATES),
+        policy_notes=(
+            "Conservative fail-closed default (no valid policy file was loaded). "
+            "Run `frontier-scout agent policy init` to generate one."
+        ),
+    )
+
+
 def save_policy(policy: AgentPolicy, path: str) -> None:
     """Write ``policy`` to ``path`` as pretty JSON with a trailing newline."""
 
@@ -188,25 +215,32 @@ def save_policy(policy: AgentPolicy, path: str) -> None:
 
 
 def load_policy(path: str) -> tuple[AgentPolicy, list[str]]:
-    """Load a policy, never crashing.
+    """Load a policy, never crashing — and failing **closed**.
 
-    Returns ``(policy, warnings)``. A missing file yields a conservative
-    ``AgentPolicy()`` default plus a "not found" warning; an unreadable or
-    malformed file yields an empty default plus a parse warning. A valid file
-    yields the validated policy and an empty warning list.
+    Returns ``(policy, warnings)``. A missing, oversized, unreadable, or
+    malformed file yields :func:`conservative_default_policy` (deny-by-default,
+    **not** an empty/permissive policy) plus a human-readable warning. A valid
+    file yields the validated policy and an empty warning list.
     """
 
     p = Path(path)
     if not p.exists():
-        return AgentPolicy(), [f"policy file not found: {path}"]
+        return conservative_default_policy(), [
+            f"policy file not found: {path}; using conservative default"
+        ]
     try:
+        if p.stat().st_size > MAX_POLICY_BYTES:
+            return conservative_default_policy(), [
+                f"policy {path} too large (> {MAX_POLICY_BYTES} bytes); "
+                "using conservative default"
+            ]
         data = json.loads(p.read_text())
         return AgentPolicy.model_validate(data), []
     except (OSError, ValueError, ValidationError):
         # JSONDecodeError and pydantic ValidationError both subclass ValueError;
-        # OSError covers read failures. Fail open to an empty default + warning.
-        return AgentPolicy(), [
-            f"could not parse policy {path}; using empty default"
+        # OSError covers read failures. Fail CLOSED to the conservative default.
+        return conservative_default_policy(), [
+            f"could not parse policy {path}; using conservative default"
         ]
 
 

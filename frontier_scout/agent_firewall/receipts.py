@@ -18,16 +18,9 @@ from typing import Any
 from frontier_scout import __version__
 from frontier_scout.agent_firewall.models import Receipt, TaskDecision
 from frontier_scout.store import _now
-from outputs._text import sanitize_sensitive_text
+from outputs._text import scrub_secrets
 
 __all__ = ["receipts_dir", "write_receipt", "list_receipts", "show_receipt"]
-
-# Belt-and-suspenders mask applied at the receipt write boundary, *after*
-# sanitize_sensitive_text. The canonical redactor only collapses secret-shaped
-# tokens above a length floor (sk-ant-{20,}); this masks the same key shapes
-# down to their prefix so a short-but-real token can never land in a receipt.
-# Not a parallel risk taxonomy — a redaction backstop for persisted task text.
-_KEY_SHAPE = re.compile(r"\b(sk-ant-|sk-|ghp_|github_pat_|xox[baprs]-|npm_)[A-Za-z0-9\-_]+")
 
 _SLUG_RE = re.compile(r"[^A-Za-z0-9_.-]+")
 
@@ -46,9 +39,8 @@ def _now_stamp() -> str:
 
 
 def _redact(text: str) -> str:
-    """Redact secret-shaped tokens from persisted task text (write boundary)."""
-    out = sanitize_sensitive_text(text)
-    return _KEY_SHAPE.sub(lambda m: m.group(1) + "REDACTED", out)
+    """Redact secret-shaped tokens (incl. short ones) at the write boundary."""
+    return scrub_secrets(text)
 
 
 def _git_meta(repo: str) -> tuple[str | None, str | None]:
@@ -98,19 +90,28 @@ def write_receipt(
     """
     branch, commit = _git_meta(repo)
     receipt_id = f"{_now_stamp()}-{_slug(task)}"
+    # Redact EVERY persisted string field, not just the task — a secret-shaped
+    # token can ride in a changed-file path, a reason message, a warning, or a
+    # branch name. The receipt is a durable, shareable artifact.
+    reasons = []
+    for r in decision.reasons:
+        item = r.model_dump()
+        item["message"] = _redact(str(item.get("message", "")))
+        item["tool_name"] = _redact(str(item.get("tool_name", "")))
+        reasons.append(item)
     receipt = Receipt(
         receipt_id=receipt_id,
         timestamp=_now(),
         repo=repo,
-        git_branch=branch,
+        git_branch=_redact(branch) if branch else None,
         git_commit=commit,
         task_summary=_redact(task)[:500],
         policy_path=policy_path,
         verdict=decision.verdict,
-        reasons=[r.model_dump() for r in decision.reasons],
-        files_considered=list(decision.files_considered),
+        reasons=reasons,
+        files_considered=[_redact(f) for f in decision.files_considered],
         required_checks=list(decision.required_checks),
-        warnings=list(decision.warnings),
+        warnings=[_redact(w) for w in decision.warnings],
         frontier_scout_version=__version__,
     )
     directory = receipts_dir(repo)
@@ -138,11 +139,27 @@ def list_receipts(repo: str) -> list[dict[str, Any]]:
 def show_receipt(repo: str, receipt_id: str) -> dict[str, Any] | None:
     """Load one receipt by id (with or without the ``.json`` suffix).
 
-    Returns ``None`` if it is missing or cannot be parsed.
+    ``receipt_id`` is attacker-controllable (a CLI positional), so it is
+    constrained to a single, contained filename — any path separator, parent
+    reference, or absolute path is rejected (no traversal, no arbitrary read).
+    Returns ``None`` if it is missing, escapes the receipts dir, or can't parse.
     """
     directory = receipts_dir(repo)
     stem = receipt_id[:-5] if receipt_id.endswith(".json") else receipt_id
+    # Reject anything that isn't a plain filename component.
+    if not stem or stem in (".", "..") or "/" in stem or "\\" in stem:
+        return None
+    if ".." in Path(stem).parts or Path(stem).is_absolute():
+        return None
     path = directory / f"{stem}.json"
+    # Defense in depth: confirm the resolved path stays inside the receipts dir.
+    try:
+        base = directory.resolve()
+        target = path.resolve()
+        if base != target and base not in target.parents:
+            return None
+    except OSError:
+        return None
     if not path.exists():
         return None
     try:
