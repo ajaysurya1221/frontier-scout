@@ -39,7 +39,7 @@ The headline flow (the CLI is the artifact; runs offline + keyless on `--demo` d
 - `frontier-scout packs export --client claude-code --target ./out` — writes the
   **managed `allowedMcpServers` / `deniedMcpServers` fragment** (primary) + project
   `.mcp.json` (secondary) for an admin to deploy.
-- `packs proof` (A/B/C proof variants) · `packs stats` (local opt-in funnel) ·
+- `packs proof` (A/B/C proof variants) · `frontier-scout stats` (local opt-in funnel) ·
   `packs list / show / refresh / unsanction`.
 - **Key modules:** `packs.py`, `pack_flow.py`, `safety_summary.py`,
   `exporters/claude_config.py`, `proof_variants.py`, `telemetry.py`; persistence in

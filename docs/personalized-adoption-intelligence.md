@@ -1,5 +1,10 @@
 # Personalized AI Adoption Intelligence
 
+> **Orientation:** this documents an **engine-underneath** capability — repo-aware
+> ranking and the local Scout Profile — that powers the headline product. The
+> headline product is **sanctioned MCP-server packs** for coding assistants (see the
+> [README](../README.md)); this is the radar engine beneath it, not the top-line pitch.
+
 Frontier Scout's strongest wedge is personalized scouting first, with
 try-before-trust as the safety engine.
 

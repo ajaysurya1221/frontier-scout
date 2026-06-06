@@ -13,8 +13,8 @@ humans and coding agents landing on the repo.
 ```text
 frontier_scout/        # installable CLI package
   cli.py               # entry point + --ui/--provider/--demo. Subcommands include:
-                       #   packs (candidates/sanction/unsanction/export/proof/stats/list/show/refresh),
-                       #   scan report evaluate dossier lab trial guard policy deps profile,
+                       #   packs (candidates/sanction/unsanction/export/proof/list/show/refresh),
+                       #   scan report evaluate dossier lab trial guard policy deps profile stats,
                        #   incident (PARKED, experimental)
 
   # --- the sanctioned-packs product (the headline) ---
@@ -24,7 +24,7 @@ frontier_scout/        # installable CLI package
   proof_variants.py    # A/B/C proof variants (approval-only / static-summary / receipt)
   exporters/
     claude_config.py   # Claude Code managed allowedMcpServers/deniedMcpServers + project .mcp.json
-  telemetry.py         # local opt-in pack funnel (`packs stats`)
+  telemetry.py         # local opt-in pack funnel (`frontier-scout stats`)
 
   # --- the radar engine underneath ---
   scout.py             # stack detection + CLI-facing scan wrapper
