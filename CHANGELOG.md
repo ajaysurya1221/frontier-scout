@@ -41,8 +41,7 @@ Static and offline by design: no MCP server, agent task, or network call is ever
 do not **enforce**; nothing claims compliance or complete protection. Reuses `mcp_audit` (capability
 taxonomy), `safety_summary.RISKY_FLAGS`, `policy.PolicyFinding`, the profiler skip-set, and
 `sanitize_sensitive_text`. 49 new tests (full suite 721/0), including an adversarial security review. See
-[`docs/examples/agent-firewall/`](docs/examples/agent-firewall/) and
-[`docs/superpowers/specs/2026-06-06-frontier-scout-agent-firewall-mvp-design.md`](docs/superpowers/specs/2026-06-06-frontier-scout-agent-firewall-mvp-design.md).
+[`docs/examples/agent-firewall/`](docs/examples/agent-firewall/).
 
 ### Pivot — sanctioned MCP-server packs for coding assistants
 
