@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
+import subprocess  # nosec B404 — only read-only `git rev-parse` is run, with a fixed argv
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -65,7 +65,7 @@ def _git_meta(repo: str) -> tuple[str | None, str | None]:
 
 def _git_query(repo: str, *args: str) -> str | None:
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosec B603 B607 — fixed argv, no shell, read-only git
             ["git", "-C", repo, "rev-parse", *args],
             capture_output=True,
             text=True,

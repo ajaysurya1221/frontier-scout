@@ -66,7 +66,7 @@ def run_doctor(repo: str = ".") -> list[DoctorCheck]:
 
 
 def render_text(checks: list[DoctorCheck]) -> str:
-    icon = {"pass": "ok ", "warn": "warn", "fail": "FAIL"}
+    icon = {"pass": "ok ", "warn": "warn", "fail": "FAIL"}  # nosec B105 — status labels, not a secret
     return "".join(f"[{icon[c.status]}] {c.name}: {c.detail}\n" for c in checks)
 
 

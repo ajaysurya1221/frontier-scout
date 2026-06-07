@@ -13,7 +13,7 @@ from __future__ import annotations
 import glob as _glob
 import json
 import os
-import subprocess
+import subprocess  # nosec B404 — only read-only `git diff` is run, with a fixed argv
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +40,7 @@ def git_diff_names(repo: str, base: str) -> list[str]:
     """Read-only ``git diff --name-only <base>...HEAD``; ``[]`` on any failure."""
 
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosec B603 B607 — fixed argv, no shell, read-only git
             ["git", "-C", repo, "diff", "--name-only", f"{base}...HEAD"],
             capture_output=True, text=True, check=False, timeout=30,
         )
