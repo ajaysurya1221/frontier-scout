@@ -23,19 +23,20 @@ jobs:
         run: |
           pip install -e ".[dev]"
           python -m build
-      - name: Verify packaged data files are bundled
-        # Fail the release if the wheel ever ships without the Textual
-        # stylesheets again (the v1.5.1 crash-on-launch regression).
+      - name: Verify the wheel bundles the runtime hook source
+        # The compiler copies agent_firewall/hook_runtime.py verbatim into a
+        # target repo's .claude/hooks/_fs_guard.py, so the wheel MUST ship it or
+        # `agent compile` breaks. Guard against a packaging regression.
         run: |
           python - <<'PY'
           import glob, sys, zipfile
           wheels = glob.glob("dist/*.whl")
           assert wheels, "no wheel was built"
           names = set(zipfile.ZipFile(wheels[0]).namelist())
-          required = ["frontier_scout/tui2/theme.tcss", "frontier_scout/tui3/theme.tcss"]
+          required = ["frontier_scout/agent_firewall/hook_runtime.py"]
           missing = [r for r in required if r not in names]
           if missing:
-              print(f"FATAL: wheel {wheels[0]} is missing packaged data: {missing}", file=sys.stderr)
+              print(f"FATAL: wheel {wheels[0]} is missing: {missing}", file=sys.stderr)
               sys.exit(1)
           print(f"OK: wheel bundles {required}")
           PY

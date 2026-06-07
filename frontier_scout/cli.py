@@ -104,7 +104,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--target", choices=["claude"], default="claude", help="Compile target (Claude Code only today)."
     )
     agent_compile.add_argument("--repo", default=".", help="Repository root (policy + lock written here).")
-    agent_compile.add_argument("--policy", default=None, help="Policy file path (default: <repo>/frontier-scout.policy.json).")
+    agent_compile.add_argument(
+        "--policy", default=None, help="Policy file path (default: <repo>/frontier-scout.policy.json)."
+    )
     agent_compile.add_argument(
         "--out", default=None, help="Output dir for .claude/.github/managed config (default: --repo)."
     )

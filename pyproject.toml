@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "frontier-scout"
-version = "1.8.1"
-description = "Local-first CLI for safe AI-agent adoption: sanctioned MCP-server packs plus a static agent firewall (repo risk scan, conservative policy, task pre-checks, audit receipts)."
+version = "2.0.0"
+description = "Policy compiler + PR receipt verifier for AI coding agents (Claude Code first): compile a typed repo policy into native hooks/settings, emit action receipts, and verify in CI that a PR stayed within approved scope. Keyless and offline."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -28,18 +28,7 @@ classifiers = [
   "Topic :: Software Development :: Quality Assurance",
 ]
 dependencies = [
-  "anthropic>=0.45.0",
-  "feedparser>=6.0.11",
-  "requests>=2.32.0",
-  "beautifulsoup4>=4.12.0",
   "pydantic>=2.0",
-  "huggingface_hub>=0.24.0",
-  "transformers>=4.40.0",
-  "packaging>=24.0",
-  "tomli-w>=1.0.0",
-  "textual>=8.2,<9",
-  "tree-sitter-language-pack>=1.8,<2",
-  "croniter>=2.0,<7",
 ]
 
 [project.optional-dependencies]
@@ -50,9 +39,7 @@ dev = [
   "detect-secrets>=1.5.0",
   "mypy>=1.10.0",
   "pip-audit>=2.7.0",
-  "pillow>=10.0.0",
   "pytest>=8.0.0",
-  "pytest-textual-snapshot",
   "ruff>=0.6.0",
 ]
 
@@ -66,13 +53,7 @@ frontier-scout = "frontier_scout.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["frontier_scout*", "scripts*", "outputs*"]
-
-[tool.setuptools.package-data]
-# Bundle non-.py package data (Textual stylesheets) into the wheel and sdist.
-# Without this, setuptools ships only .py files and the TUI crashes on launch
-# with `StylesheetError: unable to read CSS file '.../theme.tcss'`.
-"*" = ["*.tcss"]
+include = ["frontier_scout*", "outputs*"]
 
 [tool.ruff]
 line-length = 120
