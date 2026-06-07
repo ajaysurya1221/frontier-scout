@@ -1,6 +1,6 @@
-"""Control-plane exporters for sanctioned MCP-server packs."""
+"""Exporters that render a repo policy into agent-native config and advisory snippets."""
 
-from .claude_config import export_claude_config, to_managed_config, to_project_mcp_json
+from .claude_config import to_managed_config_from_names
 from .policy_snippets import (
     build_agents_md_snippet,
     build_claude_md_snippet,
@@ -9,9 +9,7 @@ from .policy_snippets import (
 )
 
 __all__ = [
-    "export_claude_config",
-    "to_managed_config",
-    "to_project_mcp_json",
+    "to_managed_config_from_names",
     "build_claude_md_snippet",
     "build_agents_md_snippet",
     "build_pr_checklist",

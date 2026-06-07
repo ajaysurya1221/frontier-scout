@@ -1,172 +1,163 @@
 # AGENTS Guide
 
-Frontier Scout: **sanctioned MCP-server packs for coding assistants (Claude Code
-first)** — repo-rank approved MCP servers into a **static** capability + policy safety
-map, then **export a Claude Code managed-config fragment** an admin deploys. Local,
-keyless, offline by default; a **research preview** (technically coherent, **not**
-market-validated). The repo-aware **adoption radar** that powers ranking and the TUI is
-the engine underneath the packs product. Use this file as the handoff playbook for
-humans and coding agents landing on the repo.
+Frontier Scout: a **policy compiler + PR receipt verifier** for AI coding agents (**Claude
+Code first**). Compile a typed repo policy into the agent's native controls (settings +
+hooks), the hook writes action receipts, and a CI verifier checks a PR's diff against the
+approved scope. Local, keyless, offline; the only runtime dependency is `pydantic`. A
+**research preview** (technically coherent, **not** market-validated). Use this file as the
+handoff playbook.
+
+> **2.0.0 was a hard pivot** away from the adoption radar / sanctioned MCP packs / Mission
+> Control TUI / `platform/` runtime / LLM providers / SQLite store. Those were removed.
+> Ignore older references to them.
 
 ## Repo layout
 
 ```text
-frontier_scout/        # installable CLI package
-  cli.py               # entry point + --ui/--provider/--demo. Subcommands include:
-                       #   packs (candidates/sanction/unsanction/export/proof/list/show/refresh),
-                       #   scan report evaluate dossier lab trial guard policy deps profile stats,
-                       #   agent (scan/policy/check/receipts/export)
-
-  # --- the sanctioned-packs product (the headline) ---
-  packs.py             # pack model, candidate discovery, registry parse, repo-ranked rows
-  pack_flow.py         # candidates -> static safety -> risk-gated sanction -> export orchestration
-  safety_summary.py    # STATIC capability + policy safety map (no MCP server executed)
-  proof_variants.py    # A/B/C proof variants (approval-only / static-summary / receipt)
+frontier_scout/                # installable CLI package
+  cli.py                       # entry point: `agent <verb>` + `doctor` + --version; bare = help
+  doctor.py                    # offline agent-readiness check (policy/lock/hooks/drift)
+  mcp_audit.py                 # capability taxonomy (read/write/network/shell/credential/...)
+  policy.py                    # shared PolicyFinding + Severity (finding shape)
+  safety_summary.py            # RISKY_FLAGS (high-risk capability set)
+  agent_firewall/              # the product
+    models.py                  #   AgentPolicy, TaskDecision, Receipt
+    policy.py                  #   load/generate/save policy (fail-closed defaults)
+    scan.py                    #   repo risk surfaces (secret files by NAME only)
+    decision.py                #   evaluate_task() — the static `agent check`
+    lock.py                    #   policy_hash() + policy.lock.json
+    hook_runtime.py            #   STDLIB-ONLY decide() + receipt writers (copied into target repos)
+    compile.py                 #   compile_claude(): settings + hooks + lock + workflow
+    verify.py                  #   verify_pr(): fail-closed PR check (read-only git diff)
   exporters/
-    claude_config.py   # Claude Code managed allowedMcpServers/deniedMcpServers + project .mcp.json
-  telemetry.py         # local opt-in pack funnel (`frontier-scout stats`)
-
-  # --- the radar engine underneath ---
-  scout.py             # stack detection + CLI-facing scan wrapper
-  evaluate.py dossier.py lab.py trials.py   # eval / dossier / lab / trial receipts
-  policy.py mcp_audit.py guard.py           # Adoption Firewall: policy, MCP perm classifier, guard
-  profile.py           # local Scout Profile for repo-aware recommendations
-  report.py            # static HTML/Markdown report renderer + demo fixtures
-  store.py             # local SQLite store under ~/.frontier-scout (packs, adoption_decisions)
-  dependencies.py dep_trial.py imports.py   # dependency intel + AST import names
-
-  # --- the agent adoption firewall (static, advisory; research preview) ---
-  agent_firewall/      # scan repo risk surfaces, conservative policy, task check, JSON receipts
-    models.py scan.py policy.py decision.py receipts.py
-  exporters/policy_snippets.py   # advisory CLAUDE.md / AGENTS.md / PR-checklist snippet exporters
-
-  tui3/                # Mission Control TUI (Textual) — launched by `frontier-scout open` / `--ui mission`
-  providers/           # LLM provider abstraction: anthropic / openai / claude-cli / codex-cli
-  platform/            # shared agent-runtime primitives (authz, orchestration, observability, gateway)
-
-scripts/               # mature engine modules (fetch -> score -> verdict -> judge -> validate; lab_runner; ...)
-outputs/               # shared rendering helpers
-tests/                 # non-live regression tests
-demo/                  # generated public demo artifacts
-docs/                  # docs/examples/sanctioned-packs (gold path) · docs/assets (SVGs)
-examples/  prompts/  evals/   # platform_fixtures + radar eval sets (release_classification, pack_promotion, repo_fit)
+    claude_config.py           #   managed allowedMcpServers/deniedMcpServers from policy names
+    policy_snippets.py         #   advisory CLAUDE.md / AGENTS.md / PR-checklist snippets
+outputs/_text.py               # scrub_secrets / sanitize_sensitive_text (redaction)
+tests/                         # offline regression tests
+examples/sample-repo/          # end-to-end demo fixture
+docs/                          # docs/spike-claude-config.md pins native config shapes
 ```
 
 ## Local run
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
-# the sanctioned-packs product (keyless, offline)
-frontier-scout packs candidates --repo . --client claude-code
-frontier-scout packs sanction <server> --repo .        # high-risk needs --acknowledge-risk
-frontier-scout packs export --client claude-code --target ./out
-
-# the agent adoption firewall (static, advisory; keyless, offline)
-frontier-scout agent scan                       # repo risk surfaces (secrets by name only)
-frontier-scout agent policy init                # -> conservative frontier-scout.policy.json
-frontier-scout agent check "upgrade requests and run the tests"   # -> allow/needs_approval/block
-frontier-scout agent receipts list              # local audit trail (.frontier-scout/receipts/)
-
-# the radar engine underneath
-frontier-scout                 # prints help (bare command no longer auto-launches the TUI)
-frontier-scout open            # opens Mission Control TUI (--ui mission); --demo offline
-frontier-scout demo
-frontier-scout scan --dry-run --repo .
-frontier-scout guard --repo .
+cd your-repo
+frontier-scout agent policy init                      # -> conservative frontier-scout.policy.json
+frontier-scout agent compile --target claude --repo . --out .
+frontier-scout doctor                                 # policy/lock/hooks/workflow present?
+# (run Claude Code; hooks write receipts to .frontier-scout/receipts/)
+frontier-scout agent verify-pr --repo . --base origin/main --receipts "frontier-scout-receipts/*.json"
 ```
 
-Live radar scans need `ANTHROPIC_API_KEY` (the sanctioned-pack flow does not).
-`GITHUB_TOKEN` is optional and only raises GitHub REST rate limits.
+Everything is keyless and offline. The only subprocess is a read-only `git diff` (verify-pr)
+/ `git rev-parse` (receipt metadata).
 
 ## Test commands
 
-- Full non-live suite: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q`
-  (local conda: `/opt/miniconda3/bin/python`; the 3 `tests/test_implement.py` fails are env-only).
-- Sanctioned packs: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_packs_*.py tests/test_pack_*.py tests/test_safety_summary.py tests/test_sanction_gating.py tests/test_exporters_*.py`
-- Adoption Firewall: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_policy.py tests/test_mcp_audit.py tests/test_trials.py tests/test_guard.py`
-- Agent firewall (the `agent` group): `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_agent_*.py`
-- Personalized Scout: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q tests/test_profile_dossier.py`
-- tui3 convergence (golden-frame + cell-width gates): `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q -k "tui3 and (golden or cells or bridging)"`. The `pytest-textual-snapshot` SVG snapshots are **local-only** (add `-p pytest_textual_snapshot`); CI skips them via `tests/conftest.py`.
-- Syntax sweep: `python -m compileall scripts outputs tests frontier_scout`
-- Demo smoke: `frontier-scout demo`
+- Full suite: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q`
+  (local conda: `/opt/miniconda3/bin/python`).
+- Lint: `make lint` (ruff over `frontier_scout` + `tests`).
+- Types: `make type` (mypy `--strict` over `agent_firewall` + `exporters`).
+- Coverage: `make coverage`. Audit: `make audit`. Demo: `make demo`.
+- Syntax sweep: `python -m compileall outputs tests frontier_scout`.
 
-## Conventions
+## Conventions (load-bearing invariants)
 
-- **Sanctioned packs are static + Claude-Code-first + research-preview.** The pack flow
-  **never executes** an MCP server (static capability + policy map only); exporters
-  **emit** config, they do **not enforce** runtime policy; Copilot / Cursor / Docker are
-  **roadmap**, not built. Make no PMF / adoption / market-validation claim in copy.
-- **CLI/report first.** Do not make plugin setup the first-run requirement.
-- **Local state stays local.** Runtime files belong in `~/.frontier-scout` or ignored scratch directories.
-- **Verdict schema is load-bearing.** `category`, `risk`, `fit`, `readiness`, and `source_url` must stay aligned across prompts, tools, validators, reports, the safety summary, candidates `--json`, exporters, and tests.
-- **All LLM calls go through the provider abstraction** (`frontier_scout/providers/`): pin one backend with `--provider anthropic|openai|claude-cli|codex-cli`. Needs exactly one; `--demo`/offline and the pack flow need none. Availability **deep-probes** `<cli> --version` (cached) so a broken-but-on-PATH CLI is skipped, not silently selected; the hermetic claude scout passes `--mcp-config '{"mcpServers": {}}'` (claude 2.x rejects a bare `"{}"`).
-- **tui3 glyph-art is cell-precise.** The Adoption Matrix (59-cell box-grid), gauges/`meter`, and the scan `sweep`/spinner are width-parameterized pure functions (`fn(width)->str`); measure width with `kit.cell_width` (Rich `cell_len`), **never `len()`** (multi-cell ASCII `(o)`=3, `->`=2 drift); build per-mode (`unicode=state.unicode`); converge on `design_handoff_mission_control_v6/ascii_golden_frames.txt`. Every renderable still routes through `app._paint` + `glyphs()`.
-- **Lab subprocesses must stay hermetic.** Reuse `_hermetic_base_env()`; never pass `os.environ` into untrusted package code.
-- **Do not auto-install recommendations.** The lab tests; the user chooses.
-- **Adoption Firewall is evidence, not autonomy.** `evaluate`, `trial`, `guard`, and
-  `sanction` record local receipts and policy findings; they must not silently grant
-  repo, shell, browser, network, or credential permissions.
-- **Scout Profile is metadata, not code upload.** Profile/dossier/ranking features use
-  manifests, config filenames, local history, and policy signals; do not read
-  `.env.local` or upload source content for personalization.
-- **The agent adoption firewall (`agent` group) is static + advisory.** `agent scan` / `check`
-  **execute nothing** (no subprocess/network/LLM — the only subprocess is a guarded read-only
-  `git rev-parse` for receipt metadata); secret-likely files are matched **by name/path only**
-  (contents never read); exporters and snippets **emit**, they do **not enforce**; the policy loader
-  and decision engine **fail closed** (a missing/malformed `frontier-scout.policy.json` denies by
-  default). The non-executing task check is `agent check`, **never** `trial`. It reuses the existing
-  risk taxonomy (`mcp_audit`, `RISKY_FLAGS`, `PolicyFinding`) and redacts every emitted/persisted
-  string via `outputs/_text.scrub_secrets`.
+- **Emit, don't enforce.** Frontier Scout writes native config; Claude Code (hooks +
+  permissions) and GitHub Actions enforce. Never build a runtime, sandbox, MCP gateway,
+  policy language, telemetry format, or signed ledger — compile to / verify existing wheels.
+- **Static + read-only.** The scan reads file *names*, never secret *contents*.
+- **Fail-closed.** Missing/malformed policy denies by default; dangerous capabilities
+  escalate to approval; a non-empty protected diff with no receipts fails the PR.
+- **Control evidence, not a guarantee.** Local hooks aren't a complete boundary — they are
+  paired with the CI diff verifier. No overclaiming in copy or output.
+- **`hook_runtime.py` stays stdlib-only.** It is copied verbatim into a user repo's
+  `.claude/hooks/_fs_guard.py`; importing `frontier_scout` there would break it. A golden
+  test asserts the byte-identical copy and runs the generated hook as a subprocess.
+- **Redact everything emitted/persisted** via `outputs/_text.scrub_secrets`.
+- **Claude Code first.** Codex/Cursor/Copilot are roadmap, not built.
+- **No auto-install; local state stays local.**
 
 ## Working principles
 
-General discipline for any change here — adapted from the
-[Karpathy coding guidelines](https://github.com/multica-ai/andrej-karpathy-skills) (MIT).
-**Conventions** above are repo-specific invariants; these are the *how you work* rules.
+Adapted from the [Karpathy coding guidelines](https://github.com/multica-ai/andrej-karpathy-skills) (MIT).
 
-- **Think before coding.** Surface your assumptions and name the interpretations you
-  weighed before editing; when a request is ambiguous or looks wrong, push back instead
-  of guessing. (Changes that need a discussion first are under **Ask before changing**.)
-- **Simplicity first.** Write the minimum that satisfies the task — no speculative
-  abstractions, flags, or "while I'm here" extras. YAGNI.
-- **Surgical changes.** Touch only what the task requires and match surrounding style;
-  keep diffs reviewable and leave unrelated code alone.
-- **Goal-driven execution.** Define verifiable success criteria up front, then loop until
-  they pass — here that means the **Definition of done** below.
+- **Think before coding.** Surface assumptions; push back when a request is ambiguous or wrong.
+- **Simplicity first.** Minimum that satisfies the task. YAGNI.
+- **Surgical changes.** Touch only what's required; match surrounding style.
+- **Goal-driven execution.** Define verifiable success criteria, loop until the Definition of done passes.
 
 ## Definition of done
 
-1. `python -m compileall scripts outputs tests frontier_scout` passes.
+1. `python -m compileall outputs tests frontier_scout` passes.
 2. `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q` passes.
-3. `frontier-scout demo` regenerates clean demo artifacts.
-4. README, ROADMAP, SECURITY, CONTRIBUTING, **CLAUDE.md, and AGENTS.md** match any
-   user-visible behavior or identity change.
-5. No secrets or noisy runtime ledgers are introduced in git diff.
+3. `make lint` and `make type` pass.
+4. `make demo` compiles + doctors the sample policy cleanly.
+5. README, ROADMAP, SECURITY, CONTRIBUTING, **CLAUDE.md, AGENTS.md** match any user-visible change.
+6. No secrets or noisy runtime ledgers in the git diff.
 
 ## Release
 
-1. Bump `version` in `pyproject.toml` + `frontier_scout/__init__.py`; add a `CHANGELOG.md` entry.
-2. PR → CI `test` (full suite + `detect-secrets --all-files` secret scan + CodeQL).
+1. Bump `version` in `pyproject.toml` + `frontier_scout/__init__.py`; add a `CHANGELOG.md`
+   `## X.Y.Z - <date>` entry.
+2. PR → CI (full suite + `detect-secrets --all-files` + CodeQL).
 3. `main` is protected (1 review + `enforce_admins` + conversation-resolution, **squash-only**);
-   merge via the relax→merge→restore dance on `required_approving_review_count` (1→0→1; always
-   restore), squashing with `gh pr merge --squash --admin`.
-4. Tag `vX.Y.Z` → `release.yml` publishes the GitHub Release (draft→publish) + PyPI
-   (trusted publishing, gated by the `pypi` deployment environment — approve the run).
-5. Non-`.py` data (`tui3/theme.tcss`) must be in `[tool.setuptools.package-data]` + `MANIFEST.in`,
-   or the installed TUI crashes on launch — verify the **built wheel** bundles the `.tcss`.
-6. Never reuse a burned version: GitHub immutable-releases permanently reserve a deleted tag
-   name (`v1.5.0` is dead); bump to the next patch.
+   merge via relax→merge→restore on `required_approving_review_count` (1→0→1; always restore),
+   squashing with `gh pr merge --squash --admin`.
+4. Tag `vX.Y.Z` → `release.yml` publishes GitHub Release (draft→publish) + PyPI (trusted
+   publishing, gated by the `pypi` deployment environment — approve the run).
+5. The built wheel must bundle `agent_firewall/hook_runtime.py` (release.yml guards this).
+6. Never reuse a burned version: immutable releases reserve a deleted tag — bump to next patch.
 
 ## Ask before changing
 
-Open an issue or discuss first before adding:
+Discuss first before adding: a new compile target / export client (Codex / Cursor / Copilot —
+currently roadmap), a new policy dimension, a hosted service or sync feature, any subprocess
+beyond the read-only `git` calls, or an auto-install path.
 
-- a new source group or quota,
-- a new lab runtime,
-- a new LLM vendor,
-- a new export client (Copilot / Cursor / Docker / GitHub) — currently roadmap,
-- a hosted service or sync feature,
-- an auto-install path for recommended tools.
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
+
+This project is indexed by GitNexus as **frontier-scout**. Use the GitNexus MCP tools to
+understand code, assess impact, and navigate safely.
+
+> The index is stale after the 2.0.0 deletion sweep — run `npx gitnexus analyze` first.
+
+## Always Do
+
+- **MUST run impact analysis before editing any symbol.** Run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius.
+- **MUST run `gitnexus_detect_changes()` before committing** to verify scope.
+- **MUST warn the user** on HIGH or CRITICAL risk before proceeding.
+- Explore with `gitnexus_query({query: "concept"})`; get symbol context with `gitnexus_context({name: "symbolName"})`.
+
+## Never Do
+
+- NEVER edit a function/class/method without first running `gitnexus_impact` on it.
+- NEVER ignore HIGH or CRITICAL risk warnings.
+- NEVER rename with find-and-replace — use `gitnexus_rename`.
+- NEVER commit without running `gitnexus_detect_changes()`.
+
+## Resources
+
+| Resource | Use for |
+|----------|---------|
+| `gitnexus://repo/frontier-scout/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/frontier-scout/clusters` | All functional areas |
+| `gitnexus://repo/frontier-scout/processes` | All execution flows |
+| `gitnexus://repo/frontier-scout/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->

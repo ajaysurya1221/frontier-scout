@@ -1,49 +1,38 @@
-# Deprecations & repositioning notices
+# Deprecations & removals
 
-Frontier Scout is repositioning from a broad "AI-adoption radar" into a focused
-**sanctioned MCP-server packs** product for coding assistants. Nothing below is deleted yet — these are
-*notices* so the change is reversible and compatibility is preserved.
+## 2.0.0 — pivot to policy compiler + PR receipt verifier
 
-## Naming — two distinct "Adoption Firewall" concepts (disambiguated)
+Frontier Scout is now a **policy compiler + PR receipt verifier** for AI coding agents
+(Claude Code first). The product surface narrowed to one wedge, and the off-strategy
+surfaces were **removed** (not just parked) so the repo matches the product.
 
-The legacy radar slice (`evaluate` / `trial` / `guard` / `policy`) historically carried the label
-"Adoption Firewall" (e.g. the `policy` command help). The new **static agent adoption firewall** ships
-under a separate, collision-free **`frontier-scout agent`** command group (`agent scan` / `policy` /
-`check` / `receipts` / `export`) with a distinct policy object (`frontier-scout.policy.json`, JSON) and
-distinct receipts (`<repo>/.frontier-scout/receipts/`). The two do **not** share state or schema:
+### Removed CLI / surfaces
 
-- **Legacy radar `policy` / `trial` / `guard`** — tool-*adoption* tuning (TOML `.frontier-scout/policy.toml`,
-  verdicts `adopt/trial/assess/hold`). `trial` and `deps trial` **execute** a sandboxed subprocess. Kept,
-  untouched, de-emphasized.
-- **New `agent` group** — task-*authorization* pre-checks (JSON policy, verdicts `allow/needs_approval/block`).
-  **Executes nothing**; advisory only. This is the product surface going forward for agent governance.
+| Removed | Replacement / rationale |
+|---|---|
+| `scan` · `evaluate` · `dossier` · `lab` · `trial` · `guard` · `report` (the adoption radar) | Off-strategy: the product governs agents, it doesn't discover/rank tools. |
+| `packs …` (sanctioned MCP-server packs) | The MCP dimension is now a policy field (`mcp_server_allowlist`) compiled into native allow/deny. |
+| `open` · `setup` · `--ui` (Mission Control TUI + wizard) | The buyer lives in PRs/CI, not a local TUI. |
+| `cron` · `stats` · `notifications` · `deps` · `implement` · `profile` · `clear-history` | Off-strategy; scheduling belongs to GitHub Actions. |
+| `--provider` / LLM backends | The compiler/verifier is deterministic, keyless, and offline. |
 
-The new `agent check` is deliberately **not** named `trial` to avoid implying execution.
+### Removed modules
 
-## Parked (kept, de-emphasized — not removed)
+`platform/` (a home-grown runtime/gateway/authz substrate), `providers/`, `scripts/` (LLM
+tooling), `store.py` (SQLite), `tui3/`, `wizard/`, and the radar/packs modules. `policy.py`
+and `safety_summary.py` were trimmed to their shared cores (`PolicyFinding`/`Severity` and
+`RISKY_FLAGS`), still reused by the agent-firewall decision engine.
 
-- **The hard, blocking CI `guard`** as a *product surface*. The follow-up research finds a
-  gate-with-no-sanctioned-path reads as friction, not relief. `frontier_scout/guard.py` remains
-  (CI-friendly, read-only), but the product direction is a **non-blocking** "unsanctioned tool /
-  policy drift detected" notifier (V1). No behavior removed.
+### Changed
 
-- **The "AI-adoption radar" headline framing** and **"bring your own LLM"** as a top-level
-  differentiator. Demoted in copy (README / CLI help / wizard). The radar feed, providers, scan,
-  and TUI all still work — they are now *the ranking engine behind the product*, not the pitch.
+- `agent export claude` → use **`agent compile`** for enforceable native config (settings +
+  hooks + CI verifier). The advisory markdown snippet still ships; `agent export
+  agents-md|pr-checklist` are unchanged advisory aids.
+- `doctor` is now a minimal, offline agent-readiness check.
 
-- **Dependency-triage as a co-headline** (`deps`). Kept as a capability; not a headline (the
-  follow-up research ranks repo-aware dep triage as narrower and more crowded).
+### Pending docs cleanup
 
-## Superseded planning artifacts
-
-- The prior `intake <url>` gate + `intake_decisions` v7 table design (never built) is superseded
-  by the pack-centric flow (`packs candidates/sanction/export`).
-- The prior **Backstage** exporter "later bet" is replaced by Claude/GitHub/Docker control-plane
-  exporters (the follow-up research's named integration targets).
-
-## Compatibility commitments
-
-- No existing CLI subcommand is removed in this pivot. New verbs are additive.
-- The SQLite schema change (`"sanctioned"` pack-candidate state) is an additive, idempotent,
-  data-preserving table-rebuild migration; existing rows are retained.
-- The offline `demo` path and all local-first / no-telemetry invariants are preserved.
+Several `docs/` files (ADRs for the SQLite/graph/vector/gateway/authz substrate, the
+architecture/reference-stack write-ups) still describe removed surfaces and will be pruned
+or superseded in a follow-up. `docs/spike-claude-config.md` is kept — it pins the native
+config shapes the compiler emits.

@@ -54,6 +54,20 @@ def test_export_snippets_say_they_do_not_enforce():
             assert bad not in text
 
 
+def test_compile_and_verify_surface_does_not_overclaim(tmp_path):
+    """The compile/verify surface enforces via native controls, but Frontier Scout
+    itself only emits + verifies — its output must not claim a security guarantee."""
+    from frontier_scout.agent_firewall.compile import compile_claude
+    from frontier_scout.agent_firewall.models import AgentPolicy
+    from frontier_scout.agent_firewall.verify import verify_pr
+
+    compile_claude(AgentPolicy(protected_file_globs=["**/migrations/**"]), repo=str(tmp_path))
+    res = verify_pr(str(tmp_path), changed_files=["app/migrations/a.py"], receipts=[])
+    blob = (res.summary + " " + " ".join(res.violations) + " ".join(res.annotations)).lower()
+    for bad in _FORBIDDEN:
+        assert bad not in blob
+
+
 def test_decision_is_static_only_and_block_is_advisory():
     decision = evaluate_task("run rm -rf / now", generate_policy(ScanResult(repo=".")))
     assert decision.static_only is True

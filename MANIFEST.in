@@ -1,5 +1,3 @@
-# Ensure non-.py package data ships in the sdist (the wheel inclusion is
-# driven by [tool.setuptools.package-data] in pyproject.toml). Without these,
-# the published artifacts omit the Textual stylesheets and the TUI crashes on
-# launch with StylesheetError.
-recursive-include frontier_scout *.tcss
+# No non-.py package data ships in the wheel/sdist. (The former Textual
+# stylesheets were removed with the TUI.) README and LICENSE are included by
+# setuptools defaults.

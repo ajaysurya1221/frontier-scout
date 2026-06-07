@@ -22,9 +22,9 @@ jobs:
         run: |
           pip install -e ".[dev]"
           pip install detect-secrets
-      - name: Lint platform
+      - name: Lint
         run: make lint
-      - name: Type check platform
+      - name: Type check
         run: make type
       - name: Secret scan
         run: |
@@ -39,17 +39,19 @@ jobs:
           sys.exit(1 if findings else 0)
           PY
       - name: Compile Python
-        run: python -m compileall scripts outputs tests frontier_scout
-      - name: Focused coverage gate
+        run: python -m compileall outputs tests frontier_scout
+      - name: Coverage gate
         run: make coverage
-      - name: Release preflight (CLI + deterministic demo + build)
+      - name: Release preflight (CLI + offline compile/verify + build)
         run: |
           frontier-scout --help > /dev/null
-          frontier-scout demo --no-serve
-          git diff --exit-code -- demo/
-          FRONTIER_SCOUT_HOME=.scratch/ci-home frontier-scout evaluate https://github.com/modelcontextprotocol/servers --json > /dev/null
-          FRONTIER_SCOUT_HOME=.scratch/ci-home frontier-scout trial browser-use/browser-use --url https://github.com/browser-use/browser-use --dry-run --json > /dev/null
-          FRONTIER_SCOUT_HOME=.scratch/ci-home frontier-scout guard --repo . --format github || true
+          frontier-scout --version
+          tmp=$(mktemp -d)
+          cp examples/sample-repo/frontier-scout.policy.json "$tmp/"
+          frontier-scout agent compile --repo "$tmp" > /dev/null
+          frontier-scout doctor --repo "$tmp"
+          frontier-scout agent verify-pr --repo "$tmp" --json > /dev/null
+          rm -rf "$tmp"
           python -m build
       - name: Dependency audit
         run: make audit

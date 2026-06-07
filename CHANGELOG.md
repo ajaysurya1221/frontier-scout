@@ -1,5 +1,45 @@
 # Changelog
 
+## 2.0.0 - 2026-06-07
+
+### Pivot: policy compiler + PR receipt verifier (breaking)
+
+Frontier Scout is now a **policy compiler + PR receipt verifier** for AI coding agents
+(Claude Code first). It compiles a typed repo policy into the agent's **native** controls
+and verifies in CI that a PR stayed within approved scope. Frontier Scout **emits** config
+and **verifies** evidence — Claude Code and GitHub Actions do the enforcing. Keyless and
+offline; the only runtime dependency is `pydantic`.
+
+**Added**
+- `frontier-scout agent compile [--target claude] [--repo .] [--out .]` — compile
+  `frontier-scout.policy.json` into `.claude/settings.json` (permissions), `.claude/hooks/`
+  (`pre_tool_use.py` / `post_tool_use.py` / a self-contained stdlib `_fs_guard.py`),
+  `policy.lock.json` (sha256 binding receipts to the policy), a managed MCP allow/deny
+  fragment, and a `.github/workflows/frontier-scout-verify.yml` workflow.
+- `frontier-scout agent verify-pr [--base <ref>] [--receipts <glob>] [--advisory]` — a
+  **fail-closed** PR check: read-only `git diff` vs. receipts + lock; flags protected-path
+  changes without a receipt, policy drift since compile, stale receipt hashes, and denied
+  actions that still changed files. Emits GitHub annotations. Output is **control evidence,
+  not a guarantee**.
+- Action receipts: the native hook writes redacted `agent-action` receipts (tool, decision,
+  `policy_hash`, realized outcome) to `.frontier-scout/receipts/`.
+- `examples/sample-repo/` demo.
+
+**Removed (off-strategy for the compiler+verifier wedge)**
+- The adoption radar (`scout`/`evaluate`/`dossier`/`lab`/`trial`/`guard`/`report`), the
+  sanctioned-MCP-packs product (`packs`/`pack_flow`/`proof`), Mission Control / the setup
+  wizard (`tui3`/`wizard`), the `platform/` runtime substrate, the LLM provider abstraction
+  (`providers/`) and `scripts/` LLM tooling, the SQLite store, scheduling/cron, telemetry,
+  dependency scanning, and `implement`. The CLI is now `agent` (+ `doctor`).
+- Heavy dependencies (`anthropic`, `transformers`, `huggingface_hub`, `feedparser`,
+  `requests`, `beautifulsoup4`, `textual`, `tree-sitter-language-pack`, `croniter`).
+
+**Changed**
+- `agent export claude` now points to `agent compile` for enforceable native config; the
+  advisory markdown snippet still ships (see also `agent export agents-md|pr-checklist`).
+- `doctor` is a minimal, offline agent-readiness check (policy/lock/settings/hooks/drift).
+- mypy `--strict` now gates `agent_firewall` + `exporters` (was `platform/`).
+
 ## Unreleased
 
 ### Repo cleanup — pruned parked surfaces and superseded strategy docs

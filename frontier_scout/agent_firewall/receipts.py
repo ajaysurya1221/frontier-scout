@@ -10,19 +10,23 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
+import subprocess  # nosec B404 — only read-only `git rev-parse` is run, with a fixed argv
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from frontier_scout import __version__
 from frontier_scout.agent_firewall.models import Receipt, TaskDecision
-from frontier_scout.store import _now
 from outputs._text import scrub_secrets
 
 __all__ = ["receipts_dir", "write_receipt", "list_receipts", "show_receipt"]
 
 _SLUG_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _now() -> str:
+    """ISO-8601 UTC timestamp (inlined from the former store module)."""
+    return datetime.now(UTC).isoformat()
 
 
 def receipts_dir(repo: str) -> Path:
@@ -61,7 +65,7 @@ def _git_meta(repo: str) -> tuple[str | None, str | None]:
 
 def _git_query(repo: str, *args: str) -> str | None:
     try:
-        proc = subprocess.run(
+        proc = subprocess.run(  # nosec B603 B607 — fixed argv, no shell, read-only git
             ["git", "-C", repo, "rev-parse", *args],
             capture_output=True,
             text=True,

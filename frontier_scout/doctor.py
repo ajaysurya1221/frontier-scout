@@ -1,313 +1,76 @@
-"""Self-diagnostics for Frontier Scout.
+"""Doctor: check a repo's Frontier Scout (policy compiler) setup. Read-only, offline.
 
-Run interactively via ``frontier-scout doctor`` or in JSON mode via
-``frontier-scout doctor --json``. Every check is read-only and reports
-``ok`` / ``warn`` / ``fail`` plus an actionable next-step.
+Reports whether the policy, lock, compiled Claude controls, hooks, and verify
+workflow are present and consistent — the things ``agent compile`` produces.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import shutil
-import sqlite3
-import sys
-from dataclasses import asdict, dataclass
-from importlib.metadata import PackageNotFoundError, version
-from typing import Any
+from dataclasses import dataclass
+from pathlib import Path
 
-from frontier_scout import __version__
-from frontier_scout.scheduling import cron_runner_path, load_schedules, schedules_path
-from frontier_scout.store import db_path, home_dir
+__all__ = ["DoctorCheck", "run_doctor", "render_text", "render_json"]
 
 
 @dataclass
-class Check:
+class DoctorCheck:
     name: str
-    status: str  # ok | warn | fail
+    status: str  # "pass" | "warn" | "fail"
     detail: str
-    fix: str = ""
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
 
 
-def run_doctor() -> list[Check]:
-    return [
-        _check_python_version(),
-        _check_frontier_version(),
-        _check_textual(),
-        _check_tree_sitter(),
-        _check_home_dir(),
-        _check_sqlite(),
-        _check_schedules(),
-        _check_cron_runner(),
-        _check_optional_clis(),
-        _check_optional_notifiers(),
-        _check_agent_policy(),
-        _check_agent_policy_valid(),
-        _check_agent_receipts_writable(),
-    ]
+def run_doctor(repo: str = ".") -> list[DoctorCheck]:
+    """Return readiness checks for the Frontier Scout setup in ``repo``."""
+
+    root = Path(repo)
+    checks: list[DoctorCheck] = []
+
+    def add(name: str, ok: bool, detail: str, *, warn_only: bool = False) -> None:
+        checks.append(DoctorCheck(name, "pass" if ok else ("warn" if warn_only else "fail"), detail))
+
+    policy = root / "frontier-scout.policy.json"
+    lock = root / "policy.lock.json"
+    settings = root / ".claude" / "settings.json"
+    guard = root / ".claude" / "hooks" / "_fs_guard.py"
+    workflow = root / ".github" / "workflows" / "frontier-scout-verify.yml"
+    receipts = root / ".frontier-scout" / "receipts"
+
+    add("policy", policy.exists(),
+        f"{policy.name} {'present' if policy.exists() else 'missing — run `agent policy init`'}")
+    add("lock", lock.exists(),
+        f"{lock.name} {'present' if lock.exists() else 'missing — run `agent compile`'}")
+    add("settings", settings.exists(),
+        f".claude/settings.json {'present' if settings.exists() else 'missing — run `agent compile`'}")
+    add("hooks", guard.exists(),
+        f"hooks {'compiled' if guard.exists() else 'missing — run `agent compile`'}")
+    add("workflow", workflow.exists(),
+        f"verify workflow {'present' if workflow.exists() else 'missing — run `agent compile`'}",
+        warn_only=True)
+
+    if policy.exists() and lock.exists():
+        try:
+            from .agent_firewall.lock import policy_hash
+
+            expected = json.loads(lock.read_text()).get("policy_sha256")
+            current = policy_hash(json.loads(policy.read_text()))
+            ok = bool(expected) and expected == current
+            add("policy-lock-match", ok,
+                "policy matches lock" if ok else "policy drifted — re-run `agent compile`")
+        except Exception:
+            add("policy-lock-match", False, "could not compare policy to lock")
+
+    n = len(list(receipts.glob("*.json"))) if receipts.exists() else 0
+    add("receipts", True, f"{n} local receipt(s)")
+    return checks
 
 
-def render_text(checks: list[Check]) -> str:
-    lines = ["Frontier Scout · self-check", ""]
-    glyphs = {"ok": "✅", "warn": "⚠️ ", "fail": "❌"}
-    for check in checks:
-        glyph = glyphs.get(check.status, " ")
-        lines.append(f"{glyph} {check.name}: {check.detail}")
-        if check.fix and check.status != "ok":
-            lines.append(f"     ↳ {check.fix}")
-    bad = sum(1 for c in checks if c.status == "fail")
-    warn = sum(1 for c in checks if c.status == "warn")
-    summary = "\nall systems go." if bad == 0 and warn == 0 else (
-        f"\n{bad} fail · {warn} warn · {len(checks) - bad - warn} ok"
-    )
-    lines.append(summary)
-    return "\n".join(lines) + "\n"
+def render_text(checks: list[DoctorCheck]) -> str:
+    icon = {"pass": "ok ", "warn": "warn", "fail": "FAIL"}  # nosec B105 — status labels, not a secret
+    return "".join(f"[{icon[c.status]}] {c.name}: {c.detail}\n" for c in checks)
 
 
-def render_json(checks: list[Check]) -> str:
+def render_json(checks: list[DoctorCheck]) -> str:
     return json.dumps(
-        {
-            "checks": [c.to_dict() for c in checks],
-            "summary": {
-                "fail": sum(1 for c in checks if c.status == "fail"),
-                "warn": sum(1 for c in checks if c.status == "warn"),
-                "ok": sum(1 for c in checks if c.status == "ok"),
-            },
-        },
-        indent=2,
+        [{"name": c.name, "status": c.status, "detail": c.detail} for c in checks], indent=2
     )
-
-
-def _check_python_version() -> Check:
-    major, minor = sys.version_info.major, sys.version_info.minor
-    if (major, minor) >= (3, 11):
-        return Check("Python", "ok", f"{major}.{minor} (>= 3.11 required)")
-    return Check(
-        "Python",
-        "fail",
-        f"{major}.{minor}",
-        fix="Frontier Scout requires Python 3.11+; install a newer interpreter.",
-    )
-
-
-def _check_frontier_version() -> Check:
-    return Check("Frontier Scout", "ok", f"v{__version__}")
-
-
-def _check_textual() -> Check:
-    try:
-        textual_version = version("textual")
-        return Check("Textual", "ok", f"v{textual_version}")
-    except PackageNotFoundError:
-        return Check(
-            "Textual",
-            "fail",
-            "package not installed",
-            fix="pip install 'textual>=8.2,<9'",
-        )
-
-
-def _check_tree_sitter() -> Check:
-    try:
-        pack_version = version("tree-sitter-language-pack")
-    except PackageNotFoundError:
-        return Check(
-            "tree-sitter-language-pack",
-            "warn",
-            "not installed — import-evidence scanner will degrade",
-            fix="pip install 'tree-sitter-language-pack>=1.8,<2'",
-        )
-    try:
-        from tree_sitter_language_pack import get_parser  # type: ignore
-
-        get_parser("python")
-        return Check("tree-sitter-language-pack", "ok", f"v{pack_version} · python parser ready")
-    except Exception as exc:  # noqa: BLE001
-        return Check(
-            "tree-sitter-language-pack",
-            "warn",
-            f"installed but parser load failed: {exc}",
-            fix="Try `pip install --upgrade tree-sitter-language-pack`.",
-        )
-
-
-def _check_home_dir() -> Check:
-    home = home_dir()
-    try:
-        home.mkdir(parents=True, exist_ok=True)
-        test = home / ".doctor-write-test"
-        test.write_text("ok")
-        test.unlink()
-        return Check("home directory", "ok", str(home))
-    except OSError as exc:
-        return Check(
-            "home directory",
-            "fail",
-            f"{home} not writable: {exc}",
-            fix="Check filesystem permissions on ~/.frontier-scout/.",
-        )
-
-
-def _check_sqlite() -> Check:
-    path = db_path()
-    try:
-        with sqlite3.connect(path) as conn:
-            conn.execute("SELECT 1").fetchone()
-        return Check("local SQLite", "ok", str(path))
-    except sqlite3.Error as exc:
-        return Check(
-            "local SQLite",
-            "fail",
-            f"cannot open {path}: {exc}",
-            fix="Try `frontier-scout clear-history --all` to reset, or delete the file.",
-        )
-
-
-def _check_schedules() -> Check:
-    try:
-        schedules = load_schedules()
-    except Exception as exc:  # noqa: BLE001
-        return Check(
-            "schedules.json",
-            "fail",
-            f"parse error: {exc}",
-            fix=f"Inspect or remove {schedules_path()}.",
-        )
-    if not schedules:
-        return Check(
-            "schedules.json",
-            "ok",
-            "no schedules registered (ad-hoc mode)",
-        )
-    return Check(
-        "schedules.json",
-        "ok",
-        f"{len(schedules)} schedule(s) registered",
-    )
-
-
-def _check_cron_runner() -> Check:
-    path = cron_runner_path()
-    if not path.exists():
-        return Check(
-            "cron runner",
-            "warn",
-            "no cron-runner.sh — schedules won't fire automatically",
-            fix="Run `frontier-scout setup` and pick Automation to install one.",
-        )
-    if not os.access(path, os.X_OK):
-        return Check(
-            "cron runner",
-            "warn",
-            f"{path} is not executable",
-            fix=f"chmod +x {path}",
-        )
-    return Check("cron runner", "ok", str(path))
-
-
-def _check_optional_clis() -> Check:
-    found = []
-    missing = []
-    for tool in ("ollama", "claude", "codex"):
-        if shutil.which(tool):
-            found.append(tool)
-        else:
-            missing.append(tool)
-    if not found:
-        return Check(
-            "optional model CLIs",
-            "warn",
-            "none found on PATH — only Local deterministic available",
-            fix="Install `ollama` for local models, or `claude` / `codex` for vendor CLIs.",
-        )
-    detail = f"found: {', '.join(found)}"
-    if missing:
-        detail += f" · missing: {', '.join(missing)}"
-    return Check("optional model CLIs", "ok", detail)
-
-
-def _check_optional_notifiers() -> Check:
-    if shutil.which("terminal-notifier"):
-        return Check("system notifier", "ok", "terminal-notifier on PATH")
-    if shutil.which("notify-send"):
-        return Check("system notifier", "ok", "notify-send on PATH")
-    return Check(
-        "system notifier",
-        "warn",
-        "no terminal-notifier or notify-send found — file notifications still work",
-        fix="brew install terminal-notifier (macOS) or apt install libnotify-bin (Linux).",
-    )
-
-
-def _check_agent_policy() -> Check:
-    from pathlib import Path
-
-    path = Path.cwd() / "frontier-scout.policy.json"
-    if path.exists():
-        return Check("agent policy", "ok", f"{path.name} present")
-    return Check(
-        "agent policy",
-        "warn",
-        "no frontier-scout.policy.json in this repo (advisory firewall not configured)",
-        fix="Run `frontier-scout agent policy init` to generate a conservative starter policy.",
-    )
-
-
-def _check_agent_policy_valid() -> Check:
-    from pathlib import Path
-
-    path = Path.cwd() / "frontier-scout.policy.json"
-    if not path.exists():
-        return Check("agent policy valid", "ok", "no policy file to validate")
-    try:
-        from frontier_scout.agent_firewall.policy import load_policy
-
-        _, warnings = load_policy(str(path))
-    except Exception as exc:  # noqa: BLE001
-        return Check(
-            "agent policy valid",
-            "fail",
-            f"could not load {path.name}: {exc}",
-            fix="Inspect or regenerate with `frontier-scout agent policy init --force`.",
-        )
-    if warnings:
-        return Check(
-            "agent policy valid",
-            "fail",
-            f"{path.name} did not parse cleanly: {warnings[0]}",
-            fix="Regenerate with `frontier-scout agent policy init --force`.",
-        )
-    return Check("agent policy valid", "ok", f"{path.name} parsed cleanly")
-
-
-def _check_agent_receipts_writable() -> Check:
-    from pathlib import Path
-
-    root = Path.cwd() / ".frontier-scout"
-    created = not root.exists()
-    try:
-        root.mkdir(parents=True, exist_ok=True)
-        test = root / ".doctor-write-test"
-        test.write_text("ok")
-        test.unlink()
-        return Check("agent receipts", "ok", f"{root} writable")
-    except OSError as exc:
-        return Check(
-            "agent receipts",
-            "warn",
-            f"{root} not writable: {exc}",
-            fix="Check filesystem permissions on the repo's .frontier-scout/ directory.",
-        )
-    finally:
-        # Don't leave a probe directory behind if we created it (read-only check).
-        if created:
-            try:
-                root.rmdir()
-            except OSError:
-                pass
-
-
-__all__ = ["Check", "render_json", "render_text", "run_doctor"]
