@@ -79,6 +79,23 @@ def to_managed_config(servers, *, denied: list[str] | None = None, allow_managed
     }
 
 
+def to_managed_config_from_names(
+    allowed: list[str], *, denied: list[str] | None = None, allow_managed_only: bool = True
+) -> dict:
+    """Render a managed allow/deny fragment from bare server names.
+
+    Used by the policy compiler, whose ``AgentPolicy.mcp_server_allowlist`` holds
+    names (not pack objects with a URL/command). A name match is the only honest
+    entry available without transport metadata — same shape as ``to_managed_config``.
+    """
+
+    return {
+        "allowManagedMcpServersOnly": allow_managed_only,
+        "allowedMcpServers": [{"serverName": _server_key(name)} for name in allowed],
+        "deniedMcpServers": [{"serverName": _server_key(name)} for name in (denied or [])],
+    }
+
+
 def to_project_mcp_json(servers) -> dict:
     """Render a project ``.mcp.json`` ``mcpServers`` map for a sanctioned server set."""
 

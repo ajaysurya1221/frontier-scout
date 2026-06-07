@@ -462,6 +462,32 @@ def build_parser() -> argparse.ArgumentParser:
     agent_export.add_argument("--policy", default=None, help="Policy file path.")
     agent_export.add_argument("--target", default=".", help="Output directory.")
 
+    agent_compile = agent_sub.add_parser(
+        "compile",
+        help="Compile the policy into Claude Code native controls + a CI verifier "
+        "(emits config; Claude Code / GitHub Actions enforce it).",
+    )
+    agent_compile.add_argument(
+        "--target", choices=["claude"], default="claude", help="Compile target (Claude Code only today)."
+    )
+    agent_compile.add_argument("--repo", default=".", help="Repository root (policy + lock written here).")
+    agent_compile.add_argument("--policy", default=None, help="Policy file path (default: <repo>/frontier-scout.policy.json).")
+    agent_compile.add_argument(
+        "--out", default=None, help="Output dir for .claude/.github/managed config (default: --repo)."
+    )
+
+    agent_verify = agent_sub.add_parser(
+        "verify-pr",
+        help="Verify a PR's receipts + diff stayed within the approved policy scope (fail-closed).",
+    )
+    agent_verify.add_argument("--repo", default=".", help="Repository root.")
+    agent_verify.add_argument("--base", default=None, help="Base git ref to diff against (e.g. origin/main).")
+    agent_verify.add_argument("--receipts", default=None, help="Glob of receipt JSON files to verify.")
+    agent_verify.add_argument(
+        "--advisory", action="store_true", help="Downgrade violations to warnings (always exit 0)."
+    )
+    agent_verify.add_argument("--json", action="store_true", help="Emit JSON.")
+
     return parser
 
 
@@ -1181,7 +1207,9 @@ def main(argv: list[str] | None = None) -> int:
         from .agent_firewall.receipts import list_receipts as agent_list_receipts
         from .agent_firewall.receipts import show_receipt as agent_show_receipt
         from .agent_firewall.receipts import write_receipt as agent_write_receipt
+        from .agent_firewall.compile import compile_claude as agent_compile_claude
         from .agent_firewall.scan import scan_repo as agent_scan_repo
+        from .agent_firewall.verify import verify_pr as agent_verify_pr
         from .exporters.policy_snippets import export_policy_snippets as agent_export_snippets
 
         verb = args.agent_command
@@ -1288,8 +1316,50 @@ def main(argv: list[str] | None = None) -> int:
             print("Wrote advisory snippet(s) (emitted, not enforced):")
             for name, out_path in written.items():
                 print(f"  {name}: {out_path}")
+            if args.format == "claude":
+                print(
+                    "note: `agent export claude` emits an advisory markdown snippet. For "
+                    "enforceable native config (hooks + settings + CI verifier), use "
+                    "`agent compile`."
+                )
             return 0
-        parser.error("agent requires a subcommand (scan | policy | check | receipts | export)")
+        if verb == "compile":
+            policy_path = args.policy or agent_default_policy_path(args.repo)
+            if os.path.exists(policy_path):
+                policy, warnings = agent_load_policy(policy_path)
+                for warning in warnings:
+                    print(f"warning: {warning}")
+            else:
+                policy = agent_generate_policy(agent_scan_repo(args.repo))
+                print(f"No policy at {policy_path}; generated a conservative one from a static scan.")
+            written = agent_compile_claude(policy, repo=args.repo, out_dir=args.out)
+            print("Compiled Claude Code controls (Frontier Scout emits; Claude Code / CI enforce):")
+            for name, out_path in written.items():
+                print(f"  {name}: {out_path}")
+            print(
+                "Next: commit these, run Claude Code (the hook decides + writes receipts), open a "
+                "PR, and the verifier workflow checks receipts against the diff."
+            )
+            return 0
+        if verb == "verify-pr":
+            result = agent_verify_pr(
+                args.repo, base=args.base, receipts_glob=args.receipts, advisory=args.advisory
+            )
+            if args.json:
+                print(result.model_dump_json(indent=2))
+            else:
+                for annotation in result.annotations:
+                    print(annotation)
+                print(result.summary)
+                for violation in result.violations:
+                    print(f"  violation: {violation}")
+                for warning in result.warnings:
+                    print(f"  warning: {warning}")
+            return 0 if result.ok else 1
+        parser.error(
+            "agent requires a subcommand "
+            "(scan | policy | check | receipts | export | compile | verify-pr)"
+        )
         return 2
     parser.error(f"unknown command: {args.command}")
     return 2

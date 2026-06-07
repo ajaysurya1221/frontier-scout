@@ -67,4 +67,13 @@ class Receipt(BaseModel):
     required_checks: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     frontier_scout_version: str | None = None
-    kind: Literal["static-policy-assessment"] = "static-policy-assessment"
+    kind: Literal["static-policy-assessment", "agent-action"] = "static-policy-assessment"
+    # Binds a receipt to the exact policy in force when it was written (sha256 from
+    # the policy lock). The verifier rejects receipts whose hash drifts from the lock.
+    policy_hash: str | None = None
+    # Action-receipt fields (kind == "agent-action"), written by the native hook for a
+    # real tool call. Unused by the static ``agent check`` assessment, so all optional.
+    tool_name: str | None = None
+    tool_input_hash: str | None = None
+    decision: str | None = None  # native permission decision: allow | deny | ask
+    realized: dict[str, Any] | None = None  # PostToolUse outcome (exit, changed files, …)
