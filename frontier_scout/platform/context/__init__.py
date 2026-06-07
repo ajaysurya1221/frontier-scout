@@ -1,2 +1,0 @@
-"""Context compiler plane."""
-

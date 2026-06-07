@@ -85,7 +85,7 @@ ignore = ["B008"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["frontier_scout/platform"]
+files = ["frontier_scout/agent_firewall", "frontier_scout/exporters"]
 
 [tool.pytest.ini_options]
 markers = [

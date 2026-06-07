@@ -17,12 +17,16 @@ from typing import Any
 
 from frontier_scout import __version__
 from frontier_scout.agent_firewall.models import Receipt, TaskDecision
-from frontier_scout.store import _now
 from outputs._text import scrub_secrets
 
 __all__ = ["receipts_dir", "write_receipt", "list_receipts", "show_receipt"]
 
 _SLUG_RE = re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _now() -> str:
+    """ISO-8601 UTC timestamp (inlined from the former store module)."""
+    return datetime.now(UTC).isoformat()
 
 
 def receipts_dir(repo: str) -> Path:

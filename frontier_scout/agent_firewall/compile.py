@@ -153,7 +153,7 @@ def build_permissions(policy: AgentPolicy) -> dict[str, list[str]]:
     }
 
 
-def build_settings(policy: AgentPolicy) -> dict:
+def build_settings(policy: AgentPolicy) -> dict[str, object]:
     """Build the full ``.claude/settings.json`` payload (permissions + hooks)."""
 
     def _cmd(name: str) -> str:

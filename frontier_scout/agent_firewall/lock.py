@@ -61,6 +61,7 @@ def read_lock(path: str) -> dict[str, Any] | None:
     """Load a lock file; ``None`` if missing or unparseable."""
 
     try:
-        return json.loads(Path(path).read_text())
+        data: dict[str, Any] = json.loads(Path(path).read_text())
     except (OSError, json.JSONDecodeError):
         return None
+    return data

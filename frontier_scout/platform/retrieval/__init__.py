@@ -1,2 +1,0 @@
-"""Hybrid retrieval plane."""
-
