@@ -20,9 +20,18 @@ import fnmatch
 import os
 from pathlib import Path
 
-from frontier_scout.profile import _SKIP_DIRS
-
 from .models import RiskSurface, ScanResult
+
+# Directories pruned during the secret-file walk (vendored from the former repo
+# profiler so the scan never descends into vendor/cache/VCS trees).
+_SKIP_DIRS = frozenset(
+    {
+        "node_modules", "venv", ".venv", "__pycache__", ".mypy_cache", ".pytest_cache",
+        ".ruff_cache", ".tox", "dist", "build", "target", ".next", ".nuxt", ".cache",
+        "site-packages", ".git", ".gradle", ".idea", ".vscode", ".frontier-scout",
+        ".scratch", "vendor", ".turbo", ".parcel-cache", ".svelte-kit",
+    }
+)
 
 __all__ = ["scan_repo"]
 
