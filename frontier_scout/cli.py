@@ -1,4 +1,10 @@
-"""Command line interface for Frontier Scout."""
+"""Command line interface for Frontier Scout.
+
+Frontier Scout compiles a typed repo policy into AI coding-agent native controls
+(Claude Code first) and verifies in CI that a PR stayed within the approved scope.
+It **emits** config and **verifies** evidence — the agent and GitHub Actions do the
+enforcing. The CLI is keyless and offline.
+"""
 
 from __future__ import annotations
 
@@ -6,404 +12,31 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Callable
-from pathlib import Path
 
 from . import __version__
-from .dep_trial import run_dependency_trial
-from .dependencies import run_dependency_scan
-from .dossier import build_dossier
-from .evaluate import evaluate_url
-from .guard import format_findings, run_guard
-from .lab import run_lab
-from .mcp_audit import classify_mcp_capabilities
-from .packs import candidate_rows_for_pack
-from .policy import default_policy_toml, evaluate_policy, load_policy
-from .profile import build_scout_profile, export_profile
-from .report import load_verdict_file, render_html, serve_demo, write_demo
-from .scout import detect_stack, run_scan
-from .store import (
-    get_pack,
-    home_dir,
-    init_home,
-    latest_scan,
-    list_pack_candidates,
-    list_packs,
-    save_builtin_packs_if_empty,
-    save_evaluation,
-    save_pack_candidate,
-    save_pack_override,
-    save_permission_manifest,
-    save_policy_findings,
-    save_repo_profile,
-)
-from .trials import run_trial
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="frontier-scout",
-        description="Sanctioned MCP-server packs for coding assistants: repo-rank approved MCP "
-        "servers, read each server's static safety map, and export the approved set into your "
-        "Claude Code managed config.",
-        epilog="Tip: `frontier-scout open` launches Mission Control (the interactive TUI); "
-        "`frontier-scout agent scan` runs the static agent firewall; `frontier-scout setup` "
-        "(re)configures. Run `frontier-scout <command> -h` for command help.",
-    )
-    parser.add_argument("--version", action="version", version=f"frontier-scout {__version__}")
-    # Stream I: top-level alias matches the mental model `frontier-scout --setup`.
-    # We translate to ``command = "setup"`` after parse.
-    parser.add_argument(
-        "--setup",
-        dest="top_setup",
-        action="store_true",
-        help="Alias for the `setup` subcommand. Equivalent to `frontier-scout setup`.",
-    )
-    # Top-level alias for the offline demo. Keeps the demo out of the TUI:
-    # `frontier-scout --demo` renders and serves the offline radar report.
-    parser.add_argument(
-        "--demo",
-        dest="top_demo",
-        action="store_true",
-        help="Alias for the `demo` subcommand. Render the offline radar demo (no API keys or network).",
-    )
-    # Pin the LLM backend for this invocation (sets FRONTIER_SCOUT_PROVIDER).
-    # Extracted from argv before parsing so it works in any position, e.g.
-    # `frontier-scout --provider openai scan` or `frontier-scout scan --provider openai`.
-    parser.add_argument(
-        "--provider",
-        choices=["anthropic", "openai", "claude-cli", "codex-cli"],
-        default=None,
-        help="Pin the LLM backend (anthropic, openai, claude-cli, codex-cli). "
-        "Overrides auto-detection; equivalent to FRONTIER_SCOUT_PROVIDER.",
-    )
-    sub = parser.add_subparsers(dest="command")
-
-    init_cmd = sub.add_parser("init", help="Create the local Frontier Scout home and print detected stack signals.")
-    init_cmd.add_argument("--repo", default=".", help="Repository to inspect for stack signals.")
-
-    setup_cmd = sub.add_parser(
-        "setup",
-        help="Run the global setup wizard, or with --repo / --plain / --json launch Mission Control directly.",
-    )
-    setup_cmd.add_argument(
-        "--wizard",
-        action="store_true",
-        help="Force the wizard even if other flags are present.",
-    )
-    setup_cmd.add_argument(
-        "--repo",
-        default=None,
-        help="Repository to inspect for local setup signals (launches Mission Control).",
-    )
-    setup_cmd.add_argument("--plain", action="store_true", help="Use stable plain-text setup output.")
-    setup_cmd.add_argument("--json", action="store_true", help="Print setup diagnostics as JSON.")
-    setup_cmd.add_argument(
-        "--ollama-url",
-        default="http://localhost:11434",
-        help="Ollama base URL used only for a short read-only /api/tags probe.",
-    )
-    setup_cmd.add_argument(
-        "--packs",
-        default=None,
-        help="Comma-separated Scout Pack slugs to pre-select (e.g. ai-devtools,mcp).",
-    )
-    setup_cmd.add_argument(
-        "--no-imports",
-        dest="scan_imports",
-        action="store_false",
-        help="Skip the tree-sitter import-evidence pass for a faster setup.",
-    )
-    setup_cmd.add_argument(
-        "--no-splash",
-        dest="show_splash",
-        action="store_false",
-        help="Skip the brand splash on TUI launch.",
-    )
-    setup_cmd.add_argument(
-        "--tab",
-        default="scout",
-        help="Landing tab slug (scout, trials, receipts, guard, reports, packs, deps, settings).",
-    )
-    setup_cmd.add_argument(
-        "--no-scout",
-        dest="auto_scout",
-        action="store_false",
-        help="Do not auto-run the dry-run scout on the Scout tab.",
-    )
-    setup_cmd.add_argument(
-        "--automation",
-        action="store_true",
-        help="Wizard: non-interactive automation mode (use with --repo and --cron).",
-    )
-    setup_cmd.add_argument(
-        "--cron",
-        default="@daily",
-        help="Wizard: cron expression for automation mode (default @daily).",
-    )
-    # Stream I — onboarded users can skip the wizard prompt with --force.
-    setup_cmd.add_argument(
-        "--force",
-        action="store_true",
-        help=(
-            "Re-run the wizard even if ~/.frontier-scout/config.toml already "
-            "marks setup as complete. Without --force, an onboarded user gets "
-            "a confirmation prompt (interactive) or a no-op (non-interactive)."
+        description=(
+            "Compile a repo policy into AI coding-agent native controls (Claude Code "
+            "first) and verify PRs stay within approved scope. Emits config; the agent "
+            "and GitHub Actions enforce it."
         ),
     )
-    setup_cmd.set_defaults(scan_imports=True, show_splash=True, auto_scout=True)
+    parser.add_argument("--version", action="version", version=f"frontier-scout {__version__}")
+    sub = parser.add_subparsers(dest="command")
 
-    sub.add_parser("open", help="Open Mission Control on the current repo (explicit TUI launcher).").add_argument(
-        "--repo", default=".", help="Repo path."
+    doctor = sub.add_parser(
+        "doctor", help="Check this repo's Frontier Scout setup (policy, lock, hooks, workflow)."
     )
-
-    cron_cmd = sub.add_parser("cron", help="Headless schedule executor (called by cron-runner.sh).")
-    cron_sub = cron_cmd.add_subparsers(dest="cron_command")
-    cron_sub.add_parser("run", help="Run any due schedules immediately.")
-
-    doctor_cmd = sub.add_parser("doctor", help="Self-diagnostics for your Frontier Scout install.")
-    doctor_cmd.add_argument("--json", action="store_true", help="Emit JSON instead of formatted text.")
-
-    clear_cmd = sub.add_parser("clear-history", help="Clear stored scout history.")
-    clear_cmd.add_argument("--repo", help="Only this repo (defaults to current directory).")
-    clear_cmd.add_argument("--all", action="store_true", help="Clear all stored scans across every repo.")
-
-    notif_cmd = sub.add_parser("notifications", help="Inspect Frontier Scout notifications.")
-    notif_sub = notif_cmd.add_subparsers(dest="notifications_command")
-    notif_sub.add_parser("list", help="List recent notifications.")
-    notif_sub.add_parser("clear", help="Delete every notification.")
-
-    profile_cmd = sub.add_parser("profile", help="Build a local Scout Profile for repo-aware recommendations.")
-    profile_cmd.add_argument("--repo", default=".", help="Repository to inspect for local signals.")
-    profile_cmd.add_argument("--json", action="store_true", help="Print the profile as JSON.")
-    profile_cmd.add_argument("--dependencies", action="store_true", help="Include dependency inventory in text output.")
-    profile_cmd.add_argument(
-        "--write-repo",
-        action="store_true",
-        help="Also write .frontier-scout/profile.json inside the target repo.",
-    )
-
-    demo_cmd = sub.add_parser("demo", help="Generate an offline demo report with no API keys or network calls.")
-    demo_cmd.add_argument("--output-dir", default="demo", help="Directory for demo artifacts.")
-    demo_cmd.add_argument(
-        "--no-serve",
-        dest="serve",
-        action="store_false",
-        help="Write files only; skip the local HTTP server and browser launch.",
-    )
-    demo_cmd.set_defaults(serve=True)
-
-    scan_cmd = sub.add_parser("scan", help="Run a live scan, or use --dry-run for seeded output.")
-    scan_cmd.add_argument("--repo", default=".", help="Repository used for stack-fit detection.")
-    scan_cmd.add_argument("--dry-run", action="store_true", help="Use seeded verdicts and avoid network/LLM calls.")
-    scan_cmd.add_argument("--no-store", action="store_true", help="Do not persist the scan to SQLite.")
-    scan_cmd.add_argument("--json", action="store_true", help="Print the scan payload as JSON.")
-    scan_cmd.add_argument("--pack", help="Limit/personalize scan around one Scout Pack slug.")
-    scan_cmd.add_argument(
-        "--discover",
-        action="store_true",
-        help="Opt into live/dynamic discovery sources where supported.",
-    )
-    scan_cmd.add_argument(
-        "--progress",
-        action="store_true",
-        help="Stream staged progress to stderr (safe in pipelines / CI).",
-    )
-
-    report_cmd = sub.add_parser("report", help="Render a static HTML report from a verdict JSON file or latest scan.")
-    report_cmd.add_argument("--input", help="Path to verdict JSON. Defaults to latest SQLite scan, then demo fixture.")
-    report_cmd.add_argument("--output", default="demo/briefing.html", help="HTML output path.")
-    report_cmd.add_argument(
-        "--repo",
-        default=".",
-        help="Repository whose latest scan to render (defaults to current directory).",
-    )
-
-    lab_cmd = sub.add_parser("lab", help="Try a tool in the hermetic polyglot lab.")
-    lab_cmd.add_argument("tool", help="Tool/package name.")
-    lab_cmd.add_argument("--url", required=True, help="Open-source URL for the tool.")
-    lab_cmd.add_argument("--dry-run", action="store_true", help="Classify/preview without subprocess execution.")
-
-    eval_cmd = sub.add_parser("evaluate", help="Evaluate one AI tool URL before trial or adoption.")
-    eval_cmd.add_argument("url", help="GitHub, PyPI, npm, Hugging Face, MCP, or vendor URL.")
-    eval_cmd.add_argument("--repo", default=".", help="Repository used for stack-fit detection.")
-    eval_cmd.add_argument("--json", action="store_true", help="Print the evaluation payload as JSON.")
-
-    dossier_cmd = sub.add_parser("dossier", help="Explain one tool's local fit, risks, gaps, and next safe step.")
-    dossier_cmd.add_argument("target", help="Tool name, GitHub repo, package name, or URL.")
-    dossier_cmd.add_argument("--repo", default=".", help="Repository used for personalization.")
-    dossier_cmd.add_argument("--json", action="store_true", help="Print the dossier payload as JSON.")
-    dossier_cmd.add_argument("--dismiss", action="store_true", help="Suppress this target from future pack reports.")
-    dossier_cmd.add_argument("--mute", action="store_true", help="Hide this target for the default snooze window.")
-    dossier_cmd.add_argument("--pin", action="store_true", help="Protect this target from pack demotion.")
-    dossier_cmd.add_argument("--snooze", help="Custom snooze window such as 30d.")
-
-    packs_cmd = sub.add_parser("packs", help="Inspect and refresh living Scout Packs.")
-    packs_sub = packs_cmd.add_subparsers(dest="packs_command")
-    packs_sub.add_parser("list", help="List built-in and local Scout Packs.")
-    packs_show = packs_sub.add_parser("show", help="Show one Scout Pack definition.")
-    packs_show.add_argument("slug", help="Pack slug.")
-    packs_refresh = packs_sub.add_parser("refresh", help="Refresh pack candidates.")
-    packs_refresh.add_argument(
-        "--discover",
-        action="store_true",
-        help="Opt into live discovery. Without it, seed candidates only.",
-    )
-    packs_refresh.add_argument("--reset-source", help="Reset one stale source id.")
-    packs_candidates = packs_sub.add_parser("candidates", help="List pack candidates (repo-ranked with --repo).")
-    packs_candidates.add_argument("--pack", help="Pack slug (default: mcp when --repo is set).")
-    packs_candidates.add_argument("--repo", default=None, help="Repository for repo-aware ranking + static safety.")
-    packs_candidates.add_argument(
-        "--client",
-        default="claude-code",
-        choices=["claude-code", "copilot", "cursor"],
-        help="Coding-assistant client. Claude Code only today; copilot/cursor are roadmap (selecting them errors).",
-    )
-    packs_candidates.add_argument(
-        "--discover",
-        action="store_true",
-        help="Also fetch live MCP-registry servers (network). Default is the keyless demo pack.",
-    )
-    packs_candidates.add_argument("--json", action="store_true", help="Emit JSON.")
-
-    packs_sanction = packs_sub.add_parser("sanction", help="Sanction an MCP server for a client (risk-gated).")
-    packs_sanction.add_argument("server", help="Server identifier (tool name).")
-    packs_sanction.add_argument("--repo", default=".", help="Repository for repo-aware ranking.")
-    packs_sanction.add_argument(
-        "--client",
-        default="claude-code",
-        choices=["claude-code", "copilot", "cursor"],
-        help="Coding-assistant client. Claude Code only today; copilot/cursor are roadmap (selecting them errors).",
-    )
-    packs_sanction.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
-    packs_sanction.add_argument("--approver", help="Approver label recorded in the decision.")
-    packs_sanction.add_argument("--reason", help="Rationale recorded in the decision.")
-    packs_sanction.add_argument(
-        "--acknowledge-risk",
-        action="store_true",
-        help="Acknowledge a high-risk server's static safety summary and sanction it anyway.",
-    )
-    packs_sanction.add_argument("--json", action="store_true", help="Emit JSON.")
-
-    packs_unsanction = packs_sub.add_parser("unsanction", help="Reverse a sanction and exclude a server from exports.")
-    packs_unsanction.add_argument("server", help="Server identifier (tool name).")
-    packs_unsanction.add_argument(
-        "--client",
-        default="claude-code",
-        choices=["claude-code", "copilot", "cursor"],
-        help="Coding-assistant client. Claude Code only today; copilot/cursor are roadmap (selecting them errors).",
-    )
-    packs_unsanction.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
-    packs_unsanction.add_argument("--reason", help="Rationale recorded in the decision.")
-    packs_unsanction.add_argument("--json", action="store_true", help="Emit JSON.")
-
-    packs_export = packs_sub.add_parser("export", help="Export the sanctioned set into client managed config.")
-    packs_export.add_argument(
-        "--client",
-        default="claude-code",
-        choices=["claude-code", "copilot", "cursor"],
-        help="Coding-assistant client. Claude Code only today; copilot/cursor are roadmap (selecting them errors).",
-    )
-    packs_export.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
-    packs_export.add_argument("--target", required=True, help="Output directory for config files.")
-    packs_export.add_argument("--json", action="store_true", help="Emit JSON.")
-
-    packs_proof = packs_sub.add_parser("proof", help="Show A/B/C proof variants for a server (validation step 2).")
-    packs_proof.add_argument("server", help="Server identifier (tool name).")
-    packs_proof.add_argument("--repo", default=".", help="Repository for repo-aware ranking.")
-    packs_proof.add_argument(
-        "--client",
-        default="claude-code",
-        choices=["claude-code", "copilot", "cursor"],
-        help="Coding-assistant client. Claude Code only today; copilot/cursor are roadmap (selecting them errors).",
-    )
-    packs_proof.add_argument("--pack", default="mcp", help="Pack slug (default: mcp).")
-    packs_proof.add_argument(
-        "--keep",
-        choices=["approval_only", "static_safety_summary", "formal_receipt"],
-        help="Record which proof variant you chose to keep (opt-in telemetry).",
-    )
-    packs_proof.add_argument("--json", action="store_true", help="Emit JSON.")
-
-    stats_cmd = sub.add_parser("stats", help="Show the local (opt-in) sanctioned-pack usage funnel.")
-    stats_cmd.add_argument("--json", action="store_true", help="Emit JSON.")
-
-    deps_cmd = sub.add_parser("deps", help="Scan dependency intelligence and create upgrade trials.")
-    deps_sub = deps_cmd.add_subparsers(dest="deps_command")
-    deps_scan = deps_sub.add_parser("scan", help="Scan repo dependencies for meaningful upgrade findings.")
-    deps_scan.add_argument("--repo", default=".", help="Repository to inspect.")
-    deps_scan.add_argument("--json", action="store_true", help="Print dependency findings as JSON.")
-    deps_trial = deps_sub.add_parser("trial", help="Create a safe dependency-upgrade trial receipt.")
-    deps_trial.add_argument("package", help="Package name.")
-    deps_trial.add_argument("--from", dest="from_version", required=True, help="Current version.")
-    deps_trial.add_argument("--to", dest="to_version", required=True, help="Candidate version.")
-    deps_trial.add_argument("--repo", default=".", help="Repository to trial against.")
-    deps_trial.add_argument("--dry-run", action="store_true", help="Do not execute tests.")
-    deps_trial.add_argument("--json", action="store_true", help="Print trial payload as JSON.")
-
-    trial_cmd = sub.add_parser("trial", help="Create a local try-before-trust trial receipt.")
-    trial_cmd.add_argument("tool", help="Tool name or URL.")
-    trial_cmd.add_argument("--url", help="Canonical open-source URL for the tool.")
-    trial_cmd.add_argument("--repo", default=".", help="Repository used for stack-fit detection.")
-    trial_cmd.add_argument("--dry-run", action="store_true", help="Write a receipt without subprocess execution.")
-    trial_cmd.add_argument(
-        "--sandbox",
-        choices=["local", "report-only"],
-        help="Sandbox profile. local uses the existing hermetic lab; report-only forces a dry-run receipt.",
-    )
-    trial_cmd.add_argument("--json", action="store_true", help="Print the trial payload as JSON.")
-
-    implement_cmd = sub.add_parser(
-        "implement",
-        help="Adopt a tool in an isolated copy of your repo, run tests, show the diff.",
-    )
-    implement_cmd.add_argument("tool", help="Tool/framework/version to adopt.")
-    implement_cmd.add_argument("--repo", default=".", help="Repository to modify in isolation.")
-    implement_cmd.add_argument(
-        "--instruction",
-        help="Override the default 'adopt <tool>' instruction with a precise task.",
-    )
-    implement_cmd.add_argument(
-        "--test-command",
-        help="Test command to run in the isolated copy (defaults to repo detection).",
-    )
-    implement_cmd.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Prepare a synthetic change without an LLM call or test run.",
-    )
-    implement_cmd.add_argument(
-        "--keep",
-        action="store_true",
-        help="On success, copy the changes into your working tree (no commit).",
-    )
-    implement_cmd.add_argument("--progress", action="store_true", help="Stream stage progress to stderr.")
-    implement_cmd.add_argument("--json", action="store_true", help="Print the result as JSON.")
-
-    guard_cmd = sub.add_parser("guard", help="Run deterministic local adoption policy checks.")
-    guard_cmd.add_argument("--repo", default=".", help="Repository to inspect for local policy.")
-    guard_cmd.add_argument(
-        "--format",
-        choices=["text", "json", "github"],
-        default="text",
-        help="Output format.",
-    )
-    guard_cmd.add_argument("--strict", action="store_true", help="Exit non-zero on medium findings too.")
-    guard_cmd.add_argument(
-        "--notify",
-        action="store_true",
-        help="Non-blocking: report policy drift / unsanctioned tools but always exit 0.",
-    )
-
-    policy_cmd = sub.add_parser("policy", help="Manage local Adoption Firewall policy.")
-    policy_sub = policy_cmd.add_subparsers(dest="policy_command")
-    policy_init = policy_sub.add_parser("init", help="Write a conservative default policy file.")
-    policy_init.add_argument("--home-only", action="store_true", help="Write to ~/.frontier-scout/policy.toml.")
-    policy_init.add_argument("--repo", default=".", help="Repository for .frontier-scout/policy.toml.")
+    doctor.add_argument("--repo", default=".", help="Repository to check.")
+    doctor.add_argument("--json", action="store_true", help="Emit JSON.")
 
     agent_cmd = sub.add_parser(
         "agent",
-        help="Static, advisory AI-agent adoption firewall + audit trail (research preview).",
+        help="Compile a repo policy into agent-native controls, verify PRs, and keep an audit trail.",
     )
     agent_sub = agent_cmd.add_subparsers(dest="agent_command")
 
@@ -416,7 +49,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exit non-zero if any high-risk surface is found.",
     )
 
-    agent_policy = agent_sub.add_parser("policy", help="Generate or explain the advisory agent policy.")
+    agent_policy = agent_sub.add_parser("policy", help="Generate or explain the agent policy.")
     agent_policy_sub = agent_policy.add_subparsers(dest="agent_policy_command")
     agent_policy_init = agent_policy_sub.add_parser(
         "init", help="Generate a conservative frontier-scout.policy.json from a scan."
@@ -491,713 +124,30 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-#: Stream N — Settings tab's "Reconfigure" button exits the TUI with this
-#: code; ``main`` reads it as "user asked to re-run the wizard".
-RECONFIGURE_EXIT_CODE = 42
-
-
-def _run_tui_with_reconfigure_loop(
-    runner: Callable[..., int],
-    *,
-    max_loops: int = 3,
-    **kwargs,
-) -> int:
-    """Run the TUI, and if it exits with ``RECONFIGURE_EXIT_CODE``,
-    launch the wizard then re-enter the TUI. Bounded loop (``max_loops``)
-    so a misbehaving Settings button can't trap the user."""
-
-    for _ in range(max_loops):
-        rc = runner(**kwargs)
-        if rc != RECONFIGURE_EXIT_CODE:
-            return rc
-        # User clicked "Reconfigure" in Settings. Launch the wizard,
-        # then re-enter the TUI on the same repo.
-        if sys.stdin.isatty() and sys.stdout.isatty():
-            from .wizard.app import WizardApp
-
-            WizardApp().run()
-        else:
-            from .wizard.headless import run_headless
-
-            run_headless(mode="adhoc")
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-
-    # Top-level aliases: ``frontier-scout --setup`` / ``--demo`` translate to
-    # their subcommand form *before* parsing, so each subcommand's own flags
-    # (e.g. ``--demo --no-serve`` or ``--setup --plain``) parse uniformly.
-    raw = list(argv) if argv is not None else sys.argv[1:]
-
-    # ``--provider`` pins the LLM backend for this invocation. We pull it out of
-    # argv before parsing (in any position, ``--provider X`` or ``--provider=X``)
-    # and surface it through FRONTIER_SCOUT_PROVIDER, which every subcommand's
-    # resolve_provider() already reads. This keeps the flag uniform across
-    # subcommands without threading it through each one.
-    valid_providers = ("anthropic", "openai", "claude-cli", "codex-cli")
-
-    def _set_provider(value: str | None) -> None:
-        if not value:
-            print("error: --provider requires a value", file=sys.stderr)
-            raise SystemExit(2)
-        if value not in valid_providers:
-            print(
-                f"error: invalid --provider {value!r} (choose from {', '.join(valid_providers)})",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
-        os.environ["FRONTIER_SCOUT_PROVIDER"] = value
-
-    # ``--ui mission`` selects the terminal UI (Mission Control, tui3 — the only
-    # supported UI). Pulled from argv (any position) like ``--provider``, and also
-    # honoured via the ``FRONTIER_SCOUT_UI`` env var.
-    valid_uis = ("mission",)
-    ui_value: str | None = None
-
-    def _check_ui(value: str | None) -> str:
-        if not value or value not in valid_uis:
-            print(
-                f"error: invalid --ui {value!r} (choose from {', '.join(valid_uis)})",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
-        return value
-
-    cleaned: list[str] = []
-    skip_next = False
-    for i, tok in enumerate(raw):
-        if skip_next:
-            skip_next = False
-            continue
-        if tok == "--provider":
-            _set_provider(raw[i + 1] if i + 1 < len(raw) else None)
-            skip_next = True
-            continue
-        if tok.startswith("--provider="):
-            _set_provider(tok.split("=", 1)[1])
-            continue
-        if tok == "--ui":
-            ui_value = _check_ui(raw[i + 1] if i + 1 < len(raw) else None)
-            skip_next = True
-            continue
-        if tok.startswith("--ui="):
-            ui_value = _check_ui(tok.split("=", 1)[1])
-            continue
-        cleaned.append(tok)
-    raw = cleaned
-
-    ui_choice = (ui_value or os.environ.get("FRONTIER_SCOUT_UI") or "mission").strip().lower()
-    if ui_choice not in valid_uis:
-        ui_choice = "mission"
-
-    for alias, subcommand in (("--setup", "setup"), ("--demo", "demo")):
-        if alias in raw:
-            raw = [subcommand, *(a for a in raw if a != alias)]
-            break
-
-    args = parser.parse_args(raw)
+    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
     if args.command is None:
-        # A bare ``frontier-scout`` (no subcommand, no explicit ``--ui``) prints
-        # help rather than auto-launching a full-screen TUI — accidentally typing
-        # the bare command shouldn't drop you into Mission Control. The TUI stays
-        # one explicit step away: ``frontier-scout open`` / ``--ui mission``; the
-        # wizard is ``frontier-scout setup``.
-        explicit_ui = ui_value is not None or bool(os.environ.get("FRONTIER_SCOUT_UI"))
-        if explicit_ui and sys.stdin.isatty() and sys.stdout.isatty():
-            # Explicit ``--ui mission`` / ``FRONTIER_SCOUT_UI`` launches Mission Control.
-            from .tui3 import run_mission_control
-
-            # Wrap in the reconfigure loop so the Settings "Reconfigure" action
-            # (Mission Control exits with code 42) relaunches the setup wizard.
-            return _run_tui_with_reconfigure_loop(run_mission_control, repo=Path("."))
+        # A bare ``frontier-scout`` prints help.
         parser.print_help()
         return 0
-    if args.command == "setup":
-        # Stream I — if already onboarded and no explicit --force / --wizard,
-        # don't blindly re-run the wizard. Interactively ask; non-interactively
-        # treat as a no-op so cron / CI calls don't hang.
-        from .wizard.config import is_onboarded
 
-        already = is_onboarded()
-        wants_force = args.wizard or args.force
-        if already and not wants_force and not args.automation:
-            interactive = sys.stdin.isatty() and sys.stdout.isatty()
-            if interactive:
-                try:
-                    answer = (
-                        input("Frontier Scout is already set up (~/.frontier-scout/config.toml). Re-run wizard? [y/N] ")
-                        .strip()
-                        .lower()
-                    )
-                except (EOFError, KeyboardInterrupt):
-                    answer = ""
-                if answer not in ("y", "yes"):
-                    print("Setup unchanged. Use `frontier-scout` to open Mission Control.")
-                    return 0
-            else:
-                print("Already onboarded. Pass --force to re-run the wizard non-interactively.")
-                return 0
-        # Decide: wizard or TUI?
-        # - If --wizard explicitly passed → wizard.
-        # - If --plain or --json passed → TUI/diagnostic (back-compat).
-        # - If --repo passed → TUI on that repo (back-compat).
-        # - If --automation flag passed → headless wizard.
-        # - Else → interactive wizard.
-        want_tui = bool(args.repo) or args.plain or args.json
-        if args.wizard or (not want_tui and not args.automation):
-            from .wizard.app import WizardApp
-
-            if not (sys.stdin.isatty() and sys.stdout.isatty()):
-                print("setup wizard requires an interactive TTY; falling back to ad-hoc defaults.")
-                from .wizard.headless import run_headless
-
-                run_headless(mode="adhoc")
-                return 0
-            app = WizardApp()
-            result = app.run()
-            if result == "open-tui":
-                from .tui3 import run_mission_control
-
-                return _run_tui_with_reconfigure_loop(run_mission_control, repo=Path("."))
-            return 0
-        if args.automation:
-            from .wizard.headless import run_headless
-
-            if not args.repo:
-                parser.error("--automation requires --repo")
-            payload = run_headless(
-                mode="automation",
-                repos=[args.repo],
-                cron_expr=args.cron,
-            )
-            print(json.dumps(payload, indent=2, default=str))
-            return 0
-        # --plain / --json → non-interactive setup diagnostics (no TUI).
-        if args.plain or args.json:
-            from .setup_diagnostics import diagnostics_to_plain, setup_diagnostics
-
-            packs = [slug.strip() for slug in args.packs.split(",") if slug.strip()] if args.packs else None
-            diagnostics = setup_diagnostics(
-                Path(args.repo) if args.repo else Path("."),
-                ollama_url=args.ollama_url,
-                selected_packs=packs,
-                scan_imports=args.scan_imports,
-            )
-            if args.json:
-                print(json.dumps(diagnostics.model_dump(), indent=2, default=str))
-            else:
-                print(diagnostics_to_plain(diagnostics))
-            return 0
-        # Interactive setup on a repo → Mission Control.
-        from .tui3 import run_mission_control
-
-        return _run_tui_with_reconfigure_loop(
-            run_mission_control,
-            repo=Path(args.repo) if args.repo else Path("."),
-        )
-    if args.command == "open":
-        from .tui3 import run_mission_control
-
-        # Wrap so the Settings "Reconfigure" exit-42 relaunches the wizard.
-        return _run_tui_with_reconfigure_loop(run_mission_control, repo=Path(args.repo))
-    if args.command == "cron":
-        if args.cron_command == "run":
-            from .scheduling import run_due
-
-            results = run_due()
-            print(json.dumps({"results": results}, indent=2, default=str))
-            return 0
-        parser.error("cron requires a subcommand (e.g. `cron run`).")
-        return 2
     if args.command == "doctor":
         from .doctor import render_json, render_text, run_doctor
 
-        checks = run_doctor()
+        checks = run_doctor(args.repo)
         if args.json:
             print(render_json(checks))
         else:
             print(render_text(checks), end="")
         return 1 if any(c.status == "fail" for c in checks) else 0
-    if args.command == "clear-history":
-        from .store import clear_all_scans, clear_scans_for_repo
 
-        if args.all:
-            removed = clear_all_scans()
-            print(f"Cleared {removed} scan(s) across all repos.")
-            return 0
-        repo = args.repo or "."
-        removed = clear_scans_for_repo(repo)
-        print(f"Cleared {removed} scan(s) for {Path(repo).resolve()}.")
-        return 0
-    if args.command == "notifications":
-        from .notifications import clear_all, list_notifications
-
-        if args.notifications_command == "clear":
-            count = clear_all()
-            print(f"Cleared {count} notification(s).")
-            return 0
-        notifications = list_notifications()
-        if not notifications:
-            print("No notifications.")
-            return 0
-        for n in notifications:
-            unread = "" if n.get("read") else " [UNREAD]"
-            print(f"{n.get('timestamp', '—')}  {n.get('repo', '—')}{unread}")
-            for v in (n.get("new_verdicts") or [])[:5]:
-                print(f"  {str(v.get('verdict', '—')).upper():<7} {v.get('tool_name', '—')}")
-        return 0
-    if args.command == "init":
-        home = init_home()
-        stack = detect_stack(Path(args.repo))
-        stack_path = home / "stack.json"
-        stack_path.write_text(json.dumps(stack, indent=2) + "\n")
-        print(f"Frontier Scout home: {home}")
-        print(f"Stack profile: {stack_path}")
-        print(json.dumps(stack, indent=2))
-        return 0
-    if args.command == "profile":
-        home = init_home()
-        profile = build_scout_profile(Path(args.repo))
-        save_repo_profile(profile)
-        profile_path = home / "profiles" / f"{profile.repo_id}.json"
-        export_profile(profile, profile_path)
-        repo_profile_path = None
-        if args.write_repo:
-            repo_profile_path = export_profile(profile, Path(args.repo) / ".frontier-scout" / "profile.json")
-        if args.json:
-            payload = profile.model_dump()
-            payload["profile_path"] = str(profile_path)
-            if repo_profile_path:
-                payload["repo_profile_path"] = str(repo_profile_path)
-            print(json.dumps(payload, indent=2))
-        else:
-            print(f"Scout profile: {profile_path}")
-            if repo_profile_path:
-                print(f"Repo export: {repo_profile_path}")
-            print(f"languages: {', '.join(profile.languages) or 'unknown'}")
-            print(f"frameworks: {', '.join(profile.frameworks) or 'none detected'}")
-            print(f"agent configs: {', '.join(profile.agent_configs) or 'none detected'}")
-            print(f"risk flags: {', '.join(profile.risk_flags) or 'none'}")
-            if args.dependencies:
-                print("dependencies:")
-                for dep in profile.dependencies:
-                    resolved = f" -> {dep.resolved_version}" if dep.resolved_version else ""
-                    print(f"- {dep.ecosystem}:{dep.name}{dep.specifier}{resolved} ({dep.manifest_path})")
-        return 0
-    if args.command == "demo":
-        if args.serve:
-            serve_demo(Path(args.output_dir))
-        else:
-            paths = write_demo(Path(args.output_dir))
-            print(f"Wrote HTML report: {paths['html']}")
-            print(f"Wrote verdict data: {paths['json']}")
-        return 0
-    if args.command == "scan":
-        from .progress import StderrReporter
-
-        reporter = StderrReporter() if getattr(args, "progress", False) else None
-        payload = run_scan(
-            repo=Path(args.repo),
-            dry_run=args.dry_run,
-            persist=not args.no_store,
-            pack=args.pack,
-            discover=args.discover,
-            reporter=reporter,
-        )
-        if args.json:
-            print(json.dumps(payload, indent=2))
-        else:
-            print(
-                f"Scan complete: {len(payload.get('verdicts', []))} verdicts, "
-                f"${float(payload.get('cost_usd', 0)):.4f}, home={home_dir()}"
-            )
-        return 0
-    if args.command == "report":
-        if args.input:
-            date, verdicts, funnel = load_verdict_file(Path(args.input))
-        else:
-            payload = latest_scan(repo=Path(args.repo))
-            if payload is None:
-                # Codex #5: don't silently demo-render when nothing exists for
-                # *this* repo — that's how reports went out misattributed.
-                paths = write_demo(Path(args.output).parent)
-                print(f"No stored scan for {Path(args.repo).resolve()}; wrote demo report: {paths['html']}")
-                return 0
-            date = str(payload.get("date") or "latest")
-            verdicts = list(payload.get("verdicts") or [])
-            funnel = payload
-        output = Path(args.output)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(render_html(verdicts, date=date, funnel=funnel))
-        print(f"Wrote HTML report: {output}")
-        return 0
-    if args.command == "lab":
-        return run_lab(args.tool, args.url, dry_run=args.dry_run)
-    if args.command == "implement":
-        from .implement import discard, keep_changes, run_implement
-
-        reporter = None
-        if getattr(args, "progress", False):
-            from .progress import StderrReporter
-
-            reporter = StderrReporter()
-        result = run_implement(
-            repo=Path(args.repo),
-            tool_name=args.tool,
-            instruction=args.instruction,
-            dry_run=args.dry_run,
-            test_command=args.test_command,
-            reporter=reporter,
-        )
-        kept: list[str] = []
-        # Always tear the isolated workspace down. The only path that retains
-        # files is keep+passed, and keep_changes() copies them out *then*
-        # discards. Any other combination (keep but failed/error/prepared, or
-        # no --keep at all) must still discard so temp dirs never leak.
-        if args.keep and result.status == "passed":
-            kept = keep_changes(result)
-        else:
-            discard(result)
-        if args.json:
-            payload = result.to_dict()
-            payload["kept_files"] = kept
-            print(json.dumps(payload, indent=2))
-        else:
-            print(f"IMPLEMENT {result.tool_name}")
-            print(f"status: {result.status}")
-            print(f"summary: {result.summary}")
-            print(f"what you get: {result.what_you_get}")
-            print(f"test command: {result.test_command}")
-            print(f"files changed: {', '.join(result.files_changed) or 'none'}")
-            if result.error:
-                print(f"error: {result.error}")
-            if kept:
-                print(f"kept (copied into working tree): {', '.join(kept)}")
-            elif not args.keep and result.status == "passed":
-                print("changes discarded (pass --keep to copy them into your repo)")
-        return 0 if result.status in {"passed", "prepared"} else 1
-    if args.command == "evaluate":
-        stack = detect_stack(Path(args.repo))
-        evaluation = evaluate_url(args.url, stack)
-        tool_id = save_evaluation(evaluation)
-        manifest = evaluation.permission_manifest or classify_mcp_capabilities(
-            args.url,
-            tool_name=evaluation.tool_name,
-            source_url=args.url,
-        )
-        save_permission_manifest(tool_id, manifest)
-        policy = load_policy(Path(args.repo))
-        decision = evaluate_policy(evaluation, manifest, policy=policy)
-        save_policy_findings(tool_id, decision.findings)
-        if args.json:
-            print(
-                json.dumps(
-                    {
-                        "evaluation": evaluation.model_dump(),
-                        "policy": decision.model_dump(),
-                    },
-                    indent=2,
-                )
-            )
-        else:
-            caps = " ".join(f"{k}={v}" for k, v in sorted(manifest.capabilities.items()) if v != "unlikely")
-            print(f"EVALUATE {evaluation.tool_name}")
-            print(f"category: {evaluation.category}")
-            print(f"fit: {evaluation.fit}")
-            print(f"risk: {evaluation.risk}")
-            print(f"capabilities: {caps or 'none detected'}")
-            print(f"policy: {decision.summary}")
-            print(f"next: frontier-scout trial {evaluation.tool_name} --url {evaluation.source_url} --dry-run")
-        return 0
-    if args.command == "dossier":
-        for flag_name, override in (
-            ("dismiss", "suppress"),
-            ("mute", "suppress"),
-            ("pin", "pin"),
-        ):
-            if getattr(args, flag_name, False):
-                save_pack_override("*", args.target, override, reason=f"dossier --{flag_name}", expires_at=args.snooze)
-        payload = build_dossier(args.target, repo=Path(args.repo))
-        if args.json:
-            print(json.dumps(payload, indent=2))
-        else:
-            print(f"DOSSIER {payload['tool_name']}")
-            print(f"verdict: {str(payload['verdict']).upper()}")
-            print(f"fit: {payload['fit']}")
-            print(f"risk: {payload['risk']}")
-            print(f"policy: {payload['policy_summary']}")
-            print("unknowns:")
-            for gap in payload.get("unknowns") or []:
-                print(f"- {gap}")
-            print(f"next: {payload['next_safe_step']}")
-            print(f"receipt: {payload['receipt_path']}")
-        return 0
-    if args.command == "packs":
-        save_builtin_packs_if_empty()
-        # Claim honesty: only Claude Code export is built today. Hard-gate copilot/cursor
-        # with a clear nonzero error rather than emitting Claude config under their name.
-        if args.packs_command in ("candidates", "sanction", "unsanction", "export", "proof"):
-            if getattr(args, "client", "claude-code") != "claude-code":
-                print(
-                    "Not implemented: Frontier Scout currently exports Claude Code "
-                    "managed-config fragments only. Copilot/Cursor export is roadmap.",
-                    file=sys.stderr,
-                )
-                return 2
-        if args.packs_command == "list":
-            for pack in list_packs():
-                definition = pack["definition"]
-                print(f"{pack['slug']}: {pack['display_name']} ({len(definition.get('seed_repos') or [])} seeds)")
-            return 0
-        if args.packs_command == "show":
-            pack = get_pack(args.slug)
-            if not pack:
-                parser.error(f"unknown pack: {args.slug}")
-            definition = pack["definition"]
-            print(f"{definition['slug']}: {definition['display_name']}")
-            print(definition.get("description") or "")
-            print("seeds:")
-            for repo_name in definition.get("seed_repos") or []:
-                print(f"- {repo_name}")
-            return 0
-        if args.packs_command == "refresh":
-            count = 0
-            for pack in list_packs():
-                from .packs import ScoutPack
-
-                pack_model = ScoutPack(**pack["definition"])
-                for candidate in candidate_rows_for_pack(pack_model, discover=args.discover):
-                    save_pack_candidate(candidate)
-                    count += 1
-            suffix = " with live discovery requested" if args.discover else " from seed definitions"
-            print(f"Refreshed {count} pack candidates{suffix}.")
-            return 0
-        if args.packs_command == "candidates":
-            if args.repo is None:
-                # Legacy: list stored candidates filtered by --pack.
-                stored = list_pack_candidates(args.pack)
-                if args.json:
-                    print(json.dumps(stored, indent=2))
-                else:
-                    for candidate in stored:
-                        print(f"{candidate['pack_slug']} {candidate['state']} {candidate['tool_name']}")
-                return 0
-            from . import pack_flow
-            from .safety_summary import build_safety_summary
-
-            pack_slug = args.pack or "mcp"
-            ranked = pack_flow.get_candidates(
-                args.repo,
-                client=args.client,
-                discover=args.discover,
-                pack_slug=pack_slug,
-            )
-            rows = []
-            for candidate in ranked:
-                summary = build_safety_summary(candidate)
-                rows.append(
-                    {
-                        "tool_name": candidate.tool_name,
-                        "repo_fit": candidate.repo_fit,
-                        "category": candidate.category,
-                        "transport": (candidate.server_meta or {}).get("transport"),
-                        "verdict": summary["verdict"],
-                        "verdict_label": summary["verdict_label"],
-                        "readiness": summary["readiness"],
-                        "fit": summary["fit"],
-                        "risk": summary["risk"],
-                        "source_url": summary["source_url"],
-                        "requires_review": summary["requires_review"],
-                        "description": summary["description"],  # already secret-redacted
-                    }
-                )
-            if args.json:
-                print(json.dumps(rows, indent=2))
-            else:
-                print(f"Repo-ranked {pack_slug} servers for {args.client} ({len(rows)}):")
-                for row in rows:
-                    flag = "  [needs review — static only]" if row["requires_review"] else ""
-                    print(f"- {row['tool_name']}  fit={row['repo_fit']} risk={row['risk']} {row['transport']}{flag}")
-                print("\nStatic analysis only; no MCP server was executed.")
-            return 0
-        if args.packs_command == "sanction":
-            from . import pack_flow
-
-            result = pack_flow.sanction_server(
-                args.server,
-                repo=args.repo,
-                client=args.client,
-                pack_slug=args.pack or "mcp",
-                approver=args.approver,
-                reason=args.reason,
-                acknowledge_risk=args.acknowledge_risk,
-            )
-            if args.json:
-                print(json.dumps(result, indent=2))
-            if not result["ok"]:
-                if not args.json:
-                    if result.get("blocked"):
-                        from .safety_summary import render_safety_summary
-
-                        print(render_safety_summary(result["summary"]))
-                        print("\n" + result["message"])
-                    else:
-                        print(result.get("error", "sanction failed"))
-                return 1
-            if not args.json:
-                from .safety_summary import pack_verdict_label
-
-                vlabel = pack_verdict_label(result["verdict"])
-                print(f"Sanctioned {args.server} (static verdict: {vlabel}) for {args.client}.")
-            return 0
-        if args.packs_command == "unsanction":
-            from . import pack_flow
-
-            result = pack_flow.unsanction_server(
-                args.server, client=args.client, pack_slug=args.pack or "mcp", reason=args.reason
-            )
-            if args.json:
-                print(json.dumps(result, indent=2))
-            else:
-                print(f"Unsanctioned {args.server} for {args.client}.")
-            return 0
-        if args.packs_command == "export":
-            from . import pack_flow
-
-            result = pack_flow.export_config(client=args.client, pack_slug=args.pack or "mcp", target_dir=args.target)
-            if args.json:
-                print(json.dumps(result, indent=2))
-            else:
-                print(f"Exported {result['sanctioned_count']} sanctioned server(s) for {args.client}:")
-                print(f"  managed: {result['paths']['managed']}")
-                print(f"  project: {result['paths']['project']}")
-                print(
-                    "Generated Claude Code managed-config fragment for admin review; "
-                    "this is a static export, not runtime enforcement."
-                )
-            return 0
-        if args.packs_command == "proof":
-            from . import pack_flow
-            from .proof_variants import record_preference
-
-            if args.keep:
-                record_preference(args.keep)
-                if args.json:
-                    print(json.dumps({"ok": True, "kept": args.keep}, indent=2))
-                else:
-                    print(f"Recorded proof-variant preference: {args.keep}")
-                return 0
-            result = pack_flow.server_proof(
-                args.server, repo=args.repo, client=args.client, pack_slug=args.pack or "mcp"
-            )
-            if not result["ok"]:
-                if args.json:
-                    print(json.dumps(result, indent=2))
-                else:
-                    print(result["error"])
-                return 1
-            if args.json:
-                print(json.dumps(result, indent=2))
-            else:
-                for name, text in result["variants"].items():
-                    print(f"\n===== proof variant: {name} =====")
-                    print(text)
-                print("\nRecord your kept variant: frontier-scout packs proof <server> --keep <variant>")
-            return 0
-        parser.error("packs requires a subcommand")
-        return 2
-    if args.command == "stats":
-        from . import telemetry
-
-        summary = telemetry.summarize()
-        if args.json:
-            print(json.dumps(summary, indent=2))
-        else:
-            if not summary["enabled"]:
-                print("Telemetry is OFF (opt in with FRONTIER_SCOUT_TELEMETRY=1).")
-            print(f"Sanctioned-pack funnel ({summary['total_events']} events):")
-            for name, count in summary["by_event"].items():
-                print(f"  {name}: {count}")
-        return 0
-    if args.command == "deps":
-        if args.deps_command == "scan":
-            payload = run_dependency_scan(Path(args.repo))
-            if args.json:
-                print(json.dumps(payload, indent=2))
-            else:
-                print(f"Dependency scan: {len(payload['findings'])} findings")
-                for finding in payload["findings"]:
-                    print(
-                        f"{finding['verdict'].upper()} {finding['package_name']} "
-                        f"{finding['from_version']} -> {finding['to_version']} "
-                        f"({finding['classification']})"
-                    )
-            return 0
-        if args.deps_command == "trial":
-            result = run_dependency_trial(
-                args.package,
-                from_version=args.from_version,
-                to_version=args.to_version,
-                repo=Path(args.repo),
-                dry_run=args.dry_run,
-            )
-            if args.json:
-                print(json.dumps(result, indent=2))
-            else:
-                print(f"Dependency trial: {result['tool_name']} {result['from_version']} -> {result['to_version']}")
-                print(f"status: {result['lab_result']['status']}")
-                print(f"receipt: {result['receipt_path']}")
-            return 0
-        parser.error("deps requires a subcommand")
-        return 2
-    if args.command == "trial":
-        stack = detect_stack(Path(args.repo))
-        dry_run = args.dry_run or args.sandbox == "report-only"
-        result = run_trial(args.tool, url=args.url, dry_run=dry_run, stack=stack, repo=args.repo)
-        result["sandbox"] = args.sandbox or ("report-only" if dry_run else "local")
-        if args.json:
-            print(json.dumps(result, indent=2))
-        else:
-            lab_result = result.get("lab_result") or {}
-            print(f"TRIAL {result['tool_name']}")
-            print(f"runtime: {lab_result.get('runtime', 'unknown')}")
-            print(f"lab: {lab_result.get('status', 'unknown')}")
-            print(f"cost: ${float(lab_result.get('cost_usd') or 0):.3f}")
-            print(f"policy: {result['policy_summary']}")
-            print(f"receipt: {result['receipt_path']}")
-        return 0
-    if args.command == "guard":
-        findings = run_guard(Path(args.repo), strict=args.strict)
-        print(format_findings(findings, output_format=args.format))
-        if args.notify:
-            # Non-blocking notifier: surface drift without failing the build (the soft
-            # data-gathering surface the research prefers over a hard gate).
-            return 0
-        if any(f.severity == "high" or (args.strict and f.severity == "medium") for f in findings):
-            return 1
-        return 0
-    if args.command == "policy":
-        if args.policy_command == "init":
-            if args.home_only:
-                path = init_home() / "policy.toml"
-            else:
-                path = Path(args.repo) / ".frontier-scout" / "policy.toml"
-                path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(default_policy_toml())
-            print(f"Wrote policy: {path}")
-            return 0
-        parser.error("policy requires a subcommand")
-        return 2
     if args.command == "agent":
-        # Static, advisory AI-agent adoption firewall + audit trail. Lazy-import
-        # the package so the CLI stays cheap to load. Nothing here executes an
-        # agent task, runs an MCP server, or reaches the network.
-        # Alias the agent-firewall helpers so they never shadow the module-level
-        # ``load_policy`` (from ``.policy``) the packs block above relies on —
-        # a function-local import of that name would make it a local everywhere.
+        # Lazy-import the agent-firewall package so the CLI stays cheap to load.
+        # Nothing here executes an agent task, runs an MCP server, or reaches the
+        # network (the only subprocess, in verify-pr, is a read-only ``git diff``).
+        from .agent_firewall.compile import compile_claude as agent_compile_claude
         from .agent_firewall.decision import evaluate_task as agent_evaluate_task
         from .agent_firewall.policy import default_policy_path as agent_default_policy_path
         from .agent_firewall.policy import explain_policy as agent_explain_policy
@@ -1207,7 +157,6 @@ def main(argv: list[str] | None = None) -> int:
         from .agent_firewall.receipts import list_receipts as agent_list_receipts
         from .agent_firewall.receipts import show_receipt as agent_show_receipt
         from .agent_firewall.receipts import write_receipt as agent_write_receipt
-        from .agent_firewall.compile import compile_claude as agent_compile_claude
         from .agent_firewall.scan import scan_repo as agent_scan_repo
         from .agent_firewall.verify import verify_pr as agent_verify_pr
         from .exporters.policy_snippets import export_policy_snippets as agent_export_snippets
@@ -1237,7 +186,7 @@ def main(argv: list[str] | None = None) -> int:
                     return 0
                 policy = agent_generate_policy(agent_scan_repo(args.repo))
                 agent_save_policy(policy, path)
-                print(f"Wrote conservative advisory policy: {path}")
+                print(f"Wrote conservative policy: {path}")
                 return 0
             if pverb == "explain":
                 policy_path = args.policy or agent_default_policy_path(args.repo)
@@ -1261,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 for warning in warnings:
                     print(f"warning: {warning}")
-                print(f"verdict: {decision.verdict} (advisory — Frontier Scout does not enforce this)")
+                print(f"verdict: {decision.verdict} (static pre-check — see `agent compile` to enforce)")
                 print(decision.summary)
                 for reason in decision.reasons:
                     print(f"  [{reason.severity}] {reason.rule_id}: {reason.message}")
@@ -1292,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
                 if args.json:
                     print(json.dumps(receipt, indent=2))
                 else:
-                    print(f"Receipt {receipt.get('receipt_id')} (static policy assessment)")
+                    print(f"Receipt {receipt.get('receipt_id')} ({receipt.get('kind')})")
                     print(f"  verdict:   {receipt.get('verdict')}")
                     print(f"  timestamp: {receipt.get('timestamp')}")
                     print(f"  task:      {receipt.get('task_summary')}")
@@ -1361,5 +310,6 @@ def main(argv: list[str] | None = None) -> int:
             "(scan | policy | check | receipts | export | compile | verify-pr)"
         )
         return 2
+
     parser.error(f"unknown command: {args.command}")
     return 2

@@ -1,40 +1,43 @@
-"""Tests for the doctor self-diagnostics."""
+"""Tests for the doctor agent-readiness checks."""
 
 from __future__ import annotations
 
 import json
 
+from frontier_scout.agent_firewall.compile import compile_claude
+from frontier_scout.agent_firewall.models import AgentPolicy
 from frontier_scout.doctor import render_json, render_text, run_doctor
 
 
-def test_doctor_returns_checks(tmp_path, monkeypatch):
-    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
-    checks = run_doctor()
-    # Must include Python, Textual, tree-sitter, SQLite, schedules.
+def test_doctor_flags_uncompiled_repo(tmp_path):
+    checks = run_doctor(str(tmp_path))
     names = {c.name for c in checks}
-    for required in ("Python", "Textual", "home directory", "local SQLite", "schedules.json"):
-        assert required in names
+    assert {"policy", "lock", "settings", "hooks"} <= names
+    # An empty repo is not compiled — policy/lock/settings/hooks should fail.
+    by_name = {c.name: c for c in checks}
+    assert by_name["lock"].status == "fail"
+    assert by_name["hooks"].status == "fail"
 
 
-def test_doctor_text_renders(tmp_path, monkeypatch):
-    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
-    text = render_text(run_doctor())
-    assert "Frontier Scout · self-check" in text
+def test_doctor_passes_after_compile(tmp_path):
+    compile_claude(AgentPolicy(allowed_file_globs=["src/**"]), repo=str(tmp_path))
+    checks = run_doctor(str(tmp_path))
+    by_name = {c.name: c for c in checks}
+    assert by_name["lock"].status == "pass"
+    assert by_name["settings"].status == "pass"
+    assert by_name["hooks"].status == "pass"
+    assert by_name["policy-lock-match"].status == "pass"
 
 
-def test_doctor_json_renders(tmp_path, monkeypatch):
-    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
-    payload = json.loads(render_json(run_doctor()))
-    assert "checks" in payload
-    assert "summary" in payload
-    assert payload["summary"]["ok"] >= 1
+def test_doctor_detects_policy_drift(tmp_path):
+    compile_claude(AgentPolicy(allowed_file_globs=["src/**"]), repo=str(tmp_path))
+    (tmp_path / "frontier-scout.policy.json").write_text('{"version": 1, "allowed_tools": ["X"]}')
+    by_name = {c.name: c for c in run_doctor(str(tmp_path))}
+    assert by_name["policy-lock-match"].status == "fail"
 
 
-def test_doctor_passes_baseline(tmp_path, monkeypatch):
-    monkeypatch.setenv("FRONTIER_SCOUT_HOME", str(tmp_path / "home"))
-    checks = run_doctor()
-    # Critical baseline: Python and Textual must be ok.
-    python_check = next(c for c in checks if c.name == "Python")
-    textual_check = next(c for c in checks if c.name == "Textual")
-    assert python_check.status == "ok"
-    assert textual_check.status == "ok"
+def test_doctor_text_and_json_render(tmp_path):
+    checks = run_doctor(str(tmp_path))
+    assert "policy:" in render_text(checks)
+    payload = json.loads(render_json(checks))
+    assert isinstance(payload, list) and payload[0]["name"] == "policy"
