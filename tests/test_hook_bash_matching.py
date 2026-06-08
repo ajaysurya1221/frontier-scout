@@ -2,6 +2,9 @@
 """Bash policy matching must key off the executed command STRUCTURE, not raw
 substring over the whole command string. A blocked token inside a quoted message
 or argument must not trigger a deny."""
+import json
+from pathlib import Path
+
 from frontier_scout.agent_firewall import hook_runtime as hr
 
 POLICY = {
@@ -91,3 +94,39 @@ def test_unparseable_command_fails_closed_to_ask():
 
 def test_unknown_command_fails_closed_to_ask():
     assert _d("kubectl delete pod x") == "ask"
+
+
+# --- lock the structural matcher into source + generated guard ------------------
+
+def test_source_and_generated_guard_use_structural_matcher(tmp_path):
+    from frontier_scout.agent_firewall.compile import compile_claude
+    from frontier_scout.agent_firewall.policy import load_policy
+
+    src = Path(hr.__file__).read_text()
+    for marker in ("import shlex", "_resolve_units", "_blocked_hit", "_split_segments"):
+        assert marker in src, f"source hook_runtime is missing the structural matcher: {marker}"
+    # The raw-substring deny idiom must not return (the false-deny regressions above are
+    # the behavioral guard; this is the source-level tripwire).
+    assert "command.lower()" not in src
+
+    repo = Path(__file__).resolve().parent.parent
+    policy, _ = load_policy(str(repo / "frontier-scout.policy.json"))
+    compile_claude(policy, repo=str(tmp_path), out_dir=str(tmp_path))
+    guard = (tmp_path / ".claude" / "hooks" / "_fs_guard.py").read_text()
+    for marker in ("import shlex", "_resolve_units", "_blocked_hit"):
+        assert marker in guard, f"generated _fs_guard is missing the structural matcher: {marker}"
+
+
+def test_receipt_hashes_full_raw_tool_input_even_when_decision_uses_structure(tmp_path):
+    # The decision keys off parsed structure (so this commit is ALLOWED), but the
+    # receipt's tool_input_hash still covers the FULL raw tool_input — including the
+    # quoted "rm -rf" message text that structural matching deliberately ignored.
+    tool_input = {"command": 'git commit -m "mention rm -rf in the message"'}
+    out = hr.handle_pre_tool_use(
+        {"tool_name": "Bash", "tool_input": tool_input},
+        policy=POLICY, policy_hash="h", repo=str(tmp_path),
+    )
+    assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
+    receipt_file = next((Path(tmp_path) / ".frontier-scout" / "receipts").glob("*.json"))
+    rec = json.loads(receipt_file.read_text())
+    assert rec["tool_input_hash"] == hr._input_hash(tool_input)

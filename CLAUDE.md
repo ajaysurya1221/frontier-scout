@@ -72,6 +72,11 @@ The CI verify workflow runs **`--advisory`** (warn-only) while onboarding.
   escalate to approval; a non-empty protected diff with no receipts fails the PR.
 - **Control evidence, not a guarantee.** Local hooks are not a complete enforcement
   boundary — they are deliberately paired with the CI diff verifier. Never overclaim.
+- **Don't rely on optional runtime conveniences.** Frontier Scout does not depend on hook
+  input-rewriting or mid-session settings reload — even where current Claude Code supports
+  `updatedInput` in hook decisions and live reload of most permissions/hooks settings.
+  Correctness comes from deterministic compile output, receipts, and CI verification, not
+  from those conveniences (so don't write that Claude Code "cannot" do them).
 - **Redacted.** Every persisted/emitted string runs through `scrub_secrets`.
 - **Claude Code first.** Codex/Cursor/Copilot are roadmap, not built.
 

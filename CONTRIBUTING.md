@@ -31,6 +31,23 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
+## Implementation-session privacy (optional)
+
+If you drive changes with an AI coding agent, you can disable non-essential traffic and
+feedback uploads for the session via environment variables. These are **recommendations**,
+not committed defaults — putting them in `.claude/settings.json` would force them on every
+user and break the dogfood compile-golden test, so they live here:
+
+```bash
+export DISABLE_TELEMETRY=1
+export DISABLE_ERROR_REPORTING=1
+export DISABLE_FEEDBACK_COMMAND=1
+export CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+```
+
+Record the resulting state in the PR's **Implementer provenance** section.
+
 ## Before opening a PR
 
 ```bash
