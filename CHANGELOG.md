@@ -24,6 +24,10 @@ offline; the only runtime dependency is `pydantic`.
 - Action receipts: the native hook writes redacted `agent-action` receipts (tool, decision,
   `policy_hash`, realized outcome) to `.frontier-scout/receipts/`.
 - `examples/sample-repo/` demo.
+- **The repo dogfoods its own policy:** `frontier-scout.policy.json` + `policy.lock.json` +
+  `.claude/settings.json` + `.claude/hooks/` are committed, so Claude Code sessions here run
+  under the compiled controls; the CI verify workflow runs `--advisory` (installs from source)
+  while onboarding. Covered by `tests/test_dogfood_policy.py`.
 
 **Removed (off-strategy for the compiler+verifier wedge)**
 - The adoption radar (`scout`/`evaluate`/`dossier`/`lab`/`trial`/`guard`/`report`), the
@@ -39,6 +43,9 @@ offline; the only runtime dependency is `pydantic`.
   advisory markdown snippet still ships (see also `agent export agents-md|pr-checklist`).
 - `doctor` is a minimal, offline agent-readiness check (policy/lock/settings/hooks/drift).
 - mypy `--strict` now gates `agent_firewall` + `exporters` (was `platform/`).
+- Docs pruned to the product: removed stale `docs/` (architecture/evals/governance/
+  release-metadata/deployment/reference-stack/security-model + ADRs 0002–0008); rewrote root
+  `SECURITY.md` and `CONTRIBUTING.md`.
 
 ## Unreleased
 
