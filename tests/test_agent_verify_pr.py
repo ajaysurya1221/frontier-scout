@@ -1,10 +1,13 @@
 # tests/test_agent_verify_pr.py
+import os
 import subprocess
+
+import pytest
 
 from frontier_scout.agent_firewall.compile import compile_claude
 from frontier_scout.agent_firewall.lock import read_lock
 from frontier_scout.agent_firewall.models import AgentPolicy
-from frontier_scout.agent_firewall.verify import verify_pr
+from frontier_scout.agent_firewall.verify import GitDiffError, git_diff_names, verify_pr
 
 
 def _policy():
@@ -105,6 +108,64 @@ def test_annotations_use_github_format(tmp_path):
     repo, ph = _setup(tmp_path)
     res = verify_pr(repo, changed_files=["app/migrations/0001.py"], receipts=[])
     assert any(a.startswith("::error") for a in res.annotations)
+
+
+_GIT_ENV = {
+    "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@t", "PATH": os.environ.get("PATH", ""),
+}
+
+
+def _git_repo(tmp_path):
+    """Compile a policy AND make the dir a real one-commit git repo; return (repo, HEAD)."""
+    _setup(tmp_path)
+    repo = str(tmp_path)
+
+    def git(*a):
+        subprocess.run(["git", "-C", repo, *a], check=True, capture_output=True, env=_GIT_ENV)
+
+    git("init", "-q")
+    git("add", "-A")
+    git("commit", "-q", "-m", "init")
+    head = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], capture_output=True,
+                          text=True, env=_GIT_ENV).stdout.strip()
+    return repo, head
+
+
+# --- fail-closed when git diff cannot be computed (Codex P0) ----------------------
+
+def test_git_diff_names_raises_on_bad_base(tmp_path):
+    repo, _ = _git_repo(tmp_path)
+    with pytest.raises(GitDiffError):
+        git_diff_names(repo, "definitely-not-a-ref-0000")
+
+
+def test_invalid_base_enforcing_fails_unverified(tmp_path):
+    repo, _ = _git_repo(tmp_path)
+    res = verify_pr(repo, base="definitely-not-a-ref-0000")  # enforcing (advisory=False)
+    assert res.ok is False
+    assert res.unverified is True
+    assert "PASS" not in res.summary and "UNVERIFIED" in res.summary
+    assert any(("diff" in v.lower() or "base" in v.lower()) for v in res.violations)
+    assert any(a.startswith("::error") for a in res.annotations)
+
+
+def test_invalid_base_advisory_is_inconclusive_not_pass(tmp_path):
+    repo, _ = _git_repo(tmp_path)
+    res = verify_pr(repo, base="definitely-not-a-ref-0000", advisory=True)
+    assert res.ok is True  # advisory is non-blocking
+    assert res.unverified is True
+    assert "UNVERIFIED" in res.summary and "PASS" not in res.summary
+    assert any(a.startswith("::warning") for a in res.annotations)
+
+
+def test_successful_empty_diff_passes(tmp_path):
+    repo, head = _git_repo(tmp_path)
+    res = verify_pr(repo, base=head, receipts=[])  # base == HEAD -> empty diff (valid)
+    assert res.ok is True
+    assert res.unverified is False
+    assert res.checked_files == 0
+    assert res.summary.startswith("PASS")
 
 
 def test_git_diff_names_reads_real_repo(tmp_path):

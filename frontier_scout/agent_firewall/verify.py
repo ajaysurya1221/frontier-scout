@@ -19,11 +19,24 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from outputs._text import scrub_secrets
+
 from .hook_runtime import _path_matches_glob
 from .lock import default_lock_path, policy_hash, read_lock
 from .policy import default_policy_path, load_policy
 
-__all__ = ["verify_pr", "git_diff_names", "load_receipts", "VerifyResult"]
+__all__ = ["verify_pr", "git_diff_names", "load_receipts", "VerifyResult", "GitDiffError"]
+
+
+class GitDiffError(Exception):
+    """Raised when the read-only ``git diff`` could not be computed (invalid base ref,
+    unfetched history, git error). A failed diff is NOT an empty diff — the verifier
+    treats it as a fail-closed violation, never as "0 changed files"."""
+
+    def __init__(self, returncode: int, stderr: str) -> None:
+        self.returncode = returncode
+        self.stderr = stderr or ""
+        super().__init__(f"git diff failed (exit {returncode})")
 
 
 class VerifyResult(BaseModel):
@@ -34,20 +47,25 @@ class VerifyResult(BaseModel):
     checked_files: int = 0
     receipt_count: int = 0
     summary: str = ""
+    unverified: bool = False
 
 
 def git_diff_names(repo: str, base: str) -> list[str]:
-    """Read-only ``git diff --name-only <base>...HEAD``; ``[]`` on any failure."""
+    """Read-only ``git diff --name-only <base>...HEAD`` → changed paths.
+
+    Returns ``[]`` for a *successful* empty diff (a valid "no changed files" result),
+    but **raises** :class:`GitDiffError` on any failure (invalid base, unfetched
+    history, git error). A failed diff must never be mistaken for an empty one."""
 
     try:
         proc = subprocess.run(  # nosec B603 B607 — fixed argv, no shell, read-only git
             ["git", "-C", repo, "diff", "--name-only", f"{base}...HEAD"],
             capture_output=True, text=True, check=False, timeout=30,
         )
-    except (OSError, subprocess.SubprocessError):
-        return []
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise GitDiffError(-1, str(exc)) from exc
     if proc.returncode != 0:
-        return []
+        raise GitDiffError(proc.returncode, (proc.stderr or "").strip())
     return [line.strip() for line in (proc.stdout or "").splitlines() if line.strip()]
 
 
@@ -109,8 +127,16 @@ def verify_pr(
                 "the lock. Re-run `agent compile`."
             )
 
+    diff_error: GitDiffError | None = None
     if changed_files is None:
-        changed_files = git_diff_names(repo, base) if base else []
+        if base:
+            try:
+                changed_files = git_diff_names(repo, base)
+            except GitDiffError as exc:
+                diff_error = exc
+                changed_files = []
+        else:
+            changed_files = []
     if receipts is None:
         receipts = load_receipts(repo, receipts_glob)
 
@@ -140,17 +166,37 @@ def verify_pr(
             warnings.append(msg)
             annotations.append(f"::warning file={path}::{msg}")
 
+    if diff_error is not None:
+        # A failed diff is fail-closed evidence, not "0 changed files".
+        msg = (
+            f"Could not compute the PR diff against base '{base}' in repo '{repo}' "
+            f"(git exited {diff_error.returncode}): {scrub_secrets(diff_error.stderr)[:300]}. "
+            "Ensure the base ref/history is fetched (the generated workflow uses fetch-depth: 0)."
+        )
+        violations.append(msg)
+        annotations.append(f"::error::{msg}")
+
     if advisory:
         warnings = [*warnings, *violations]
         violations = []
         annotations = [a.replace("::error", "::warning") for a in annotations]
 
     ok = not violations
-    summary = (
-        f"{'PASS' if ok else 'FAIL'}: {len(changed_files)} changed file(s), "
-        f"{len(receipts)} receipt(s), {len(violations)} violation(s), {len(warnings)} warning(s)."
-    )
+    if diff_error is not None:
+        # A diff failure is inconclusive — never report PASS, in either mode.
+        tail = ("not blocked (advisory) but NOT verified — fix the base ref/history."
+                if ok else "blocking (enforcing).")
+        summary = (
+            f"UNVERIFIED: could not compute the PR diff (base '{base}'); "
+            f"{len(receipts)} receipt(s). {tail}"
+        )
+    else:
+        summary = (
+            f"{'PASS' if ok else 'FAIL'}: {len(changed_files)} changed file(s), "
+            f"{len(receipts)} receipt(s), {len(violations)} violation(s), {len(warnings)} warning(s)."
+        )
     return VerifyResult(
         ok=ok, violations=violations, warnings=warnings, annotations=annotations,
         checked_files=len(changed_files), receipt_count=len(receipts), summary=summary,
+        unverified=diff_error is not None,
     )
