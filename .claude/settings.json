@@ -1,0 +1,123 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git branch:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(git push:*)",
+      "Bash(git stash:*)",
+      "Bash(git restore:*)",
+      "Bash(git rebase:*)",
+      "Bash(git merge:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(pytest:*)",
+      "Bash(ruff:*)",
+      "Bash(mypy:*)",
+      "Bash(black:*)",
+      "Bash(make:*)",
+      "Bash(coverage:*)",
+      "Bash(bandit:*)",
+      "Bash(detect-secrets:*)",
+      "Bash(pip install -e:*)",
+      "Bash(python -m:*)",
+      "Bash(python3 -m:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh run:*)",
+      "Bash(gh api:*)",
+      "Edit(frontier_scout/**)",
+      "Write(frontier_scout/**)",
+      "Edit(tests/**)",
+      "Write(tests/**)",
+      "Edit(examples/**)",
+      "Write(examples/**)",
+      "Edit(docs/**)",
+      "Write(docs/**)",
+      "Edit(**/*.md)",
+      "Write(**/*.md)",
+      "Edit(*.toml)",
+      "Write(*.toml)",
+      "Edit(*.cfg)",
+      "Write(*.cfg)",
+      "Edit(*.ini)",
+      "Write(*.ini)",
+      "Edit(*.txt)",
+      "Write(*.txt)",
+      "Edit(Makefile)",
+      "Write(Makefile)",
+      "Edit(requirements.txt)",
+      "Write(requirements.txt)",
+      "mcp__gitnexus__*"
+    ],
+    "deny": [
+      "Bash(rm -rf:*)",
+      "Bash(sudo:*)",
+      "Bash(chmod 777:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(curl | sh:*)",
+      "Bash(curl | bash:*)",
+      "Bash(wget | sh:*)",
+      "Bash(mkfs:*)",
+      "Bash(dd if=:*)",
+      "Bash(> /dev/sda:*)",
+      "Bash(:(){:*)"
+    ],
+    "ask": [
+      "Edit(.github/workflows/**)",
+      "Write(.github/workflows/**)",
+      "Edit(**/.env)",
+      "Write(**/.env)",
+      "Edit(**/.env.*)",
+      "Write(**/.env.*)",
+      "Edit(**/*.pem)",
+      "Write(**/*.pem)",
+      "Edit(**/*.key)",
+      "Write(**/*.key)",
+      "Edit(**/secrets/**)",
+      "Write(**/secrets/**)",
+      "Edit(frontier-scout.policy.json)",
+      "Write(frontier-scout.policy.json)",
+      "Edit(policy.lock.json)",
+      "Write(policy.lock.json)",
+      "Edit(.claude/hooks/**)",
+      "Write(.claude/hooks/**)",
+      "Edit(.claude/settings.json)",
+      "Write(.claude/settings.json)",
+      "WebFetch"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/pre_tool_use.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/post_tool_use.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

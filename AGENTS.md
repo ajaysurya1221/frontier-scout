@@ -55,6 +55,19 @@ frontier-scout agent verify-pr --repo . --base origin/main --receipts "frontier-
 Everything is keyless and offline. The only subprocess is a read-only `git diff` (verify-pr)
 / `git rev-parse` (receipt metadata).
 
+## This repo dogfoods its own policy
+
+Frontier Scout governs **itself**: `frontier-scout.policy.json` + `policy.lock.json` +
+`.claude/settings.json` + `.claude/hooks/` are committed, so Claude Code sessions in this
+repo are gated by the compiled policy (allow/deny/ask) and write receipts to the gitignored
+`.frontier-scout/receipts/`. The policy allows the normal dev surface (edits under
+`frontier_scout/**`/`tests/**`/`docs/**`, `pytest`/`ruff`/`mypy`/`make`/`git`/`gh`, the
+`gitnexus` MCP) and approval-gates CI config, secrets, and the guardrails themselves
+(policy/lock/hooks). To change it: edit `frontier-scout.policy.json`, re-run
+`frontier-scout agent compile --repo . --out .`, and commit. The CI verify workflow
+(`.github/workflows/frontier-scout-verify.yml`) runs in **`--advisory`** mode (warns, never
+blocks) while onboarding; drop `--advisory` to make it a hard gate.
+
 ## Test commands
 
 - Full suite: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q`

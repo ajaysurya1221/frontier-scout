@@ -1,0 +1,9 @@
+{
+  "allowManagedMcpServersOnly": true,
+  "allowedMcpServers": [
+    {
+      "serverName": "gitnexus"
+    }
+  ],
+  "deniedMcpServers": []
+}

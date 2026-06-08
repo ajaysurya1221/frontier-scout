@@ -51,6 +51,15 @@ receipt writers, copied verbatim into a target repo's `_fs_guard.py`) · `compil
 `policy_snippets`), shared `mcp_audit` (capability taxonomy), `policy.PolicyFinding`/`Severity`,
 `safety_summary.RISKY_FLAGS`, and `outputs/_text.scrub_secrets` (redaction).
 
+## This repo dogfoods its own policy
+
+`frontier-scout.policy.json` + `policy.lock.json` + `.claude/settings.json` + `.claude/hooks/`
+are committed, so sessions here run under the compiled policy (allow/deny/ask + receipts to
+the gitignored `.frontier-scout/receipts/`). Normal dev is allowed; CI config, secrets, and
+the guardrails themselves (policy/lock/hooks) are approval-gated; the `gitnexus` MCP is
+allowlisted (other MCP servers are denied). Change it via edit → `agent compile` → commit.
+The CI verify workflow runs **`--advisory`** (warn-only) while onboarding.
+
 ## Honesty invariants (load-bearing — keep copy *and* behavior aligned)
 
 - **Emit, don't enforce.** Frontier Scout writes native config; **Claude Code** (hooks +
