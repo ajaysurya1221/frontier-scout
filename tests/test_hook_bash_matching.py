@@ -34,10 +34,11 @@ def test_env_wrapper_rm_rf_denied():
     assert _d("env FOO=bar rm -rf build/") == "deny"
 
 
-def test_bash_dash_c_rm_rf_denied_or_asked():
-    # A shell -c wrapper carrying a destructive inner command must not be allowed.
-    assert _d('bash -lc "rm -rf build/"') in {"deny", "ask"}
-    assert _d('sh -c "rm -rf build/"') in {"deny", "ask"}
+def test_bash_dash_c_rm_rf_denied():
+    # A shell -c wrapper carrying a destructive inner command is denied: the matcher
+    # recurses into the -c script and matches the inner `rm -rf` (not merely escalated).
+    assert _d('bash -lc "rm -rf build/"') == "deny"
+    assert _d('sh -c "rm -rf build/"') == "deny"
 
 
 def test_curl_pipe_sh_denied():
