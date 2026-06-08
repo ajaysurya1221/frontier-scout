@@ -46,6 +46,12 @@ offline; the only runtime dependency is `pydantic`.
 - Docs pruned to the product: removed stale `docs/` (architecture/evals/governance/
   release-metadata/deployment/reference-stack/security-model + ADRs 0002–0008); rewrote root
   `SECURITY.md` and `CONTRIBUTING.md`.
+- The hook's Bash matching is now **structural** (shlex-tokenized command units), not raw
+  substring: a blocked token inside a quoted message/argument (e.g. `git commit -m
+  "…rm -rf…"`, `echo "rm -rf"`, `python -c "print('rm -rf')"`) no longer false-denies.
+  Wrappers (`sudo`, `env VAR=val`, `bash -c`/`sh -c`) are resolved, pipe patterns
+  (`curl | sh`) match across segments, and unparseable commands fail closed to `ask`.
+  Receipt hashing still covers the full raw command.
 
 ## Unreleased
 

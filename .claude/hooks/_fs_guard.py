@@ -22,6 +22,7 @@ import fnmatch
 import hashlib
 import json
 import re
+import shlex
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -90,6 +91,142 @@ def _file_path_of(tool_input: dict[str, Any]) -> str:
     return ""
 
 
+# --- Bash command-structure matching --------------------------------------------
+# Decisions key off the *executed command structure*, not raw substring over the
+# whole command string. A blocked token inside a quoted message/argument (e.g.
+# `git commit -m "...rm -rf..."`) must never trigger a deny, because shlex keeps a
+# quoted string as a single token. This is a policy matcher, not a shell.
+
+_SHELL_OPERATORS = {"|", "||", "&&", ";", "&"}
+_BENIGN_WRAPPERS = {"env", "command", "nice", "nohup", "time", "doas", "xargs", "stdbuf", "setsid"}
+_SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
+
+
+def _shlex_split(text: str) -> list[str] | None:
+    """Quote-aware tokenization; ``None`` if unparseable (e.g. unbalanced quotes)."""
+
+    try:
+        return shlex.split(text, posix=True)
+    except ValueError:
+        return None
+
+
+def _split_segments(tokens: list[str]) -> list[list[str]]:
+    """Split tokens into command segments at shell control operators."""
+
+    segments: list[list[str]] = []
+    current: list[str] = []
+    for tok in tokens:
+        if tok in _SHELL_OPERATORS:
+            if current:
+                segments.append(current)
+                current = []
+        else:
+            current.append(tok)
+    if current:
+        segments.append(current)
+    return segments
+
+
+def _peel_wrappers(argv: list[str]) -> list[str]:
+    """Strip leading benign wrappers (``env VAR=val``, ``command``, ``nice``, …).
+    Keeps ``sudo`` (it is itself a policy target)."""
+
+    i = 0
+    while i < len(argv):
+        head = argv[i]
+        if head in _BENIGN_WRAPPERS:
+            i += 1
+            if head == "env":
+                while i < len(argv) and "=" in argv[i] and not argv[i].startswith("-"):
+                    i += 1
+            continue
+        break
+    return argv[i:]
+
+
+def _shell_c_script(argv: list[str]) -> str | None:
+    """If ``argv`` invokes a shell with a ``-c``/``-lc``/``-ic`` flag, return the
+    script-string it would run; else ``None``."""
+
+    if not argv or argv[0] not in _SHELLS:
+        return None
+    for i in range(1, len(argv)):
+        a = argv[i]
+        if a.startswith("-"):
+            if "c" in a:
+                return argv[i + 1] if i + 1 < len(argv) else None
+        else:
+            break
+    return None
+
+
+def _resolve_units(segments: list[list[str]], _depth: int = 0) -> tuple[list[list[str]], bool]:
+    """Resolve segments into argv units (wrappers peeled, shell ``-c`` scripts
+    recursed into). Returns ``(units, shell_c_used)``."""
+
+    units: list[list[str]] = []
+    shell_c = False
+    for seg in segments:
+        argv = _peel_wrappers(seg)
+        if not argv:
+            continue
+        units.append(argv)
+        script = _shell_c_script(argv)
+        if script is not None and _depth < 3:
+            shell_c = True
+            inner = _shlex_split(script)
+            if inner:
+                inner_units, inner_c = _resolve_units(_split_segments(inner), _depth + 1)
+                units.extend(inner_units)
+                shell_c = shell_c or inner_c
+    return units, shell_c
+
+
+def _subseq_prefix(needle: list[str], haystack: list[str]) -> bool:
+    """True if ``needle`` is a contiguous run in ``haystack`` (the last needle token
+    may match as a prefix, so ``["dd","if="]`` matches ``["dd","if=/dev/zero"]``)."""
+
+    n = len(needle)
+    if not n:
+        return False
+    for i in range(len(haystack) - n + 1):
+        if all(haystack[i + k] == needle[k] for k in range(n - 1)) and haystack[i + n - 1].startswith(
+            needle[n - 1]
+        ):
+            return True
+    return False
+
+
+def _blocked_hit(pattern: str, segments: list[list[str]], units: list[list[str]]) -> bool:
+    """True if a blocked ``pattern`` matches the command structure (never raw text)."""
+
+    parts = pattern.split()
+    if set(parts) & _SHELL_OPERATORS:
+        # Pipe/sequence pattern (e.g. "curl | sh"): sub-prefixes must appear as
+        # segment prefixes, in order.
+        subs: list[list[str]] = []
+        cur: list[str] = []
+        for tok in parts:
+            if tok in _SHELL_OPERATORS:
+                if cur:
+                    subs.append(cur)
+                    cur = []
+            else:
+                cur.append(tok)
+        if cur:
+            subs.append(cur)
+        si = 0
+        for seg in segments:
+            if si < len(subs) and seg[: len(subs[si])] == subs[si]:
+                si += 1
+        return si == len(subs) and bool(subs)
+    ptoks = _shlex_split(pattern)
+    if ptoks is None:  # exotic pattern (e.g. ":(){"): fall back to per-token substring
+        return any(any(pattern in tok for tok in u) for u in units)
+    return any(_subseq_prefix(ptoks, u) for u in units)
+
+
 def decide(tool_name: str, tool_input: dict[str, Any], policy: dict[str, Any]) -> tuple[str, str]:
     """Return ``(decision, reason)`` for a tool call. ``decision`` is allow|deny|ask.
 
@@ -111,16 +248,27 @@ def decide(tool_name: str, tool_input: dict[str, Any], policy: dict[str, Any]) -
             return "allow", f"MCP server '{server}' is allowlisted."
         return "deny", f"MCP server '{server}' is not on the allowlist (deny-by-default)."
 
-    # 3. Bash: blocked substring -> deny; allowlisted prefix -> allow; else ask.
+    # 3. Bash: match the executed command STRUCTURE (not raw substring).
+    #    blocked structure -> deny; allowlisted first-command prefix -> allow;
+    #    shell -c / unparseable / unknown -> ask (fail-closed).
     if tool_name == "Bash":
         command = str(tool_input.get("command", ""))
-        low = command.lower()
+        tokens = _shlex_split(command)
+        if tokens is None:
+            return "ask", "Command could not be parsed safely; approval required (fail-closed)."
+        segments = _split_segments(tokens)
+        units, shell_c = _resolve_units(segments)
         for blocked in policy.get("blocked_shell_commands", []):
-            if blocked and blocked.lower() in low:
+            if blocked and _blocked_hit(blocked, segments, units):
                 return "deny", f"Command matches a blocked pattern: {blocked}"
-        for allowed in policy.get("allowed_shell_commands", []):
-            if allowed and low.strip().startswith(allowed.lower()):
-                return "allow", f"Command matches an allowlisted prefix: {allowed}"
+        if units and not shell_c:
+            first = units[0]
+            for allowed in policy.get("allowed_shell_commands", []):
+                atoks = _shlex_split(allowed) or []
+                if atoks and first[: len(atoks)] == atoks:
+                    return "allow", f"Command matches an allowlisted prefix: {allowed}"
+        if shell_c:
+            return "ask", "Shell -c invocation; approval required (fail-closed)."
         return "ask", "Command is not on the allowlist; approval required (fail-closed)."
 
     # 4. File writes/edits: protected glob -> ask; allowed glob -> allow; else ask.
