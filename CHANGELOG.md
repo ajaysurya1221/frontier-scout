@@ -67,6 +67,13 @@ offline; the only runtime dependency is `pydantic`.
   `eval "$(…)"` still is). Pipeline segmentation is quote-aware over the raw command, so
   no-space pipes (`curl …|sh`) are caught; redirect/fork-bomb patterns keep exact-token
   matching. Found via the external-validation proxy run.
+- **`verify-pr` fails closed when it cannot compute the PR diff** (Codex P0). `git_diff_names`
+  now raises `GitDiffError` instead of returning `[]` on a failed/invalid `git diff` (e.g. an
+  unfetched base ref), so an invalid base can no longer report `PASS: 0 changed files`.
+  Enforcing mode emits a `::error::` and exits non-zero; advisory mode stays non-blocking but
+  reports **UNVERIFIED** (never PASS) with a `::warning::` so the base/fetch problem is
+  noticed. A *successful* empty diff is still a valid 0-file `PASS`. The generated workflow
+  already uses `fetch-depth: 0` (now asserted by the golden test).
 
 ## Unreleased
 

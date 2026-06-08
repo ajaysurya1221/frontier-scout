@@ -69,6 +69,7 @@ def test_committed_verify_workflow_is_hardened_and_secretless():
     wf = (REPO / ".github" / "workflows" / "frontier-scout-verify.yml").read_text()
     assert "permissions:" in wf and "contents: read" in wf  # least-privilege token
     assert "persist-credentials: false" in wf
+    assert "fetch-depth: 0" in wf  # enough history for `verify-pr --base origin/<branch>`
     assert "agent verify-pr" in wf
     assert "--advisory" in wf  # repo runs advisory while onboarding
     assert "pip install ." in wf  # self-hosting: install from source, not PyPI
@@ -80,5 +81,6 @@ def test_compiler_workflow_template_is_hardened_and_secretless():
     # The template emitted for ALL users must also ship least-privilege hardening.
     assert "permissions:" in _WORKFLOW and "contents: read" in _WORKFLOW
     assert "persist-credentials: false" in _WORKFLOW
+    assert "fetch-depth: 0" in _WORKFLOW  # base diffs need full history
     assert "agent verify-pr" in _WORKFLOW
     assert "secrets." not in _WORKFLOW and "${{ secrets" not in _WORKFLOW
