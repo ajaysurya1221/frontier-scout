@@ -109,6 +109,9 @@ _WORKFLOW = """# Frontier Scout — verify PR stayed within approved scope (gene
 name: Frontier Scout verify
 on:
   pull_request:
+# Least-privilege: the verifier only reads the repo + a read-only git diff.
+permissions:
+  contents: read
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -116,6 +119,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
