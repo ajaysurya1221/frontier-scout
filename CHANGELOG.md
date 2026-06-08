@@ -59,6 +59,14 @@ offline; the only runtime dependency is `pydantic`.
   Implementer-provenance section to the PR template + an optional privacy-env note in
   CONTRIBUTING, and clarified that Frontier Scout does not *rely on* (vs. claim Claude Code
   lacks) hook input-rewriting / mid-session settings reload.
+- Bash blocked-pattern matching is now **command-position** aware. Plain command-danger
+  patterns (`rm -rf`, `sudo`, `eval`, `dd if=`, …) match only at the executed-command
+  position (anchored argv prefix, exact tokens — except `=`-suffixed tokens like `if=`),
+  so a blocked token no longer false-denies a safe command's arguments or word prefixes
+  (e.g. `pytest -k evaluate`, `grep eval`, `echo eval` are no longer denied, while
+  `eval "$(…)"` still is). Pipeline segmentation is quote-aware over the raw command, so
+  no-space pipes (`curl …|sh`) are caught; redirect/fork-bomb patterns keep exact-token
+  matching. Found via the external-validation proxy run.
 
 ## Unreleased
 

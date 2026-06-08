@@ -111,21 +111,63 @@ def _shlex_split(text: str) -> list[str] | None:
         return None
 
 
-def _split_segments(tokens: list[str]) -> list[list[str]]:
-    """Split tokens into command segments at shell control operators."""
+def _raw_segments(command: str) -> list[str] | None:
+    """Split a raw command into segments at UNQUOTED shell control operators
+    (``| || && ; &``), quote-aware. ``None`` if a quote is left open. Redirects
+    (``> <``) are NOT split points — they stay in a segment so redirect patterns can
+    match. Splitting the raw string (not post-shlex tokens) catches no-space pipes like
+    ``curl ...|sh`` that token-level splitting misses."""
 
-    segments: list[list[str]] = []
+    segments: list[str] = []
     current: list[str] = []
-    for tok in tokens:
-        if tok in _SHELL_OPERATORS:
-            if current:
-                segments.append(current)
-                current = []
-        else:
-            current.append(tok)
-    if current:
-        segments.append(current)
-    return segments
+    quote: str | None = None
+    i, n = 0, len(command)
+    while i < n:
+        c = command[i]
+        if quote is not None:
+            current.append(c)
+            if c == quote:
+                quote = None
+            i += 1
+            continue
+        if c in ("'", '"'):
+            quote = c
+            current.append(c)
+            i += 1
+            continue
+        if c in "|&" and i + 1 < n and command[i + 1] == c:  # || or &&
+            segments.append("".join(current))
+            current = []
+            i += 2
+            continue
+        if c in "|;&":  # | ; &
+            segments.append("".join(current))
+            current = []
+            i += 1
+            continue
+        current.append(c)
+        i += 1
+    if quote is not None:
+        return None
+    segments.append("".join(current))
+    return [s for s in segments if s.strip()]
+
+
+def _tokenize_segments(command: str) -> list[list[str]] | None:
+    """Quote-aware segment split, then shlex each segment into argv. ``None`` if any
+    part is unparseable (unbalanced quotes)."""
+
+    raw = _raw_segments(command)
+    if raw is None:
+        return None
+    out: list[list[str]] = []
+    for seg in raw:
+        toks = _shlex_split(seg)
+        if toks is None:
+            return None
+        if toks:
+            out.append(toks)
+    return out
 
 
 def _peel_wrappers(argv: list[str]) -> list[str]:
@@ -175,25 +217,50 @@ def _resolve_units(segments: list[list[str]], _depth: int = 0) -> tuple[list[lis
         script = _shell_c_script(argv)
         if script is not None and _depth < 3:
             shell_c = True
-            inner = _shlex_split(script)
+            inner = _tokenize_segments(script)
             if inner:
-                inner_units, inner_c = _resolve_units(_split_segments(inner), _depth + 1)
+                inner_units, inner_c = _resolve_units(inner, _depth + 1)
                 units.extend(inner_units)
                 shell_c = shell_c or inner_c
     return units, shell_c
 
 
-def _subseq_prefix(needle: list[str], haystack: list[str]) -> bool:
-    """True if ``needle`` is a contiguous run in ``haystack`` (the last needle token
-    may match as a prefix, so ``["dd","if="]`` matches ``["dd","if=/dev/zero"]``)."""
+def _is_command_token(tok: str) -> bool:
+    """True if ``tok`` looks like a command/executable name — not a shell-syntax
+    construct like ``>`` or ``:(){``. Determines whether a plain blocked pattern is a
+    command-position pattern or a shell-syntax pattern."""
 
-    n = len(needle)
+    return bool(tok) and re.fullmatch(r"[A-Za-z0-9_./-]+", tok) is not None
+
+
+def _command_position_match(ptoks: list[str], unit: list[str]) -> bool:
+    """Anchored argv-prefix match: ``unit[0]`` must equal ``ptoks[0]`` (the executed
+    command), and each remaining pattern token must equal the argv token at the same
+    position — EXACTLY, except a pattern token ending in ``=`` matches as a prefix (so
+    ``dd if=`` catches ``dd if=/dev/zero``). A blocked command token therefore never
+    matches a safe command's later arguments (``eval`` ≠ ``pytest -k evaluate``)."""
+
+    if len(unit) < len(ptoks) or unit[0] != ptoks[0]:
+        return False
+    for i in range(1, len(ptoks)):
+        p = ptoks[i]
+        if p.endswith("="):
+            if not unit[i].startswith(p):
+                return False
+        elif unit[i] != p:
+            return False
+    return True
+
+
+def _exact_subseq(ptoks: list[str], unit: list[str]) -> bool:
+    """``ptoks`` appear as a contiguous run of EXACT tokens anywhere in ``unit`` — used
+    for shell-syntax patterns whose first token is not a command (e.g. ``> /dev/sda``)."""
+
+    n = len(ptoks)
     if not n:
         return False
-    for i in range(len(haystack) - n + 1):
-        if all(haystack[i + k] == needle[k] for k in range(n - 1)) and haystack[i + n - 1].startswith(
-            needle[n - 1]
-        ):
+    for i in range(len(unit) - n + 1):
+        if unit[i : i + n] == ptoks:
             return True
     return False
 
@@ -222,9 +289,14 @@ def _blocked_hit(pattern: str, segments: list[list[str]], units: list[list[str]]
                 si += 1
         return si == len(subs) and bool(subs)
     ptoks = _shlex_split(pattern)
-    if ptoks is None:  # exotic pattern (e.g. ":(){"): fall back to per-token substring
+    if not ptoks:  # exotic pattern that won't shlex (e.g. ":(){"): per-token substring
         return any(any(pattern in tok for tok in u) for u in units)
-    return any(_subseq_prefix(ptoks, u) for u in units)
+    if _is_command_token(ptoks[0]):
+        # Command-danger pattern (rm -rf, sudo, eval, dd if=, …): match ONLY at command
+        # position, so a blocked token can't match a safe command's args/flags/text.
+        return any(_command_position_match(ptoks, u) for u in units)
+    # Shell-syntax pattern (redirect / fork-bomb): exact contiguous token subsequence.
+    return any(_exact_subseq(ptoks, u) for u in units)
 
 
 def decide(tool_name: str, tool_input: dict[str, Any], policy: dict[str, Any]) -> tuple[str, str]:
@@ -253,10 +325,9 @@ def decide(tool_name: str, tool_input: dict[str, Any], policy: dict[str, Any]) -
     #    shell -c / unparseable / unknown -> ask (fail-closed).
     if tool_name == "Bash":
         command = str(tool_input.get("command", ""))
-        tokens = _shlex_split(command)
-        if tokens is None:
+        segments = _tokenize_segments(command)
+        if segments is None:
             return "ask", "Command could not be parsed safely; approval required (fail-closed)."
-        segments = _split_segments(tokens)
         units, shell_c = _resolve_units(segments)
         for blocked in policy.get("blocked_shell_commands", []):
             if blocked and _blocked_hit(blocked, segments, units):
