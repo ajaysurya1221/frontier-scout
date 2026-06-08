@@ -52,6 +52,13 @@ offline; the only runtime dependency is `pydantic`.
   Wrappers (`sudo`, `env VAR=val`, `bash -c`/`sh -c`) are resolved, pipe patterns
   (`curl | sh`) match across segments, and unparseable commands fail closed to `ask`.
   Receipt hashing still covers the full raw command.
+- Audit closure: a dogfood compile-golden test (`tests/test_dogfood_compile_golden.py`)
+  regenerates the repo's own Claude compile outputs into a temp dir and proves the
+  committed `.claude/` artifacts match (so `_fs_guard.py` can't drift from `hook_runtime.py`
+  unnoticed, and the generated workflow keeps its least-privilege hardening). Added an
+  Implementer-provenance section to the PR template + an optional privacy-env note in
+  CONTRIBUTING, and clarified that Frontier Scout does not *rely on* (vs. claim Claude Code
+  lacks) hook input-rewriting / mid-session settings reload.
 
 ## Unreleased
 

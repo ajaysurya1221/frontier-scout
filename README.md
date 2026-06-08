@@ -114,7 +114,10 @@ MCP servers and blocked commands hard-`deny`.
   escalates to approval; a non-empty protected diff without receipts fails the PR.
 - **Redacted.** Every persisted/emitted string is scrubbed of secret-shaped tokens.
 - **Honest.** It is control evidence, not a guarantee. Local hooks are not a complete
-  enforcement boundary — they are paired with the CI diff verifier on purpose.
+  enforcement boundary — they are paired with the CI diff verifier on purpose. Correctness
+  comes from deterministic compile output, receipts, and CI verification — Frontier Scout
+  does not rely on optional Claude Code conveniences like hook input-rewriting or
+  mid-session settings reload (even where current Claude Code supports them).
 
 ## Roadmap
 

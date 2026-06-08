@@ -87,6 +87,11 @@ blocks) while onboarding; drop `--advisory` to make it a hard gate.
   escalate to approval; a non-empty protected diff with no receipts fails the PR.
 - **Control evidence, not a guarantee.** Local hooks aren't a complete boundary — they are
   paired with the CI diff verifier. No overclaiming in copy or output.
+- **No reliance on optional runtime conveniences.** Frontier Scout does not depend on hook
+  input-rewriting or mid-session settings reload — even where current Claude Code supports
+  `updatedInput` in hook decisions and live reload of most permissions/hooks settings.
+  Correctness comes from deterministic compile output + receipts + CI verification. Don't
+  document Claude Code as lacking those capabilities; only state that we don't rely on them.
 - **`hook_runtime.py` stays stdlib-only.** It is copied verbatim into a user repo's
   `.claude/hooks/_fs_guard.py`; importing `frontier_scout` there would break it. A golden
   test asserts the byte-identical copy and runs the generated hook as a subprocess.
