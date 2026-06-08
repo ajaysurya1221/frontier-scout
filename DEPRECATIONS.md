@@ -30,9 +30,12 @@ and `safety_summary.py` were trimmed to their shared cores (`PolicyFinding`/`Sev
   agents-md|pr-checklist` are unchanged advisory aids.
 - `doctor` is now a minimal, offline agent-readiness check.
 
-### Pending docs cleanup
+### Docs cleanup (done)
 
-Several `docs/` files (ADRs for the SQLite/graph/vector/gateway/authz substrate, the
-architecture/reference-stack write-ups) still describe removed surfaces and will be pruned
-or superseded in a follow-up. `docs/spike-claude-config.md` is kept — it pins the native
-config shapes the compiler emits.
+Pruned the `docs/` files that described removed surfaces: `architecture.md`, `evals.md`,
+`governance.md`, `release-metadata.md`, `deployment.md`, `reference-stack.md`,
+`security-model.md`, and ADRs `0002`–`0008` (SQLite/vector/graph/authz/gateway/observability/
+prompts-evals). Kept `spike-claude-config.md` (pins the native config shapes the compiler
+emits), `adrs/0001-python-typed-monolith.md`, `adrs/0009-mcp-policy.md`, and
+`docs/examples/agent-firewall/`. Rewrote root `SECURITY.md` and `CONTRIBUTING.md` for the
+compiler/verifier product.

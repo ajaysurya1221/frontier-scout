@@ -1,76 +1,45 @@
 # Security Posture
 
-Frontier Scout is a local-first CLI for **sanctioned MCP-server packs** (Claude
-Code first): it repo-ranks approved MCP servers into a **static** capability +
-policy safety map, then exports a Claude Code managed-config fragment an admin
-deploys. The sanctioned-pack flow is **static — it reads, ranks, and exports; it
-never executes an MCP server**, and it **emits** config rather than enforcing
-runtime policy. Underneath, the **adoption radar** engine that powers ranking scans
-public AI-tooling sources, asks an LLM to rank and judge candidates, optionally runs
-untrusted packages in a hermetic lab, writes a local SQLite database, and renders
-static reports. There is no hosted service, no multi-tenant backend, and no required
-webhook surface.
+Frontier Scout is a local-first CLI that **compiles** a typed repo policy into an AI coding
+agent's native controls (Claude Code first) and **verifies** in CI that a PR stayed within
+approved scope. It **emits** config and **verifies** evidence — Claude Code (hooks +
+permissions) and GitHub Actions do the enforcing. Keyless and offline; the only runtime
+dependency is `pydantic`. There is no hosted service, no backend, no LLM calls, and no
+network egress.
 
 ## Threat model
 
 | Threat | Vector | Mitigation |
 |---|---|---|
-| MCP server code execution during sanctioning | A candidate MCP server is malicious and could run hostile code if started | The pack flow is **static-only**: capability + policy classification from registry metadata and a local tree-sitter pass. No MCP server is ever started or executed while ranking, building the safety map, sanctioning, or exporting — so sanctioning carries no runtime / code-exec risk. |
-| Export mistaken for runtime enforcement | A team assumes the exported allow/deny fragment is self-enforcing | The managed-config fragment is an **admin-applied artifact**, not a control plane. Frontier Scout **emits** `allowedMcpServers` / `deniedMcpServers` + a project `.mcp.json` for review; it never grants runtime permissions, never auto-deploys, and never enforces policy at the assistant. Enforcement happens only once an admin reviews and applies it. |
-| Prompt injection from public content | A hostile README, blog post, HN item, or model card says "ignore previous instructions" | Prompts treat source text as untrusted data. `scripts/validators.py` rejects known injection signatures in generated prose. |
-| Source poisoning | A low-quality or malicious project trends briefly and gets promoted | The funnel uses source quotas, an optional Opus judge, readiness scoring, and deterministic policy gates before anything is stored. |
-| Hallucinated tools or fake URLs | The model emits a verdict for a tool that was not in the source pool | `validate_verdicts()` fuzzy-matches `tool_name` against source titles and checks `source_url` against an explicit domain allowlist. |
-| Incident-as-tool confusion | A breach, CVE, outage, or leaked-key story is labeled as ADOPT | Incident-like tool names are rejected by policy regexes. ADOPT verdicts with low readiness are automatically demoted. |
-| Secret leakage through logs or artifacts | API keys appear in caught exceptions, lab output, or generated reports | `.env` is ignored, CI runs `detect-secrets`, and shared text helpers redact common Anthropic, OpenAI, GitHub, Slack, AWS, npm, and bearer token shapes. |
-| Untrusted package execution in the lab | `frontier-scout lab` installs and imports third-party packages | The lab only accepts open-source URLs, strips the child process environment to a tiny allowlist, enforces wall-clock timeouts, caps daily cost/runs, scans generated scripts for secret-shaped strings, and writes local transcripts only. |
-| Risky AI-tool adoption | A new MCP server, skill, browser tool, or agent framework asks for broad permissions | Adoption Firewall records a permission manifest, fails closed on unknown capabilities, requires trial receipts for dangerous surfaces, and exposes `frontier-scout guard` for local/CI checks. |
-| Oversized model downloads | A Hugging Face candidate pulls huge weights | The HF lab path reads the model manifest and refuses weight files above `LAB_HF_SIZE_CAP_GB` before download. |
-| Cost runaway | Repeated scans or lab runs consume too much LLM spend | The lab has daily run and USD caps. The Scout judge is optional via `JUDGE_ENABLED=false`; every call is logged to `costs.jsonl`. |
+| Reading secret contents during a scan | The repo scan could read sensitive file bodies | The scan classifies risk surfaces by **file name/path only** — it never opens or reads file contents. |
+| Arbitrary command execution | A subprocess could run untrusted input | The only subprocess is a **read-only `git diff` / `git rev-parse`** with a fixed argv (no shell). No agent task, MCP server, or package is ever executed. |
+| Config mistaken for a guarantee | A team assumes the compiled hooks/settings fully prevent unsafe actions | Local hooks are **not a complete enforcement boundary** (a model can route around one tool). They are deliberately paired with the **fail-closed CI diff verifier**. Output is documented as **control evidence, not a guarantee**. |
+| Policy drift / weakened guardrails | The policy is edited out-of-band, or an agent weakens its own policy | `policy.lock.json` pins the policy sha256; `verify-pr` rejects receipts whose hash drifts from the lock, and flags protected-path changes (the policy/lock/hooks can be self-protected). |
+| Spoofed or missing evidence | A PR with no receipts, or receipts from a different policy | `verify-pr` is **fail-closed**: a non-empty protected diff with no covering receipt fails; stale-hash receipts fail; a `deny`-decision file that still changed fails. (P1: sign/verify receipts with existing attestation tooling.) |
+| Off-policy MCP use | An agent calls an MCP server outside the sanctioned set | The compiled managed allow/deny fragment + the hook **deny-by-default** any MCP server not on `mcp_server_allowlist`. |
+| Secret leakage into artifacts | A token rides in a receipt, snippet, or emitted config | Every persisted/emitted string runs through `scrub_secrets` (Anthropic/OpenAI/GitHub/Slack/AWS/npm/bearer shapes). |
 
 ## Secrets
 
-Required for live scans:
-
-| Secret | Purpose | Notes |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Sonnet scoring/verdicts and optional Opus judge | Keep in `.env` or shell env. Never commit. |
-| `GITHUB_TOKEN` | Optional higher GitHub REST rate limit | Use a read-only fine-grained token where possible. |
-
-Optional lab/scan settings:
-
-| Env var | Purpose |
-|---|---|
-| `JUDGE_ENABLED=false` | Skip Opus judge to lower cost. |
-| `FRONTIER_SCOUT_HOME` | Override `~/.frontier-scout`. |
-| `LAB_RUNS_PER_DAY` | Cap local lab runs per UTC day. |
-| `LAB_DAILY_USD_CAP` | Cap daily lab LLM spend. |
-| `LAB_SUBPROCESS_TIMEOUT` | Cap each install/run subprocess step. |
-| `LAB_HF_SIZE_CAP_GB` | Cap Hugging Face model weight downloads. |
-
-If a secret is pasted into chat, logs, a GitHub issue, or a public branch,
+Frontier Scout itself needs **no API keys or tokens** — compile and verify are deterministic
+and offline. In CI, the verify workflow uses the standard `GITHUB_TOKEN` only for PR
+annotations. If a secret is ever pasted into chat, logs, an issue, or a public branch,
 rotate it immediately.
 
 ## Local data
 
-Frontier Scout stores runtime data under `~/.frontier-scout/` by default:
-
-- `db.sqlite` — scan and verdict history.
-- `costs.jsonl` — API usage and estimated spend.
-- `quality-log.jsonl` — scan quality metrics.
-- `.scratch/labs/` — local lab transcripts when run from a checkout.
-- `reports/trials/` — local Adoption Firewall trial receipts.
-
-These files are local operator state, not source-controlled project assets.
+Frontier Scout writes only **action receipts** to `<repo>/.frontier-scout/receipts/`
+(gitignored) — redacted JSON records of what the agent was allowed to do. PR-visible
+evidence is committed under `frontier-scout-receipts/`. There is no database, cost ledger,
+or lab transcript.
 
 ## Reporting a security issue
 
 Do not file public issues for vulnerabilities.
 
-Preferred channel: use GitHub private vulnerability reporting for this
-repository. If private reporting is unavailable, open a minimal public issue
-that asks for a private contact path without disclosing the vulnerability
-details.
+Preferred channel: use GitHub private vulnerability reporting for this repository. If private
+reporting is unavailable, open a minimal public issue that asks for a private contact path
+without disclosing the vulnerability details.
 
-Include reproduction steps, affected version/commit, expected impact, and any
-relevant local configuration. Redact API keys, tokens, private repository names,
-and local filesystem paths.
+Include reproduction steps, affected version/commit, expected impact, and any relevant local
+configuration. Redact API keys, tokens, private repository names, and local filesystem paths.

@@ -1,0 +1,8 @@
+{
+  "policy_sha256": "3fc4cc73872308539420c1f9fa61c46c3d604bd688d6eac2fd1b7c5b320c94a1",
+  "frontier_scout_version": "2.0.0",
+  "compiled_at": "2026-06-08T04:47:05.067377+00:00",
+  "targets": [
+    "claude"
+  ]
+}

@@ -1,132 +1,104 @@
 # Contributing
 
-PRs are welcome. Keep them small, testable, and grounded in the local-first
-CLI architecture.
+PRs are welcome. Keep them small, testable, and grounded in the local-first CLI architecture.
 
-The headline product is **sanctioned MCP-server packs for coding assistants
-(Claude Code first)**: repo-rank approved MCP servers into a **static** capability +
-policy safety map, then **export a Claude Code managed-config fragment**
-(`allowedMcpServers` / `deniedMcpServers` + a project `.mcp.json`) an admin deploys.
-The local-first **adoption radar** (scout / evaluate / dossier / lab / trial / guard /
-policy / report + the Mission Control TUI) is the **engine underneath** that powers
-ranking and the safety map — not the headline. This is a small-maintainer **research
-preview** (technically coherent, not market-validated): make no PMF / adoption claim.
+Frontier Scout is a **policy compiler + PR receipt verifier** for AI coding agents (Claude
+Code first): it compiles a typed repo policy into the agent's native controls (settings
+`permissions` + hooks), the hook writes action receipts, and a CI verifier checks a PR's diff
+against the approved scope. Keyless and offline; the only runtime dependency is `pydantic`. A
+small-maintainer **research preview** (technically coherent, not market-validated) — make no
+PMF / adoption claim.
 
 Honesty invariants any change must respect:
 
-- **Static-only.** The pack flow (`packs.py`, `pack_flow.py`, `safety_summary.py`)
-  **never executes** an MCP server — capability + policy classification only.
-- **Emit, don't enforce.** The exporter (`exporters/claude_config.py`) **emits** an
-  admin-applied config fragment; it does **not** enforce runtime policy or auto-deploy.
-- **Claude Code first; Copilot / Cursor / Docker are roadmap**, not built.
+- **Emit, don't enforce.** The compiler (`agent_firewall/compile.py`, `exporters/`) **emits**
+  native config; Claude Code (hooks + permissions) and GitHub Actions enforce it. Never build
+  a runtime, sandbox, MCP gateway, policy language, or signed ledger.
+- **Static + read-only.** The scan reads file *names*, never contents; the only subprocess is
+  a read-only `git diff` / `git rev-parse`.
+- **Fail-closed** and **redacted** (`scrub_secrets`). Output is **control evidence, not a
+  guarantee**.
+- **Claude Code first; Codex / Cursor / Copilot are roadmap**, not built.
 
-Be direct, kind, and specific: criticize behavior and code, not people; assume good
-intent; and keep security details out of public issues.
+Be direct, kind, and specific: criticize behavior and code, not people; assume good intent;
+keep security details out of public issues.
 
 ## Local setup
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
 pip install -e ".[dev]"
-cp .env.example .env  # optional; only needed for live scans
 ```
 
 ## Before opening a PR
 
 ```bash
-python -m compileall scripts outputs tests frontier_scout
+python -m compileall outputs tests frontier_scout
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
-frontier-scout demo
-frontier-scout scan --dry-run
-detect-secrets scan --all-files --force-use-all-plugins
+make lint    # ruff
+make type    # mypy --strict over agent_firewall + exporters
+make audit   # pip-audit + bandit
+make demo    # offline compile + doctor in a temp dir
 ```
+
+Also verify the top-level docs (`README.md`, `AGENTS.md`, `CLAUDE.md`, and `ROADMAP.md` /
+`CHANGELOG.md` when relevant) still match any user-visible change.
 
 ## What lands fast
 
-- **Sanctioned-pack improvements** to the static flow — `packs.py` (candidate
-  discovery / repo-ranked rows), `pack_flow.py` (candidates → safety → sanction →
-  export), `safety_summary.py` (the static capability + policy map), and
-  `exporters/claude_config.py` (the Claude managed-config fragment) — that keep the
-  flow static and the export admin-reviewable, with tests.
-- **Proof + signal tooling** — `proof_variants.py` (the A/B/C variants behind
-  `packs proof`) and `telemetry.py` (the opt-in funnel behind `frontier-scout stats`)
-  — that sharpen design-partner validation without leaking source content.
-- **CLI/report improvements** that reduce time-to-wow without adding a hosted dependency.
-- **Source additions** in `scripts/scout.py` with clear quota/rationale notes.
-- **Validator hardening** in `scripts/validators.py` with regression tests.
-- **Lab safety improvements** in `scripts/lab_runner.py` that preserve hermetic subprocess execution.
-- **Adoption Firewall (radar engine) improvements** to `evaluate`, `trial`, `guard`, policy rules, permission manifests, and receipt rendering.
+- **Compiler / verifier improvements** to `agent_firewall/` (`compile`, `verify`, `lock`,
+  `hook_runtime`, `decision`, `scan`, `policy`, `models`) and `exporters/`, with tests, that
+  keep the tool emit-only, static, and fail-closed.
+- **New compile targets** (Codex, later Cursor/Copilot) that reuse the same typed policy —
+  discuss first (see AGENTS.md § Ask before changing).
+- **Stronger evidence** — attested receipts via existing attestation tooling, or scanner
+  findings (CodeQL/Dependabot/Semgrep) as policy inputs.
 - **Documentation fixes** that keep README, ROADMAP, SECURITY, AGENTS, and CLAUDE.md aligned.
 
 ## What gets pushback
 
-- Hosted SaaS, accounts, central telemetry, or multi-tenant sync.
-- Auto-installing recommended tools (or sanctioned MCP servers) into a user's real project.
-- **Executing an MCP server in the pack flow** — sanctioning is static-only; any
-  runtime probe is roadmap and lives in the hermetic lab, not the pack path.
-- **Framing the export as runtime enforcement** — it emits an admin-applied fragment,
-  it does not grant runtime permissions or auto-deploy.
-- **Claiming an unbuilt surface is done** — Copilot / Cursor / Docker export, and a
-  behavioral MCP probe, are roadmap; don't present them as shipped.
-- New LLM vendors/providers without a strong reason and tests around cost/error handling.
-- Bypassing `scripts/validators.py` before writing verdicts.
-- Passing `os.environ` into lab subprocesses.
-- Letting `guard` mutate project files or silently approve dangerous capabilities without a stored trial receipt.
+- A new agent runtime, sandbox, general MCP gateway, custom policy language, custom telemetry
+  format, or signed ledger — compile to / verify the wheels that exist.
+- Framing the compiled config or `verify-pr` as a guarantee of safety (it is control
+  evidence; local hooks are paired with the CI verifier on purpose).
+- A subprocess beyond the read-only `git` calls; reading secret *contents*; auto-installing
+  anything; hosted SaaS / accounts / central telemetry / multi-tenant sync.
+- Claiming an unbuilt surface (Codex/Cursor/Copilot) is shipped.
 
 ## Architecture sketch
 
 ```text
-# the sanctioned-packs product (the headline) — static, no server executed
-candidates (packs.py) -> static safety map (safety_summary.py)
-       -> risk-gated sanction (pack_flow.py) -> managed-config export (exporters/claude_config.py)
-       -> proof variants (proof_variants.py) + opt-in funnel (telemetry.py)
-
-# the radar engine underneath — what powers ranking + the safety map
-sources -> dedupe -> score -> verdict -> optional judge -> validators
-       -> SQLite store -> CLI/report/MCP surfaces -> optional hermetic lab
-       -> evaluate/trial/guard -> local adoption receipts
+frontier-scout.policy.json (typed AgentPolicy)
+   -> agent compile  -> .claude/settings.json (permissions) + .claude/hooks/ (decide + receipts)
+                      + policy.lock.json (sha256) + managed MCP fragment + verify workflow
+   -> (Claude Code runs; hook writes receipts to .frontier-scout/receipts/)
+   -> agent verify-pr -> read-only git diff vs. receipts + lock -> fail-closed verdict + PR annotations
 ```
 
-All LLM calls go through the provider abstraction in `frontier_scout/providers/`:
-pin exactly one backend with `--provider anthropic|openai|claude-cli|codex-cli`
-(`--demo`/offline and the sanctioned-pack flow need none). Availability
-deep-probes `<cli> --version` (cached), so a broken-but-on-PATH CLI is skipped,
-not silently selected. (The mature engine modules under `scripts/` still carry the
-legacy `scripts/llm_client.py` retry/backoff helper.) Every scan records cost and
-quality metadata. The public product is local-first: a static export and SQLite
-history before plugins or integrations.
+This repo **dogfoods** its own policy (`frontier-scout.policy.json` + `.claude/` are
+committed), so sessions here run under the compiled controls.
 
 ## Security issues
 
-Do not file a public issue for vulnerabilities. Use GitHub private
-vulnerability reporting when it is enabled for the repository. If private
-reporting is unavailable, open a minimal public issue asking for a private
-contact path without disclosing details.
+Do not file a public issue for vulnerabilities. Use GitHub private vulnerability reporting
+when enabled. If unavailable, open a minimal public issue asking for a private contact path
+without disclosing details. See `SECURITY.md`.
 
 ## Versioning and release
 
-Use semantic versioning. Releases are **tag-driven** — pushing a `vX.Y.Z` tag is
-what publishes; there is no `workflow_dispatch` PyPI step. (See AGENTS.md § Release
-and CLAUDE.md § Release process for the authoritative checklist; this mirrors them.)
+Semantic versioning; releases are **tag-driven** (push a `vX.Y.Z` tag to publish). See
+AGENTS.md § Release and CLAUDE.md § Release process for the authoritative checklist:
 
-1. Bump `version` in `pyproject.toml` **and** the matching string in
-   `frontier_scout/__init__.py`, and add a `CHANGELOG.md` entry.
-2. Open a PR. CI `test` runs the full non-live suite, a `detect-secrets --all-files`
-   secret scan, and CodeQL. Mark genuine secret-scan false positives with
-   `# pragma: allowlist secret`.
-3. **Merge.** `main` is protected (1 review + `enforce_admins` +
-   conversation-resolution, **squash-only**). Merge via the relax→merge→restore
-   dance: PATCH `required_approving_review_count` 1 → 0, squash with
-   `gh pr merge --squash --admin`, then restore it 0 → 1 (**always restore**).
-4. **Tag** `vX.Y.Z` on the merge commit and push it. `.github/workflows/release.yml`
-   builds the wheel + sdist, publishes the GitHub Release (draft → publish), and
-   publishes to PyPI via trusted publishing — gated by the `pypi` deployment
-   environment, so you must approve the pending deployment for PyPI to go out.
-5. Non-`.py` data (the Textual `tui3/theme.tcss` stylesheets) **must** be declared in
-   `[tool.setuptools.package-data]` (`"*" = ["*.tcss"]`) + `MANIFEST.in`, or the
-   installed TUI crashes on launch with a `StylesheetError`. Verify the **built wheel**
-   bundles the `.tcss` (`release.yml` guards this).
-6. **Never reuse a burned version:** GitHub immutable-releases permanently reserve a
-   deleted release's tag name — bump to the next patch instead.
+1. Bump `version` in `pyproject.toml` **and** `frontier_scout/__init__.py`; add a
+   `CHANGELOG.md` `## X.Y.Z - <date>` entry.
+2. Open a PR. CI runs the full non-live suite + `detect-secrets --all-files` + CodeQL. Mark
+   genuine secret-scan false positives with `# pragma: allowlist secret`.
+3. Merge: `main` is protected (1 review + `enforce_admins` + conversation-resolution,
+   squash-only). Use the relax→merge→restore dance on `required_approving_review_count`
+   (1 → 0 → 1; always restore), squashing with `gh pr merge --squash --admin`.
+4. Tag `vX.Y.Z` and push it. `release.yml` builds the wheel + sdist, publishes the GitHub
+   Release, and publishes to PyPI (trusted publishing, gated by the `pypi` deployment
+   environment — approve the pending deployment). The wheel must bundle
+   `agent_firewall/hook_runtime.py` (release.yml guards this).
+5. **Never reuse a burned version:** immutable releases reserve a deleted tag — bump instead.
