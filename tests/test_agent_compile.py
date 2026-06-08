@@ -65,6 +65,15 @@ def test_guard_is_verbatim_copy_of_hook_runtime(tmp_path):
     assert guard_src == Path(hook_runtime.__file__).read_text()
 
 
+def test_generated_guard_uses_structural_bash_matcher(tmp_path):
+    """The generated hook must carry the structural matcher (shlex + command units),
+    not the old raw-substring deny."""
+    compile_claude(_policy(), repo=str(tmp_path))
+    guard_src = (tmp_path / ".claude" / "hooks" / "_fs_guard.py").read_text()
+    assert "import shlex" in guard_src
+    assert "_resolve_units" in guard_src and "_blocked_hit" in guard_src
+
+
 def test_lock_binds_the_compiled_policy(tmp_path):
     p = _policy()
     compile_claude(p, repo=str(tmp_path))
