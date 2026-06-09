@@ -2,9 +2,9 @@
 
 ## 2.0.0 - 2026-06-07
 
-### Pivot: policy compiler + PR receipt verifier (breaking)
+### Pivot: policy compiler + PR scope verifier (breaking)
 
-Frontier Scout is now a **policy compiler + PR receipt verifier** for AI coding agents
+Frontier Scout is now a **policy compiler + PR scope verifier** for AI coding agents
 (Claude Code first). It compiles a typed repo policy into the agent's **native** controls
 and verifies in CI that a PR stayed within approved scope. Frontier Scout **emits** config
 and **verifies** evidence — Claude Code and GitHub Actions do the enforcing. Keyless and

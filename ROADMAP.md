@@ -3,7 +3,7 @@
 Public, local-first, and **demand-gated**. This repo is a **research preview**:
 technically coherent, **not** market-validated. No PMF or adoption claim.
 
-## Where we are — policy compiler + PR receipt verifier (P0)
+## Where we are — policy compiler + PR scope verifier (P0)
 
 Frontier Scout compiles a typed repo policy into an AI coding agent's **native**
 controls (Claude Code first), the agent emits **action receipts**, and CI verifies a
@@ -31,8 +31,10 @@ that pull:
 
 - **Codex adapter** — compile the same policy to Codex managed `requirements.toml` +
   hooks; CI verifier already covers the diff side.
-- **Attested receipts** — sign/verify receipts with existing attestation tooling
-  (GitHub artifact attestations / Sigstore) instead of a bespoke ledger.
+- **Optional receipt/provenance integration** — export local action records to existing
+  receipt/provenance systems (for example, Agent Receipts or GitHub artifact attestations /
+  Sigstore). Frontier Scout does not build its own signed-receipt protocol, SDK, daemon, or
+  ledger.
 - **Scanner findings as policy inputs** — seed protected paths/risk from CodeQL /
   Dependabot / Semgrep output.
 

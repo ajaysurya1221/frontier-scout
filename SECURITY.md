@@ -15,7 +15,7 @@ network egress.
 | Arbitrary command execution | A subprocess could run untrusted input | The only subprocess is a **read-only `git diff` / `git rev-parse`** with a fixed argv (no shell). No agent task, MCP server, or package is ever executed. |
 | Config mistaken for a guarantee | A team assumes the compiled hooks/settings fully prevent unsafe actions | Local hooks are **not a complete enforcement boundary** (a model can route around one tool). They are deliberately paired with the **fail-closed CI diff verifier**. Output is documented as **control evidence, not a guarantee**. |
 | Policy drift / weakened guardrails | The policy is edited out-of-band, or an agent weakens its own policy | `policy.lock.json` pins the policy sha256; `verify-pr` rejects receipts whose hash drifts from the lock, and flags protected-path changes (the policy/lock/hooks can be self-protected). |
-| Spoofed or missing evidence | A PR with no receipts, or receipts from a different policy | `verify-pr` is **fail-closed**: a non-empty protected diff with no covering receipt fails; stale-hash receipts fail; a `deny`-decision file that still changed fails. (P1: sign/verify receipts with existing attestation tooling.) |
+| Spoofed or missing evidence | A PR with no receipts, or receipts from a different policy | `verify-pr` is **fail-closed**: a non-empty protected diff with no covering receipt fails; stale-hash receipts fail; a `deny`-decision file that still changed fails. (P1: optional export/integration with existing receipt/provenance systems.) |
 | Off-policy MCP use | An agent calls an MCP server outside the sanctioned set | The compiled managed allow/deny fragment + the hook **deny-by-default** any MCP server not on `mcp_server_allowlist`. |
 | Secret leakage into artifacts | A token rides in a receipt, snippet, or emitted config | Every persisted/emitted string runs through `scrub_secrets` (Anthropic/OpenAI/GitHub/Slack/AWS/npm/bearer shapes). |
 
@@ -28,10 +28,16 @@ rotate it immediately.
 
 ## Local data
 
-Frontier Scout writes only **action receipts** to `<repo>/.frontier-scout/receipts/`
+Frontier Scout writes only **local action receipts** to `<repo>/.frontier-scout/receipts/`
 (gitignored) — redacted JSON records of what the agent was allowed to do. PR-visible
 evidence is committed under `frontier-scout-receipts/`. There is no database, cost ledger,
 or lab transcript.
+
+These are **redacted local control evidence for PR scope verification, not a signed portable
+receipt protocol.** Frontier Scout does not provide key custody, signing daemons, receipt
+SDKs, MCP receipt proxies, dashboards, transparency logs, or ledger infrastructure; for
+portable, signed evidence it should integrate with existing receipt/provenance systems
+rather than build its own.
 
 ## Reporting a security issue
 

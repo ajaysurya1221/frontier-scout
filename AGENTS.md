@@ -1,9 +1,9 @@
 # AGENTS Guide
 
-Frontier Scout: a **policy compiler + PR receipt verifier** for AI coding agents (**Claude
+Frontier Scout: a **policy compiler + PR scope verifier** for AI coding agents (**Claude
 Code first**). Compile a typed repo policy into the agent's native controls (settings +
-hooks), the hook writes action receipts, and a CI verifier checks a PR's diff against the
-approved scope. Local, keyless, offline; the only runtime dependency is `pydantic`. A
+hooks), the hook writes local action receipts, and a CI verifier checks a PR's diff against
+the approved scope. Local, keyless, offline; the only runtime dependency is `pydantic`. A
 **research preview** (technically coherent, **not** market-validated). Use this file as the
 handoff playbook.
 
@@ -82,6 +82,10 @@ blocks) while onboarding; drop `--advisory` to make it a hard gate.
 - **Emit, don't enforce.** Frontier Scout writes native config; Claude Code (hooks +
   permissions) and GitHub Actions enforce. Never build a runtime, sandbox, MCP gateway,
   policy language, telemetry format, or signed ledger — compile to / verify existing wheels.
+- **Don't own the receipt layer.** Never build a signed receipt protocol, signing daemon,
+  MCP receipt proxy, receipt SDK, dashboard, or ledger. Local receipts are control evidence
+  for PR scope verification, not a portable receipt standard (the external Agent Receipts
+  project already owns that space — integrate, don't reinvent).
 - **Static + read-only.** The scan reads file *names*, never secret *contents*.
 - **Fail-closed.** Missing/malformed policy denies by default; dangerous capabilities
   escalate to approval; a non-empty protected diff with no receipts fails the PR.

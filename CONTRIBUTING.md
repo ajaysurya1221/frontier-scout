@@ -2,10 +2,10 @@
 
 PRs are welcome. Keep them small, testable, and grounded in the local-first CLI architecture.
 
-Frontier Scout is a **policy compiler + PR receipt verifier** for AI coding agents (Claude
+Frontier Scout is a **policy compiler + PR scope verifier** for AI coding agents (Claude
 Code first): it compiles a typed repo policy into the agent's native controls (settings
-`permissions` + hooks), the hook writes action receipts, and a CI verifier checks a PR's diff
-against the approved scope. Keyless and offline; the only runtime dependency is `pydantic`. A
+`permissions` + hooks), the hook writes local action receipts, and a CI verifier checks a
+PR's diff against the approved scope. Keyless and offline; the only runtime dependency is `pydantic`. A
 small-maintainer **research preview** (technically coherent, not market-validated) — make no
 PMF / adoption claim.
 
@@ -13,7 +13,8 @@ Honesty invariants any change must respect:
 
 - **Emit, don't enforce.** The compiler (`agent_firewall/compile.py`, `exporters/`) **emits**
   native config; Claude Code (hooks + permissions) and GitHub Actions enforce it. Never build
-  a runtime, sandbox, MCP gateway, policy language, or signed ledger.
+  a runtime, sandbox, MCP gateway, policy language, signed ledger, signed receipt protocol,
+  signing daemon, receipt SDK, MCP receipt proxy, or dashboard.
 - **Static + read-only.** The scan reads file *names*, never contents; the only subprocess is
   a read-only `git diff` / `git rev-parse`.
 - **Fail-closed** and **redacted** (`scrub_secrets`). Output is **control evidence, not a
@@ -69,14 +70,15 @@ Also verify the top-level docs (`README.md`, `AGENTS.md`, `CLAUDE.md`, and `ROAD
   keep the tool emit-only, static, and fail-closed.
 - **New compile targets** (Codex, later Cursor/Copilot) that reuse the same typed policy —
   discuss first (see AGENTS.md § Ask before changing).
-- **Stronger evidence** — attested receipts via existing attestation tooling, or scanner
-  findings (CodeQL/Dependabot/Semgrep) as policy inputs.
+- **Stronger evidence** — optional export/integration with existing receipt/provenance
+  systems, or scanner findings (CodeQL/Dependabot/Semgrep) as policy inputs.
 - **Documentation fixes** that keep README, ROADMAP, SECURITY, AGENTS, and CLAUDE.md aligned.
 
 ## What gets pushback
 
 - A new agent runtime, sandbox, general MCP gateway, custom policy language, custom telemetry
-  format, or signed ledger — compile to / verify the wheels that exist.
+  format, signed ledger, or a signed-receipt protocol / signing daemon / receipt SDK / MCP
+  receipt proxy / dashboard — compile to / verify the wheels that exist.
 - Framing the compiled config or `verify-pr` as a guarantee of safety (it is control
   evidence; local hooks are paired with the CI verifier on purpose).
 - A subprocess beyond the read-only `git` calls; reading secret *contents*; auto-installing

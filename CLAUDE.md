@@ -6,7 +6,7 @@ agent needs before touching the code.
 
 ## What this is
 
-Frontier Scout — a **policy compiler + PR receipt verifier** for AI coding agents, **Claude
+Frontier Scout — a **policy compiler + PR scope verifier** for AI coding agents, **Claude
 Code first**. It compiles a typed repo policy (`frontier-scout.policy.json`) into Claude
 Code's **native** controls (settings `permissions` + hooks), the hook writes **action
 receipts**, and a CI verifier checks that a PR's diff stayed within the approved scope.
@@ -66,6 +66,10 @@ The CI verify workflow runs **`--advisory`** (warn-only) while onboarding.
   permissions) enforces locally and **GitHub Actions** enforces in CI. We never build a
   runtime, sandbox, MCP gateway, policy language, or signed ledger — we compile to / verify
   the wheels that exist.
+- **Don't own the receipt layer.** We never build a signed receipt protocol, signing daemon,
+  receipt SDK, MCP receipt proxy, or dashboard. Local receipts are control evidence for PR
+  scope verification, not a portable receipt standard — the external Agent Receipts project
+  owns that space, so we integrate rather than reinvent.
 - **Static + read-only.** The scan reads file *names*, never secret *contents*. The only
   subprocess is a read-only `git diff` (verify-pr) / `git rev-parse` (receipt metadata).
 - **Fail-closed.** Missing/malformed policy denies by default; dangerous capabilities
