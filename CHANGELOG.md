@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.1 - 2026-06-09
+
+Metadata-only release. Updates the package summary (PyPI `Summary`) from "policy compiler +
+PR receipt verifier" to **"policy compiler + PR scope verifier"** — the 2.0.0 summary, sourced
+from `pyproject.toml`, still carried the old tagline and that field is baked into the immutable
+2.0.0 artifacts. **No product behavior changes** (hooks, verifier, compiler, and CLI are
+unchanged); the dogfood `policy.lock.json` is re-stamped only to record the new version.
+
 ## 2.0.0 - 2026-06-07
 
 ### Pivot: policy compiler + PR scope verifier (breaking)

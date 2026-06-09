@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "frontier-scout"
-version = "2.0.0"
-description = "Policy compiler + PR receipt verifier for AI coding agents (Claude Code first): compile a typed repo policy into native hooks/settings, emit action receipts, and verify in CI that a PR stayed within approved scope. Keyless and offline."
+version = "2.0.1"
+description = "Policy compiler + PR scope verifier for AI coding agents (Claude Code first): compile a typed repo policy into native hooks/settings, write local action records, and verify in CI that a PR stayed within approved scope. Keyless and offline."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
