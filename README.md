@@ -1,8 +1,31 @@
-# Frontier Scout
+<div align="center">
 
-**Policy compiler + PR receipt verifier for AI coding agents — Claude Code first.**
+<picture>
+  <source media="(min-resolution: 2dppx)" srcset="docs/assets/frontier-scout-banner-2x.png">
+  <img src="docs/assets/frontier-scout-banner.png" alt="Frontier Scout — Policy compiler + PR scope verifier for AI coding agents (Claude Code first)" width="100%">
+</picture>
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue) ![Research preview](https://img.shields.io/badge/status-research%20preview-orange) ![MIT License](https://img.shields.io/badge/license-MIT-green) ![No telemetry](https://img.shields.io/badge/telemetry-none-lightgrey)
+<p>
+  <strong>Policy compiler + PR scope verifier for AI coding agents — Claude Code first.</strong><br>
+  <sub>Compile a typed repo policy into native Claude Code controls. Verify PR scope in CI, fail-closed.</sub>
+</p>
+
+<p>
+  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square">
+  <img alt="Research preview" src="https://img.shields.io/badge/status-research%20preview-orange?style=flat-square">
+  <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green?style=flat-square">
+  <img alt="No telemetry" src="https://img.shields.io/badge/telemetry-none-lightgrey?style=flat-square">
+</p>
+
+<p>
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#the-policy">Policy</a> ·
+  <a href="#cli">CLI</a> ·
+  <a href="#safety-model">Safety model</a> ·
+  <a href="ROADMAP.md">Roadmap</a>
+</p>
+
+</div>
 
 > **Research preview — technically coherent, not market-validated.** No PMF / adoption
 > claim. Claude Code first (Codex/Cursor/Copilot are roadmap). Frontier Scout **emits**
@@ -25,16 +48,16 @@ That's Frontier Scout.
 
 1. **Compile** a typed repo policy (`frontier-scout.policy.json`) into Claude Code's native
    controls: a `permissions` block, `PreToolUse`/`PostToolUse` hooks that decide
-   allow/deny/ask and write **receipts**, a managed MCP allow/deny fragment, a
-   `policy.lock.json` that binds receipts to the exact policy, and a CI verify workflow.
-2. **Run** Claude Code normally. The hook gates each real tool call and writes a redacted
-   action receipt to `.frontier-scout/receipts/`.
-3. **Verify** in CI. `verify-pr` checks the PR diff against the receipts and the lock —
-   **fail-closed** — and annotates the PR.
+   allow/deny/ask and write **local action records**, a managed MCP allow/deny fragment, a
+   `policy.lock.json` that binds those records to the exact policy, and a CI verify workflow.
+2. **Run** Claude Code normally. The hook gates each real tool call and writes a redacted,
+   local action record to `.frontier-scout/receipts/`.
+3. **Verify** PR scope in CI. `verify-pr` checks the PR diff against the policy lock and the
+   local action records — **fail-closed** — and annotates the PR.
 
-No runtime, no sandbox, no MCP gateway, no policy language, no ledger: Frontier Scout
-compiles to and verifies the wheels that already exist. Keyless and offline; the only
-runtime dependency is `pydantic`.
+No runtime, no sandbox, no MCP gateway, no policy language, no ledger, no signed-receipt
+protocol: Frontier Scout compiles to and verifies the wheels that already exist. Keyless and
+offline; the only runtime dependency is `pydantic`.
 
 ## Quickstart
 
@@ -119,11 +142,27 @@ MCP servers and blocked commands hard-`deny`.
   does not rely on optional Claude Code conveniences like hook input-rewriting or
   mid-session settings reload (even where current Claude Code supports them).
 
+## What we don't build
+
+Frontier Scout writes **local action records** for PR scope verification. It is **not** a
+signed receipt protocol, signing daemon, MCP proxy, SDK, dashboard, or ledger. It deliberately
+reuses wheels that already exist:
+
+- **Claude Code** — runtime hooks, permissions, and managed settings (local enforcement).
+- **GitHub Actions** — the PR check (CI enforcement).
+- **MCP clients / gateways** — tool transport.
+- **Existing receipt / provenance systems** (for example, Agent Receipts or GitHub artifact
+  attestations) — for any future portable, signed evidence.
+
+If portable signed receipts or provenance are needed later, Frontier Scout should integrate
+with one of these rather than invent its own.
+
 ## Roadmap
 
-P0 (shipped): the Claude compiler + receipts + GitHub verifier. P1: Codex adapter, attested
-receipts via existing attestation tooling, scanner findings as policy inputs. P2: passive
-Cursor/Copilot adapters, gateway-import mode. See [ROADMAP.md](ROADMAP.md).
+P0 (shipped): the Claude compiler + local action records + GitHub verifier. P1: Codex adapter,
+optional export/integration with existing receipt/provenance systems, scanner findings as
+policy inputs. P2: passive Cursor/Copilot adapters, gateway-import mode. See
+[ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 

@@ -1,8 +1,8 @@
 # Deprecations & removals
 
-## 2.0.0 — pivot to policy compiler + PR receipt verifier
+## 2.0.0 — pivot to policy compiler + PR scope verifier
 
-Frontier Scout is now a **policy compiler + PR receipt verifier** for AI coding agents
+Frontier Scout is now a **policy compiler + PR scope verifier** for AI coding agents
 (Claude Code first). The product surface narrowed to one wedge, and the off-strategy
 surfaces were **removed** (not just parked) so the repo matches the product.
 
