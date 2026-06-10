@@ -190,3 +190,17 @@ def test_git_diff_names_reads_real_repo(tmp_path):
     git("commit", "-q", "-m", "feature")
     names = git_diff_names(repo, base)
     assert "src/feature.py" in names
+
+
+def test_advisory_result_is_self_describing(tmp_path):
+    # Advisory mode downgrades violations to warnings with ok=True; the result
+    # must say so itself, or exported/attested advisory evidence reads as a clean pass.
+    repo, ph = _setup(tmp_path)
+    enforcing = verify_pr(repo, changed_files=["app/migrations/0001.py"], receipts=[])
+    assert enforcing.advisory is False
+    assert enforcing.ok is False
+    advisory = verify_pr(repo, changed_files=["app/migrations/0001.py"], receipts=[], advisory=True)
+    assert advisory.advisory is True
+    assert advisory.ok is True
+    assert advisory.violations == []
+    assert any("migrations" in w for w in advisory.warnings)
