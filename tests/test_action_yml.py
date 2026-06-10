@@ -67,6 +67,9 @@ def test_action_self_install_default():
 
 def test_dogfood_workflow_exercises_the_action():
     assert "uses: ./" in DOGFOOD_WF
+    # Onboarding posture is advisory by guideline; a silent flip to enforcing
+    # (or removal of the advisory input) must fail this suite.
+    assert 'advisory: "true"' in DOGFOOD_WF
 
 
 def test_attest_smoke_workflow_is_manual_and_scoped():
