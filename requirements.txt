@@ -1,2 +1,2 @@
 # Runtime dependency (the CLI is otherwise pure standard library).
-pydantic>=2.0
+pydantic>=2.13.4
