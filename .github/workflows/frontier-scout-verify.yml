@@ -26,3 +26,17 @@ jobs:
           --base "origin/${{ github.base_ref }}"
           --receipts "frontier-scout-receipts/*.json"
           --advisory
+  # Dogfood the composite Action itself: `uses: ./` resolves THIS PR's action.yml,
+  # which installs THIS PR's package source ($GITHUB_ACTION_PATH) — so every PR
+  # exercises the marketplace entrypoint end-to-end.
+  verify-action:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./
+        with:
+          advisory: "true"
+          evidence-artifact: "frontier-scout-evidence"

@@ -1,0 +1,29 @@
+# Frontier Scout — on-demand proof that the signed-attestation rail works.
+# Manual only: PR runs can't mint OIDC tokens for forks, and the PR verify
+# workflow deliberately stays at `contents: read`. `base: HEAD` yields a valid
+# empty diff (a real verifier run, not a mock), so the run exercises
+# verify → evidence JSON → actions/attest → uploadable artifact end to end.
+# Verify the result locally with:
+#   gh run download <run-id> -n attest-smoke-evidence
+#   gh attestation verify frontier-scout-evidence.json --owner ajaysurya1221 \
+#     --predicate-type https://github.com/ajaysurya1221/frontier-scout/predicate/verify-pr/v1
+name: Attest smoke
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+jobs:
+  attest-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./
+        with:
+          base: "HEAD"
+          attest: "true"
+          evidence-artifact: "attest-smoke-evidence"
