@@ -4,7 +4,9 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - "v*"
+      # Full semver only: a floating major tag (e.g. `v2`, moved post-release for
+      # Action consumers) must not trigger-and-fail the changelog extraction.
+      - "v[0-9]+.[0-9]+.[0-9]+"
 
 permissions:
   contents: write

@@ -1,5 +1,50 @@
 # Changelog
 
+## 2.1.0 - 2026-06-10
+
+### The GitHub Action: verify agent PRs in CI, with signed evidence
+
+`verify-pr` is now consumable as a **composite GitHub Action** (`action.yml` at the repo
+root) — the new primary entry point:
+
+**Added**
+- **`uses: ajaysurya1221/frontier-scout@v2.1.0`** — fail-closed PR scope verification as a
+  marketplace-ready Action: GitHub annotations, a step summary, a machine-readable evidence
+  JSON, and outputs (`ok`, `verdict` incl. `unverified`, `summary`, counts, `evidence-path`).
+  Fail-closed base resolution (a missing base is never an empty diff); inputs reach scripts
+  only via env (injection guard); every `uses:` step is SHA-pinned (Node 24-ready);
+  `advisory` defaults `"false"`. Empty `version` input installs the action's own pinned-ref
+  source; `version: X.Y.Z` opts into PyPI.
+- **Optional signed evidence**: `attest: "true"` signs the evidence JSON via GitHub artifact
+  attestations (`actions/attest`, custom predicate
+  `https://github.com/ajaysurya1221/frontier-scout/predicate/verify-pr/v1` carrying
+  `{verifier, mode, verdict}`); verify with `gh attestation verify`. If attestation is
+  requested and cannot be produced the Action fails — unsigned evidence is never presented
+  as attested. `.github/workflows/attest-smoke.yml` (manual) proves the rail.
+- **`agent verify-pr --json-out PATH`** — write the result JSON to a file while stdout
+  (annotations + summary) and the exit code stay unchanged; composes with `--json`.
+- **`VerifyResult.advisory`** — advisory runs are self-describing (advisory mode reports
+  `ok=true` with violations downgraded to warnings, so exported/attested evidence must
+  carry the mode).
+- Dogfood: a `verify-action` job (`uses: ./`) runs the Action on every PR of this repo;
+  property tests (`tests/test_action_yml.py`) lock SHA pinning, env-only input flow,
+  secretlessness, and fail-closed markers.
+- **`KILL_CRITERIA.md`** — pre-registered public demand gates for the 90-day validation
+  window, with flip-to-quit / flip-to-double-down conditions.
+- **`examples/demo-walkthrough.md`** — 90-second fail-closed scope-violation demo.
+
+**Changed**
+- README repositioned Action-first, with a "What's verified vs what's claimed" honesty
+  table; banner uses an absolute URL so the PyPI page renders it. Package summary updated
+  to lead with the verifier.
+- `release.yml` tag trigger tightened to full semver (`v[0-9]+.[0-9]+.[0-9]+`) so the
+  floating `v2` Action tag can't trigger a release run.
+
+**Removed**
+- Stale pre-pivot artifacts: `Dockerfile` (invoked a removed verb), `.dockerignore`,
+  `docker-compose.yml`, `infra/otel-collector.yaml`, `.env.example`, and two packs-era
+  issue templates.
+
 ## 2.0.1 - 2026-06-09
 
 Metadata-only release. Updates the package summary (PyPI `Summary`) from "policy compiler +

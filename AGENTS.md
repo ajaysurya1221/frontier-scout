@@ -130,9 +130,16 @@ Adapted from the [Karpathy coding guidelines](https://github.com/multica-ai/andr
    merge via relax→merge→restore on `required_approving_review_count` (1→0→1; always restore),
    squashing with `gh pr merge --squash --admin`.
 4. Tag `vX.Y.Z` → `release.yml` publishes GitHub Release (draft→publish) + PyPI (trusted
-   publishing, gated by the `pypi` deployment environment — approve the run).
+   publishing, gated by the `pypi` deployment environment — approve the run). The trigger
+   only matches full semver tags (`v[0-9]+.[0-9]+.[0-9]+`).
 5. The built wheel must bundle `agent_firewall/hook_runtime.py` (release.yml guards this).
 6. Never reuse a burned version: immutable releases reserve a deleted tag — bump to next patch.
+7. After the release is green, move the floating Action major tag:
+   `git tag -f v2 vX.Y.Z && git push -f origin v2` (matches no release trigger; carries no
+   Release object, so immutable-tag reservation does not apply).
+8. One-time per major: publish the Action to the GitHub Marketplace by editing the published
+   release and ticking "Publish this Action to the GitHub Marketplace" (`action.yml` at repo
+   root + public repo are the prerequisites).
 
 ## Ask before changing
 
