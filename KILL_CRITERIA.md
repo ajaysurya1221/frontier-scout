@@ -62,4 +62,5 @@ pivot, no sixth identity.
 ## What happens on success
 
 Incorporate, charge, and re-evaluate scope with the design partners — still under the
-"emit, don't enforce; verify, don't guess" invariants in [AGENTS.md](AGENTS.md).
+honesty invariants in [AGENTS.md](AGENTS.md) ("emit, don't enforce"; control evidence,
+not a guarantee; fail-closed).
