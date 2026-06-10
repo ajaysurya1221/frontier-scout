@@ -123,6 +123,11 @@ with the TUI.)
 5. Verify the built wheel bundles `agent_firewall/hook_runtime.py`.
 6. **Never reuse a burned version:** GitHub immutable-releases permanently reserve a deleted
    release's tag — bump to the next patch instead.
+7. After the release is green, move the floating Action major tag: `git tag -f v2 vX.Y.Z &&
+   git push -f origin v2` (the release trigger matches full semver only, so this fires
+   nothing; no Release object → immutable-tag reservation doesn't apply).
+8. One-time per major: publish the Action to the Marketplace (edit the published release →
+   "Publish this Action to the GitHub Marketplace").
 
 ## Security / conventions
 
