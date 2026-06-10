@@ -122,6 +122,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--advisory", action="store_true", help="Downgrade violations to warnings (always exit 0)."
     )
     agent_verify.add_argument("--json", action="store_true", help="Emit JSON.")
+    agent_verify.add_argument(
+        "--json-out",
+        default=None,
+        metavar="PATH",
+        help="Also write the verify result JSON to PATH (stdout output is unchanged).",
+    )
 
     return parser
 
@@ -296,6 +302,12 @@ def main(argv: list[str] | None = None) -> int:
             result = agent_verify_pr(
                 args.repo, base=args.base, receipts_glob=args.receipts, advisory=args.advisory
             )
+            if args.json_out:
+                parent = os.path.dirname(args.json_out)
+                if parent:
+                    os.makedirs(parent, exist_ok=True)
+                with open(args.json_out, "w", encoding="utf-8") as fh:
+                    fh.write(result.model_dump_json(indent=2) + "\n")
             if args.json:
                 print(result.model_dump_json(indent=2))
             else:

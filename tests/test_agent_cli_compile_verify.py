@@ -93,3 +93,45 @@ def test_verify_pr_cli_json_output(tmp_path, capsys):
     payload = json.loads(capsys.readouterr().out)
     assert "ok" in payload and "summary" in payload
     assert rc == 0
+
+
+def test_verify_pr_cli_json_out_writes_file_and_keeps_stdout(tmp_path, capsys):
+    repo = str(tmp_path)
+    save_policy(
+        AgentPolicy(protected_file_globs=["**/migrations/**"], allowed_file_globs=["src/**"]),
+        str(tmp_path / "frontier-scout.policy.json"),
+    )
+    main(["agent", "compile", "--repo", repo])
+    _git(repo, "init", "-q")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "base")
+    base = _rev(repo)
+    (tmp_path / "app" / "migrations").mkdir(parents=True)
+    (tmp_path / "app" / "migrations" / "0001_init.py").write_text("# schema change\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "add migration")
+    capsys.readouterr()  # drain
+
+    out_file = tmp_path / "evidence" / "e.json"
+    rc = main(["agent", "verify-pr", "--repo", repo, "--base", base, "--json-out", str(out_file)])
+    stdout = capsys.readouterr().out
+    # Exit code and stdout (annotations + summary) are unchanged by --json-out.
+    assert rc == 1
+    assert "::error" in stdout
+    assert "FAIL" in stdout
+    payload = json.loads(out_file.read_text())
+    assert payload["ok"] is False
+    assert payload["advisory"] is False
+
+
+def test_verify_pr_cli_json_and_json_out_together(tmp_path, capsys):
+    repo = str(tmp_path)
+    save_policy(AgentPolicy(allowed_file_globs=["src/**"]), str(tmp_path / "frontier-scout.policy.json"))
+    main(["agent", "compile", "--repo", repo])
+    capsys.readouterr()  # drain
+    out_file = tmp_path / "e.json"
+    rc = main(["agent", "verify-pr", "--repo", repo, "--json", "--json-out", str(out_file)])
+    stdout_payload = json.loads(capsys.readouterr().out)  # stdout stays pure JSON
+    file_payload = json.loads(out_file.read_text())
+    assert stdout_payload["ok"] == file_payload["ok"]
+    assert rc == 0

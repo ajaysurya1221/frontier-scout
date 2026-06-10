@@ -48,6 +48,9 @@ class VerifyResult(BaseModel):
     receipt_count: int = 0
     summary: str = ""
     unverified: bool = False
+    # Advisory mode downgrades violations to warnings (ok=True), so exported
+    # evidence must carry the mode or an advisory run reads as a clean pass.
+    advisory: bool = False
 
 
 def git_diff_names(repo: str, base: str) -> list[str]:
@@ -198,5 +201,5 @@ def verify_pr(
     return VerifyResult(
         ok=ok, violations=violations, warnings=warnings, annotations=annotations,
         checked_files=len(changed_files), receipt_count=len(receipts), summary=summary,
-        unverified=diff_error is not None,
+        unverified=diff_error is not None, advisory=advisory,
     )
