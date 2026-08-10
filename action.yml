@@ -219,7 +219,7 @@ runs:
     - name: Attest evidence (signed; runs even when the verdict is FAIL)
       if: ${{ inputs.attest == 'true' }}
       id: attest
-      uses: actions/attest@daf44fb950173508f38bd2406030372c1d1162b1 # v3
+      uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
       with:
         subject-path: ${{ steps.verify.outputs.evidence-path }}
         predicate-type: "https://github.com/ajaysurya1221/frontier-scout/predicate/verify-pr/v1"
