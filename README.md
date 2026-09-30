@@ -219,9 +219,10 @@ exist:
 ## Roadmap
 
 P0 (shipped): the GitHub Action with signed evidence, the Claude compiler + local action
-records, the CI verifier. P1 is **demand-gated** (see [KILL_CRITERIA.md](KILL_CRITERIA.md)):
-platform-evidence ingestion, Codex adapter, scanner findings as policy inputs — built only
-when a named design partner asks. See [ROADMAP.md](ROADMAP.md).
+records, the CI verifier. P1 was **demand-gated** and the gates were not met at the
+[day-90 evaluation](KILL_CRITERIA.md#day-90-evaluation-2026-09-30): platform-evidence
+ingestion, Codex adapter, scanner findings as policy inputs stay unbuilt unless someone
+with a real use case asks. See [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 
