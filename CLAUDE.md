@@ -95,8 +95,9 @@ generated hook as a subprocess.
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
 ```
 
-- In the local conda setup use `/opt/miniconda3/bin/python` (bare `python` may not be on
-  PATH). The suite is fast and fully offline now (no TUI/LLM/network tests).
+- Use the interpreter of your virtualenv (e.g. `.venv/bin/python -m pytest -q`); bare
+  `python` may not be on PATH. The suite is fast and fully offline now (no TUI/LLM/network
+  tests).
 - `make lint` (ruff), `make type` (mypy `--strict` over `agent_firewall` + `exporters`),
   `make coverage`, `make audit` (pip-audit + bandit), `make demo` (offline compile+doctor
   in a temp dir).
@@ -137,6 +138,10 @@ auto-install; receipts are evidence not proof; don't read `.env.local`.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
+
+> **Optional tooling:** GitNexus is the maintainer's local code-intelligence setup; its MCP
+> server and the `.claude/skills/gitnexus/*/SKILL.md` files referenced below are **not
+> bundled in this repo**, so skip these steps when it is not installed.
 
 This project is indexed by GitNexus as **frontier-scout**. Use the GitNexus MCP tools to
 understand code, assess impact, and navigate safely.
