@@ -3,13 +3,14 @@
 <img src="https://raw.githubusercontent.com/ajaysurya1221/frontier-scout/main/docs/assets/frontier-scout-banner.png" alt="Frontier Scout — PR scope verifier + policy compiler for AI coding agents (Claude Code first)" width="100%">
 
 <p>
-  <strong>Verify in CI that an AI agent's PR stayed within approved scope — fail-closed, with signed evidence.</strong><br>
+  <strong>Verify in CI that an AI agent's PR stayed within approved scope — fail-closed, with optional Sigstore-attested evidence.</strong><br>
   <sub>A GitHub Action for the verify side · a policy compiler into native Claude Code controls for the authoring side.</sub>
 </p>
 
 <p>
+  <a href="https://github.com/ajaysurya1221/frontier-scout/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/ajaysurya1221/frontier-scout/ci.yml?branch=main&style=flat-square&label=CI"></a>
+  <a href="https://pypi.org/project/frontier-scout/"><img alt="PyPI" src="https://img.shields.io/pypi/v/frontier-scout?style=flat-square"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square">
-  <img alt="Research preview" src="https://img.shields.io/badge/status-research%20preview-orange?style=flat-square">
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green?style=flat-square">
   <img alt="No telemetry" src="https://img.shields.io/badge/telemetry-none-lightgrey?style=flat-square">
 </p>
@@ -25,11 +26,10 @@
 
 </div>
 
-> **Research preview — technically coherent, not market-validated.** No PMF / adoption
-> claim; this project is demand-gated with **public kill criteria** ([KILL_CRITERIA.md](KILL_CRITERIA.md)).
-> Claude Code first (Codex/Cursor/Copilot are roadmap). Frontier Scout **emits** native
-> config and **verifies** evidence — Claude Code and GitHub Actions do the enforcing. Its
-> output is **control evidence, not a guarantee** that no unsafe action occurred.
+Coding agents open PRs faster than humans can review them. Frontier Scout compiles one
+typed repo policy into Claude Code's native permissions and hooks, the hooks write action
+receipts, and a GitHub Action fails the PR when the diff touched protected paths without a
+receipt, when the policy drifted since compile, or when a deny rule was bypassed.
 
 ## The problem
 
@@ -112,6 +112,10 @@ Honesty model, load-bearing:
 | Evidence JSON without attestation | **Supporting claim** |
 | Local action records (receipts written by the agent-side hook) | **Supporting claim** — written on the same machine the agent controls |
 | `UNVERIFIED` (diff not computable) | **Never** rendered as a pass, in either mode |
+
+> **Status:** research preview, maintained; one maintainer; no adoption claims. Claude Code
+> first (Codex/Cursor/Copilot are roadmap, not built). The pre-registered demand gates and
+> their day-90 evaluation are public: [KILL_CRITERIA.md](KILL_CRITERIA.md).
 
 ## Full setup (policy + local hooks)
 
