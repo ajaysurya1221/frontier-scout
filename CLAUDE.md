@@ -41,6 +41,12 @@ The CLI is `frontier-scout agent <verb>` (+ `doctor`). Bare `frontier-scout` pri
   executes nothing, exit `0/3/4`) · `agent receipts list|show` · `agent export
   agents-md|pr-checklist` (advisory snippets). `agent export claude` points to `compile`.
 - `doctor` — offline readiness check (policy/lock/settings/hooks/workflow/drift).
+- `action.yml` — composite GitHub Action wrapping `agent verify-pr` for CI (SHA-pinned
+  steps; inputs reach scripts via env only; installs its own checked-out source by default,
+  or a pinned PyPI `version`; fails closed when no diff base is resolvable; writes the
+  evidence JSON via `--json-out`, optionally uploaded as an artifact; with `attest: "true"`
+  signs it via `actions/attest` under a custom predicate carrying mode + verdict, and fails
+  rather than degrade to unsigned). Consumed as `ajaysurya1221/frontier-scout@vX.Y.Z`.
 
 **Key modules** (`frontier_scout/agent_firewall/`): `models` (`AgentPolicy`, `TaskDecision`,
 `Receipt`) · `policy` (load/generate/save, fail-closed defaults) · `scan` (risk surfaces;
