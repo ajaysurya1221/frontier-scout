@@ -21,6 +21,7 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
+import os
 import re
 import shlex
 from datetime import UTC, datetime
@@ -89,6 +90,25 @@ def _file_path_of(tool_input: dict[str, Any]) -> str:
         if isinstance(value, str) and value:
             return value
     return ""
+
+
+def repo_relative(path: str, repo: str) -> str:
+    """Normalise a tool-input path to the repo-relative POSIX form ``git diff`` reports.
+
+    Claude Code sends absolute ``file_path`` values, while ``verify-pr`` matches receipts
+    against ``git diff --name-only``, which is repo-relative. Receipts therefore record
+    paths in the latter form. A path outside ``repo`` (or one that cannot be resolved) is
+    returned unchanged rather than dropped, so the verifier simply finds no receipt for it.
+    """
+    if not path:
+        return path
+    try:
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            return Path(os.path.normpath(path)).as_posix()
+        return candidate.resolve().relative_to(Path(repo).resolve()).as_posix()
+    except (ValueError, OSError, RuntimeError):
+        return path
 
 
 # --- Bash command-structure matching --------------------------------------------
@@ -412,7 +432,8 @@ def handle_pre_tool_use(
     tool_name = str(event.get("tool_name", ""))
     tool_input = event.get("tool_input") or {}
     decision, reason = decide(tool_name, tool_input, policy)
-    files = [_file_path_of(tool_input)] if _file_path_of(tool_input) else []
+    file_path = repo_relative(_file_path_of(tool_input), repo)
+    files = [file_path] if file_path else []
     receipt = {
         "receipt_id": f"{_stamp()}-{_slug(tool_name)}",
         "timestamp": datetime.now(UTC).isoformat(),
@@ -453,7 +474,8 @@ def handle_post_tool_use(
     tool_name = str(event.get("tool_name", ""))
     tool_input = event.get("tool_input") or {}
     tool_output = event.get("tool_output")
-    files = [_file_path_of(tool_input)] if _file_path_of(tool_input) else []
+    file_path = repo_relative(_file_path_of(tool_input), repo)
+    files = [file_path] if file_path else []
     realized: dict[str, Any] = {"completed": True}
     if isinstance(tool_output, dict):
         realized["status"] = tool_output.get("status")

@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+**Fixed**
+- Receipts written by the compiled hooks now record `files_considered` as repo-relative
+  POSIX paths. Claude Code sends absolute `file_path` values, while `verify-pr` matches
+  receipts against `git diff --name-only`, which is repo-relative, so a receipt written by
+  the real hook could never cover a changed protected path and every such PR failed closed.
+  `verify-pr` also normalises absolute entries in receipts written by earlier hooks. A new
+  end-to-end test runs the real hook with an absolute path against a real git diff.
+
 ## 2.1.0 - 2026-06-10
 
 ### The GitHub Action: verify agent PRs in CI, with signed evidence
