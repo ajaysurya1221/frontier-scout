@@ -172,6 +172,36 @@ config — four dimensions plus approval gates:
 Decisions are **fail-closed**: anything not provably safe escalates to `ask`; off-allowlist
 MCP servers and blocked commands hard-`deny`.
 
+### Optional: a decision model inside the hook
+
+Off by default, and the compiled artifacts are identical whether or not you use it. A policy
+may opt in to a System One decision model (TypeSafe's Jev) as a *second opinion* on Bash
+calls, consulted by the hook after the static decision:
+
+```json
+{
+  "decision_model": {
+    "provider": "typesafe",
+    "model": "jev-1.13.0",
+    "key_env": "TYPESAFE_API_KEY",
+    "timeout_seconds": 3.0,
+    "relax_ask_to_allow_at": 0.95,
+    "deny_at": 0.9
+  }
+}
+```
+
+The hook asks four literal questions about the command (main effect; destructive; exposes
+secrets; escalates privilege) and may only **tighten** an `allow` or `ask` to `deny` when the
+model is confident the call is risky, or **relax** an `ask` to `allow` when it is confident
+the call is read-only or build/test and not risky. A static `deny` is never relaxed. No key,
+a timeout, a malformed or wrong-model answer, or a low-confidence answer leaves the static
+decision in force, and the receipt says so (`decision_model.applied`: `tightened`,
+`relaxed`, `abstained` or `unavailable`). The key is read from the environment at hook time
+and never written. Thresholds are yours to set from your own data; the defaults come from a
+pre-registered calibration audit of the model
+([agent-reliability-ci, `docs/results/jev-calibration`](https://github.com/ajaysurya1221/agent-reliability-ci/tree/main/docs/results/jev-calibration)).
+
 ## CLI
 
 | Command | What it does |
@@ -189,6 +219,10 @@ MCP servers and blocked commands hard-`deny`.
 
 - **Static + read-only.** The scan reads file *names*, never secret *contents*. The only
   subprocess is a read-only `git diff` in `verify-pr`.
+- **Keyless and offline by default.** The compiler, verifier, doctor and hooks make no
+  network call unless a policy opts into the [decision model](#optional-a-decision-model-inside-the-hook),
+  which is advisory and fail-closed: it can never relax a static `deny`, and any failure
+  leaves the static decision in force.
 - **Emit, don't enforce.** Frontier Scout writes native config; Claude Code's hook/permission
   system enforces locally and GitHub Actions enforces in CI.
 - **Fail-closed.** A missing/malformed policy denies by default; every dangerous capability

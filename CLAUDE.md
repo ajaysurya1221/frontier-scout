@@ -78,6 +78,16 @@ The CI verify workflow runs **`--advisory`** (warn-only) while onboarding.
   owns that space, so we integrate rather than reinvent.
 - **Static + read-only.** The scan reads file *names*, never secret *contents*. The only
   subprocess is a read-only `git diff` (verify-pr) / `git rev-parse` (receipt metadata).
+- **Keyless and offline by default.** Nothing makes a network call unless a policy opts into
+  the `decision_model` section (`models.DecisionModelSpec`): then, and only for Bash calls,
+  the hook asks a System One decision endpoint four literal questions *after* the static
+  decision. The answers can only tighten an allow/ask to deny or relax an ask to allow; a
+  static deny is never relaxed; no key, timeout, malformed or wrong-model answer, or low
+  confidence leaves the static decision in force and the receipt records `applied`. The key
+  is read from the environment at hook time and never written. Unset, the section is omitted
+  from saved policies and from the policy hash. Thresholds default to values from the
+  pre-registered audit in agent-reliability-ci (`docs/results/jev-calibration`); say so, and
+  never present the model as an enforcement boundary.
 - **Fail-closed.** Missing/malformed policy denies by default; dangerous capabilities
   escalate to approval; a non-empty protected diff with no receipts fails the PR.
 - **Control evidence, not a guarantee.** Local hooks are not a complete enforcement
