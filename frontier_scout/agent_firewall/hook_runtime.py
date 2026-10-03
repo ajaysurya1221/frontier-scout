@@ -393,9 +393,9 @@ def decide(tool_name: str, tool_input: dict[str, Any], policy: dict[str, Any]) -
 # --- optional decision model (opt-in; advisory; fail-closed) ----------------------
 # When the policy carries a ``decision_model`` section (see models.DecisionModelSpec), the
 # hook asks a System One decision endpoint about a Bash call AFTER the static decision.
-# The answers can only tighten an allow/ask to deny, or relax an ask to allow; a static
-# deny stands, and any failure (no key, timeout, bad or wrong-model response) leaves the
-# static decision in force. The key is read from the environment at hook time and is
+# The answers can only tighten an allow to ask or an allow/ask to deny, or relax an ask to
+# allow; a static deny stands, and any failure (no key, timeout, bad or wrong-model
+# response) leaves the static decision in force. The key is read from the environment at hook time and is
 # never written. Stdlib only: urllib with a short timeout. The questions below are the
 # contract; keep them literal (the model answers the question as written).
 
@@ -472,6 +472,7 @@ _MODEL_DEFAULTS: dict[str, Any] = {
     "timeout_seconds": 3.0,
     "relax_ask_to_allow_at": 0.95,
     "deny_at": 0.9,
+    "ask_at": 0.5,
 }
 
 
@@ -554,17 +555,21 @@ def combine_with_model(decision: str, answers: dict[str, Any], spec: dict[str, A
     """Apply validated answers to a static ``decision``; return ``(decision, applied)``.
 
     ``applied`` is one of ``static-deny`` (a deny is never relaxed), ``tightened`` (the model
-    is confident the call is risky), ``relaxed`` (an ask became an allow because the model is
-    confident the call is read-only or build/test and not risky) or ``abstained``.
+    is confident the call is risky: deny), ``tightened-to-ask`` (an allow became an ask because
+    the model rates the call possibly risky), ``relaxed`` (an ask became an allow because the
+    model is confident the call is read-only or build/test and not risky) or ``abstained``.
     """
 
     if decision == "deny":
         return "deny", "static-deny"
     deny_at = float(_spec_value(spec, "deny_at"))
+    ask_at = float(_spec_value(spec, "ask_at"))
     relax_at = float(_spec_value(spec, "relax_ask_to_allow_at"))
     risk = max(float(answers[name]) for name in _RISK_QUESTIONS)
     if risk >= deny_at:
         return "deny", "tightened"
+    if decision == "allow" and risk >= ask_at:
+        return "ask", "tightened-to-ask"
     effect = answers["effect"]
     if (
         decision == "ask"
@@ -604,6 +609,10 @@ def consult_decision_model(
     notes = {
         "tightened": (
             f"Decision model rates the call risky (risk {risk:.2f} >= {_spec_value(spec, 'deny_at')}); denied."
+        ),
+        "tightened-to-ask": (
+            f"Decision model rates the call possibly risky (risk {risk:.2f} >= "
+            f"{_spec_value(spec, 'ask_at')}); approval required."
         ),
         "relaxed": (
             f"Decision model is confident the call is {effect['choice']} "

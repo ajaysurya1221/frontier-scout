@@ -186,18 +186,20 @@ calls, consulted by the hook after the static decision:
     "key_env": "TYPESAFE_API_KEY",
     "timeout_seconds": 3.0,
     "relax_ask_to_allow_at": 0.95,
-    "deny_at": 0.9
+    "deny_at": 0.9,
+    "ask_at": 0.5
   }
 }
 ```
 
 The hook asks four literal questions about the command (main effect; destructive; exposes
-secrets; escalates privilege) and may only **tighten** an `allow` or `ask` to `deny` when the
-model is confident the call is risky, or **relax** an `ask` to `allow` when it is confident
-the call is read-only or build/test and not risky. A static `deny` is never relaxed. No key,
-a timeout, a malformed or wrong-model answer, or a low-confidence answer leaves the static
+secrets; escalates privilege) and may only **tighten** an `allow` to `ask` when the model
+rates the call possibly risky (`ask_at`) or an `allow`/`ask` to `deny` when it is confident
+the call is risky (`deny_at`), or **relax** an `ask` to `allow` when it is confident the call
+is read-only or build/test and not risky. A static `deny` is never relaxed. No key, a
+timeout, a malformed or wrong-model answer, or a low-confidence answer leaves the static
 decision in force, and the receipt says so (`decision_model.applied`: `tightened`,
-`relaxed`, `abstained` or `unavailable`). The key is read from the environment at hook time
+`tightened-to-ask`, `relaxed`, `abstained` or `unavailable`). The key is read from the environment at hook time
 and never written. Thresholds are yours to set from your own data; the defaults come from a
 pre-registered calibration audit of the model
 ([agent-reliability-ci, `docs/results/jev-calibration`](https://github.com/ajaysurya1221/agent-reliability-ci/tree/main/docs/results/jev-calibration)).

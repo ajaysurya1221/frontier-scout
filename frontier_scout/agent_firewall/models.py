@@ -31,10 +31,11 @@ class DecisionModelSpec(BaseModel):
     """An opt-in decision model the PreToolUse hook may consult. Advisory, fail-closed.
 
     Absent (the default) the hook is keyless and offline. Present, the hook asks the model
-    about a tool call *after* the static decision and may only (a) tighten an ``allow`` or
-    ``ask`` to ``deny`` when the model is confident the call is destructive, exposes secrets
-    or escalates privilege, or (b) relax an ``ask`` to ``allow`` when the model is confident
-    the call is read-only or build/test and not risky. A static ``deny`` is never relaxed;
+    about a tool call *after* the static decision and may only (a) tighten an ``allow`` to
+    ``ask`` when the model rates the call possibly risky (``ask_at``), or an ``allow``/``ask``
+    to ``deny`` when it is confident the call is destructive, exposes secrets or escalates
+    privilege (``deny_at``), or (b) relax an ``ask`` to ``allow`` when it is confident the
+    call is read-only or build/test and not risky. A static ``deny`` is never relaxed;
     any failure (no key, timeout, bad response, wrong model, low confidence) leaves the
     static decision in force. The key is read from ``key_env`` at hook time and never
     written anywhere.
@@ -47,6 +48,7 @@ class DecisionModelSpec(BaseModel):
     timeout_seconds: float = Field(default=3.0, gt=0, le=30)
     relax_ask_to_allow_at: float = Field(default=0.95, ge=0.5, le=1.0)
     deny_at: float = Field(default=0.9, ge=0.5, le=1.0)
+    ask_at: float = Field(default=0.5, ge=0.0, le=1.0)
     scope: list[str] = Field(default_factory=lambda: ["Bash"])
 
 

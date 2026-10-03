@@ -143,7 +143,37 @@ def test_confident_risk_tightens_allow_and_ask_to_deny() -> None:
     spec = DecisionModelSpec().model_dump()
     assert hr.combine_with_model("allow", answers("destructive", 1.0, destructive=0.95), spec) == ("deny", "tightened")
     assert hr.combine_with_model("ask", answers("read_only", 1.0, secret=0.9), spec) == ("deny", "tightened")
-    assert hr.combine_with_model("allow", answers("other", 0.5, privilege=0.89), spec) == ("allow", "abstained")
+    assert hr.combine_with_model("allow", answers("other", 0.5, privilege=0.89), spec) == (
+        "ask",
+        "tightened-to-ask",
+    )
+    assert hr.combine_with_model("allow", answers("other", 0.5, privilege=0.49), spec) == (
+        "allow",
+        "abstained",
+    )
+    assert hr.combine_with_model("ask", answers("other", 0.5, destructive=0.6), spec) == (
+        "ask",
+        "abstained",
+    )
+
+
+def test_possibly_risky_allow_becomes_an_ask_end_to_end(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, endpoint: FakeEndpoint
+) -> None:
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+    endpoint.payload = api_payload("jev-1.13.0", "destructive", 0.6, destructive=0.66)
+    policy = {**POLICY, "decision_model": spec_for(endpoint)}
+    out = hr.handle_pre_tool_use(
+        {"tool_name": "Bash", "tool_input": {"command": "git push origin :feature/old"}},
+        policy=policy,
+        policy_hash="h",
+        repo=str(tmp_path),
+    )
+    assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+    assert "approval required" in out["hookSpecificOutput"]["permissionDecisionReason"]
+    receipt = _receipts(tmp_path)[0]
+    assert receipt["decision_model"]["applied"] == "tightened-to-ask"
+    assert receipt["verdict"] == "needs_approval"
 
 
 def test_thresholds_come_from_the_spec() -> None:

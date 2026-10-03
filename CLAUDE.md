@@ -81,8 +81,8 @@ The CI verify workflow runs **`--advisory`** (warn-only) while onboarding.
 - **Keyless and offline by default.** Nothing makes a network call unless a policy opts into
   the `decision_model` section (`models.DecisionModelSpec`): then, and only for Bash calls,
   the hook asks a System One decision endpoint four literal questions *after* the static
-  decision. The answers can only tighten an allow/ask to deny or relax an ask to allow; a
-  static deny is never relaxed; no key, timeout, malformed or wrong-model answer, or low
+  decision. The answers can only tighten an allow to ask or an allow/ask to deny, or relax an
+  ask to allow; a static deny is never relaxed; no key, timeout, malformed or wrong-model answer, or low
   confidence leaves the static decision in force and the receipt records `applied`. The key
   is read from the environment at hook time and never written. Unset, the section is omitted
   from saved policies and from the policy hash. Thresholds default to values from the
