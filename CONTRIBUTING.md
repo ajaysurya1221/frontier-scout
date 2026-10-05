@@ -5,7 +5,8 @@ PRs are welcome. Keep them small, testable, and grounded in the local-first CLI 
 Frontier Scout is a **policy compiler + PR scope verifier** for AI coding agents (Claude
 Code first): it compiles a typed repo policy into the agent's native controls (settings
 `permissions` + hooks), the hook writes local action receipts, and a CI verifier checks a
-PR's diff against the approved scope. Keyless and offline; the only runtime dependency is `pydantic`. A
+PR's diff against the scope declared by the base commit's policy (receipts are unsigned
+observations, never approval). Keyless and offline; the only runtime dependency is `pydantic`. A
 small-maintainer **research preview** (technically coherent, not market-validated) — make no
 PMF / adoption claim.
 
@@ -15,8 +16,8 @@ Honesty invariants any change must respect:
   native config; Claude Code (hooks + permissions) and GitHub Actions enforce it. Never build
   a runtime, sandbox, MCP gateway, policy language, signed ledger, signed receipt protocol,
   signing daemon, receipt SDK, MCP receipt proxy, or dashboard.
-- **Static + read-only.** The scan reads file *names*, never contents; the only subprocess is
-  a read-only `git diff` / `git rev-parse`.
+- **Static + read-only.** The scan reads file *names*, never contents; the only subprocesses
+  are read-only git calls (`rev-parse`, `diff`, `ls-tree`, `cat-file`).
 - **Fail-closed** and **redacted** (`scrub_secrets`). Output is **control evidence, not a
   guarantee**.
 - **Claude Code first; Codex / Cursor / Copilot are roadmap**, not built.
@@ -92,7 +93,8 @@ frontier-scout.policy.json (typed AgentPolicy)
    -> agent compile  -> .claude/settings.json (permissions) + .claude/hooks/ (decide + receipts)
                       + policy.lock.json (sha256) + managed MCP fragment + verify workflow
    -> (Claude Code runs; hook writes receipts to .frontier-scout/receipts/)
-   -> agent verify-pr -> read-only git diff vs. receipts + lock -> fail-closed verdict + PR annotations
+   -> agent verify-pr -> read-only git diff vs. the base commit's policy + lock (receipts reported,
+                         never approval) -> PASS / FAIL / UNVERIFIED + reason-coded PR annotations
 ```
 
 This repo **dogfoods** its own policy (`frontier-scout.policy.json` + `.claude/` are

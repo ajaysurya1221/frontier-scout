@@ -62,8 +62,8 @@ def test_hook_receipts_record_repo_relative_paths(tmp_path):
         assert json.loads(receipt.read_text())["files_considered"] == ["app/migrations/0001_init.py"]
 
 
-def test_end_to_end_hook_receipt_satisfies_verify_pr(tmp_path):
-    """Real hook (absolute path) -> receipt on disk -> real git diff -> verify_pr passes."""
+def test_end_to_end_hook_receipt_is_matched_by_verify_pr(tmp_path):
+    """Real hook (absolute path) -> receipt on disk -> real git diff -> verify_pr matches it."""
     repo = tmp_path
 
     def git(*args):
@@ -91,18 +91,23 @@ def test_end_to_end_hook_receipt_satisfies_verify_pr(tmp_path):
     git("add", "-A")
     git("commit", "-q", "-m", "migration")
 
+    # The hook's repo-relative receipt matches the changed path: the verifier sees the
+    # receipt (APPROVAL_UNAUTHENTICATED, not PROTECTED_NO_RECEIPT), but an unsigned receipt
+    # cannot authenticate the approval, so a protected change is UNVERIFIED, never PASS.
     res = verify_pr(str(repo), base=base)
-    assert res.violations == []
-    assert res.ok is True
+    assert res.ok is False and res.verdict == "unverified"
+    assert res.reason_codes == ["APPROVAL_UNAUTHENTICATED"]
+    assert res.scope == "verified"
 
-    # The same diff with no receipts still fails closed.
+    # The same diff with no receipts fails closed.
     res_without = verify_pr(str(repo), base=base, receipts=[])
-    assert res_without.ok is False
+    assert res_without.ok is False and res_without.verdict == "fail"
     assert any("migrations" in v for v in res_without.violations)
+    assert "PROTECTED_NO_RECEIPT" in res_without.reason_codes
 
 
 def test_verify_pr_accepts_receipts_written_with_absolute_paths(tmp_path):
-    """Receipts from hooks compiled before this fix still verify."""
+    """Receipts from hooks compiled before the path fix still match the changed path."""
     _, ph = _compiled(tmp_path)
     receipt = {
         "receipt_id": "r1",
@@ -114,4 +119,7 @@ def test_verify_pr_accepts_receipts_written_with_absolute_paths(tmp_path):
         "files_considered": [str(tmp_path / "app" / "migrations" / "0001.py")],
     }
     res = verify_pr(str(tmp_path), changed_files=["app/migrations/0001.py"], receipts=[receipt])
-    assert res.ok is True
+    # Matched (not PROTECTED_NO_RECEIPT), but still not an authenticated approval.
+    assert "PROTECTED_NO_RECEIPT" not in res.reason_codes
+    assert "APPROVAL_UNAUTHENTICATED" in res.reason_codes
+    assert res.ok is False

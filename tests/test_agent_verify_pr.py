@@ -47,13 +47,17 @@ def test_protected_change_without_receipt_fails_closed(tmp_path):
     assert any("migrations" in v for v in res.violations)
 
 
-def test_protected_change_with_approving_receipt_passes(tmp_path):
+def test_protected_change_with_ask_receipt_is_unverified_not_pass(tmp_path):
+    # D2: an unsigned "ask" receipt is a self-reported claim, not an authenticated approval.
     repo, ph = _setup(tmp_path)
     res = verify_pr(
         repo, changed_files=["app/migrations/0001.py"],
         receipts=[_receipt(ph, tool="Edit", files=["app/migrations/0001.py"], decision="ask")],
     )
-    assert res.ok is True
+    assert res.ok is False
+    assert res.verdict == "unverified" and res.unverified is True
+    assert "APPROVAL_UNAUTHENTICATED" in res.reason_codes
+    assert any("approval provenance not authenticated" in v for v in res.violations)
 
 
 def test_allowed_change_without_receipts_warns_but_passes(tmp_path):

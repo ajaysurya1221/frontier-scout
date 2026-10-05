@@ -79,3 +79,73 @@ def test_attest_smoke_workflow_is_manual_and_scoped():
     assert "contents: read" in SMOKE_WF
     assert "secrets." not in SMOKE_WF
     assert 'attest: "true"' in SMOKE_WF
+
+
+def test_action_reports_verdict_scope_and_provenance_separately():
+    # The step outputs/summary use the verifier's own verdict (computed the same way in
+    # both modes), so an advisory run with findings never reads as "pass".
+    assert 'data.get("verdict")' in ACTION
+    assert "approval_provenance" in ACTION and "data.get('scope'" in ACTION
+    assert "never authenticate an approval" in ACTION
+
+
+def _action_run_steps() -> list[tuple[str, list[str]]]:
+    """(step text, run-body lines) for every `runs.steps` entry that has a `run: |` body."""
+    steps_text = ACTION.split("\nruns:\n", 1)[1]
+    chunks = re.split(r"\n(?=    - )", steps_text)
+    out = []
+    for chunk in chunks:
+        if "run: |" in chunk:
+            out.append((chunk, _run_block_lines(chunk)))
+    return out
+
+
+def _shell_lines(body: list[str]) -> list[str]:
+    """Run-body lines that bash executes: heredoc contents and comments are dropped."""
+    lines: list[str] = []
+    terminator: str | None = None
+    for line in body:
+        stripped = line.strip()
+        if terminator is not None:
+            if stripped == terminator:
+                terminator = None
+            continue
+        if not stripped or stripped.startswith("#"):
+            continue
+        lines.append(stripped)
+        heredoc = re.search(r"<<-?'?([A-Z]+)'?", stripped)
+        if heredoc:
+            terminator = heredoc.group(1)
+    return lines
+
+
+def test_every_run_step_runs_outside_the_candidate_checkout():
+    # The workspace holds the PR checkout; no run step may execute from it.
+    steps = _action_run_steps()
+    assert len(steps) == 4
+    for chunk, _ in steps:
+        assert "      working-directory: ${{ runner.temp }}\n" in chunk, chunk.splitlines()[0]
+
+
+def test_every_python_invocation_is_isolated():
+    # `python -I`: no current or script directory on sys.path, no user site, PYTHON* env
+    # ignored, so a PR-root pip.py / json.py / frontier_scout/ can never be imported.
+    invocations = []
+    for _, body in _action_run_steps():
+        for line in _shell_lines(body):
+            for match in re.finditer(r"(?:^|[\s;&|(])(python[0-9.]*)(?=\s|$)", line):
+                invocations.append(line)
+                assert match.group(1) == "python", f"use the setup-python `python`: {line}"
+                assert line[match.end():].startswith(" -I "), f"Python not isolated: {line}"
+            # The console scripts (`pip`, `frontier-scout`) never run; modules go via -m.
+            tokens = line.split()
+            for i, token in enumerate(tokens):
+                if re.fullmatch(r"pip[0-9.]*", token):
+                    assert tokens[i - 3 : i] == ["python", "-I", "-m"], f"bare pip: {line}"
+            assert not re.search(r"(?:^|[\s;&|(])frontier-scout(?=\s|$)", line), line
+    assert len(invocations) == 6  # 2 installs, --version, verifier, 2 helpers
+    assert ACTION.count("python -I - <<'PY'") == 2
+    assert "python -I -m frontier_scout \"${args[@]}\"" in ACTION
+    # The candidate repository reaches the verifier only as an absolute path.
+    assert '*) repo="$GITHUB_WORKSPACE/$FS_REPO" ;;' in ACTION
+    assert '--repo "$repo"' in ACTION

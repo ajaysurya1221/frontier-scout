@@ -4,15 +4,28 @@
 # checked-out action source ($GITHUB_ACTION_PATH), so the code that runs is exactly
 # the ref the consumer pinned — no PyPI propagation race at release time.
 #
+# Trusted execution path: the workspace holds the candidate (PR) checkout, so no
+# step runs Python from it. Every run step uses `working-directory: runner.temp`
+# (outside the checkout), and every Python call is `python -I` (isolated: neither
+# the current directory nor the script directory is on sys.path, no user site,
+# PYTHON* variables ignored). A PR-root pip.py, json.py or frontier_scout/ package
+# therefore cannot replace the installer, the verifier or these helpers. The
+# candidate repository reaches the verifier only as an absolute --repo path.
+#
 # Honesty model: the verifier's output is control evidence, not a guarantee.
-# Unsigned evidence (receipts, the JSON file) is a supporting claim; it is
-# *verified* only when attested (attest: "true") and checked with
-# `gh attestation verify`. UNVERIFIED is never reported as a pass.
+# Scope is checked against the policy + lock at the BASE commit (a PR cannot widen
+# its own scope). Receipts are unsigned observations: they never authenticate an
+# approval, so a changed protected path is never a pass. The evidence JSON is
+# *attested* only when attest: "true" and checked with `gh attestation verify`;
+# attestation proves which workflow produced it, not who approved the change.
+# UNVERIFIED is never reported as a pass.
 name: "Frontier Scout PR Scope Verifier"
 description: >-
-  Verify an AI-agent PR's diff stayed within the approved frontier-scout policy
-  scope. Fail-closed. Emits GitHub annotations, a machine-readable evidence JSON,
-  and (optionally) a signed attestation of that evidence via GitHub attestations.
+  Check an AI-agent PR's diff against the frontier-scout policy scope declared at
+  the base commit. Non-pass when the diff, policy identity or evidence cannot be
+  established; protected-path approvals are reported, not authenticated. Emits
+  GitHub annotations, a machine-readable evidence JSON, and (optionally) a signed
+  attestation of that evidence via GitHub attestations.
 author: "Ajay Surya"
 branding:
   icon: "shield"
@@ -28,8 +41,9 @@ inputs:
     default: ""
   receipts:
     description: >-
-      Glob of receipt JSON files. Empty = library defaults
-      (frontier-scout-receipts/*.json and .frontier-scout/receipts/*.json).
+      Glob of receipt JSON files. A relative glob is resolved against `repo`.
+      Empty = library defaults (frontier-scout-receipts/*.json and
+      .frontier-scout/receipts/*.json under `repo`).
     default: ""
   advisory:
     description: >-
@@ -37,7 +51,9 @@ inputs:
       false: this is a fail-closed verifier. Use true only while onboarding.
     default: "false"
   repo:
-    description: "Path to the repository root to verify (passed to --repo)."
+    description: >-
+      Path to the repository root to verify. A relative path is resolved against
+      $GITHUB_WORKSPACE and passed to --repo as an absolute path.
     default: "."
   version:
     description: >-
@@ -54,7 +70,8 @@ inputs:
   evidence-path:
     description: >-
       Where to write the evidence JSON. Empty = $RUNNER_TEMP/frontier-scout-evidence.json
-      (outside the workspace, so the verified tree stays clean).
+      (outside the workspace, so the verified tree stays clean). A relative path is
+      resolved against $GITHUB_WORKSPACE. Any existing file there is removed first.
     default: ""
   evidence-artifact:
     description: "If non-empty, upload the evidence JSON as a workflow artifact with this name."
@@ -65,10 +82,14 @@ inputs:
 
 outputs:
   ok:
-    description: "true/false — verifier verdict (advisory mode can be true with warnings)."
+    description: "true/false — whether the job passes: verdict pass in enforcing mode; always true in advisory mode (read verdict)."
     value: ${{ steps.verify.outputs.ok }}
   verdict:
-    description: "pass | fail | unverified (unverified = diff could not be computed; never reported as pass)."
+    description: >-
+      pass | fail | unverified, computed the same way in both modes (unverified = the
+      diff could not be collected, or a protected path changed and its approval
+      provenance is not authenticated; never reported as pass). Advisory mode only
+      stops the job from failing.
     value: ${{ steps.verify.outputs.verdict }}
   summary:
     description: "One-line human summary from the verifier."
@@ -99,22 +120,26 @@ runs:
 
     - name: Install frontier-scout
       shell: bash
+      # SECURITY: run outside the candidate checkout, with isolated Python (see header).
+      working-directory: ${{ runner.temp }}
       env:
         FS_VERSION: ${{ inputs.version }}
       run: |
         if [ -n "$FS_VERSION" ]; then
-          python -m pip install --quiet "frontier-scout==${FS_VERSION}"
+          python -I -m pip install --quiet "frontier-scout==${FS_VERSION}"
         else
           # Install the action's own source: exactly the code at the pinned ref.
-          python -m pip install --quiet "$GITHUB_ACTION_PATH"
+          python -I -m pip install --quiet "$GITHUB_ACTION_PATH"
         fi
-        frontier-scout --version
+        python -I -m frontier_scout --version
 
     - name: Verify PR scope (fail-closed)
       id: verify
       shell: bash
       # SECURITY: inputs only ever enter this script via env (never inline
       # expression interpolation inside run bodies) — script-injection guard.
+      # Runs outside the candidate checkout, with isolated Python (see header).
+      working-directory: ${{ runner.temp }}
       env:
         FS_BASE: ${{ inputs.base }}
         FS_RECEIPTS: ${{ inputs.receipts }}
@@ -133,39 +158,60 @@ runs:
           exit 1
         fi
 
-        # 2) Evidence path (default outside the workspace so the tree stays clean).
+        # 2) Absolute paths: this step runs outside the checkout. A relative repo
+        #    or evidence path is anchored at $GITHUB_WORKSPACE, a relative receipts
+        #    glob at the repo. Evidence defaults to outside the workspace so the
+        #    tree stays clean; a stale file there is removed so only this run's
+        #    output is ever read back.
+        case "$FS_REPO" in
+          /*) repo="$FS_REPO" ;;
+          *) repo="$GITHUB_WORKSPACE/$FS_REPO" ;;
+        esac
+        repo="${repo%/.}"
         evidence="${FS_EVIDENCE_IN:-$RUNNER_TEMP/frontier-scout-evidence.json}"
+        case "$evidence" in
+          /*) ;;
+          *) evidence="$GITHUB_WORKSPACE/$evidence" ;;
+        esac
         mkdir -p "$(dirname "$evidence")"
+        rm -f -- "$evidence"
 
         # 3) Run the verifier. Annotations (::error/::warning) go to stdout and
         #    are picked up by the runner; --json-out writes the evidence file.
         #    Capture the exit code instead of failing here so the evidence is
         #    still attested/uploaded on FAIL; the final step enforces the verdict.
-        args=( agent verify-pr --repo "$FS_REPO" --base "$base" --json-out "$evidence" )
+        args=( agent verify-pr --repo "$repo" --base "$base" --json-out "$evidence" )
         if [ -n "$FS_RECEIPTS" ]; then
-          args+=( --receipts "$FS_RECEIPTS" )
+          case "$FS_RECEIPTS" in
+            /*) receipts="$FS_RECEIPTS" ;;
+            *) receipts="$repo/$FS_RECEIPTS" ;;
+          esac
+          args+=( --receipts "$receipts" )
         fi
         if [ "$FS_ADVISORY" = "true" ]; then
           args+=( --advisory )
         fi
         code=0
-        frontier-scout "${args[@]}" || code=$?
+        python -I -m frontier_scout "${args[@]}" || code=$?
 
         if [ ! -s "$evidence" ]; then
           echo "::error::frontier-scout: no evidence JSON was produced (verifier crashed?) — failing closed."
-          exit "${code:-1}"
+          if [ "$code" = "0" ]; then code=1; fi
+          exit "$code"
         fi
 
         # 4) Step outputs + job summary. Heredoc delimiters are random so a
         #    crafted base ref echoed into the summary cannot inject outputs.
-        EVIDENCE_PATH="$evidence" EXIT_CODE="$code" python3 - <<'PY'
+        EVIDENCE_PATH="$evidence" EXIT_CODE="$code" python -I - <<'PY'
         import json, os, uuid
 
         path = os.environ["EVIDENCE_PATH"]
         code = os.environ["EXIT_CODE"]
         with open(path) as fh:
             data = json.load(fh)
-        verdict = "unverified" if data.get("unverified") else ("pass" if data.get("ok") else "fail")
+        verdict = data.get("verdict") or (
+            "unverified" if data.get("unverified") else ("pass" if data.get("ok") else "fail")
+        )
         mode = "advisory" if data.get("advisory") else "enforcing"
         with open(os.environ["GITHUB_OUTPUT"], "a") as out:
             def emit(name, value):
@@ -181,14 +227,20 @@ runs:
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as s:
             s.write(f"### Frontier Scout verify-pr: {verdict.upper()} ({mode})\n\n")
             s.write(f"{data.get('summary', '')}\n\n")
-            s.write("| files checked | receipts | violations | warnings |\n|---|---|---|---|\n")
             s.write(
+                "| scope | approval provenance | files checked | receipts | violations | warnings |\n"
+                "|---|---|---|---|---|---|\n"
+            )
+            s.write(
+                f"| {data.get('scope', 'n/a')} | {data.get('approval_provenance', 'n/a')} "
                 f"| {data.get('checked_files', 0)} | {data.get('receipt_count', 0)} "
                 f"| {len(data.get('violations') or [])} | {len(data.get('warnings') or [])} |\n\n"
             )
             s.write(
-                "> Evidence JSON is a supporting claim. It is *verified* only if "
-                "attested (attest: true) and checked with `gh attestation verify`.\n"
+                "> Scope is checked against the base commit's policy. Receipts are unsigned "
+                "observations and never authenticate an approval. Attestation (attest: true, "
+                "`gh attestation verify`) proves which workflow produced this JSON, not who "
+                "approved the change.\n"
             )
         PY
 
@@ -196,12 +248,13 @@ runs:
       if: ${{ inputs.attest == 'true' }}
       id: predicate
       shell: bash
+      working-directory: ${{ runner.temp }}
       env:
         FS_ADVISORY: ${{ inputs.advisory }}
         FS_VERDICT: ${{ steps.verify.outputs.verdict }}
       run: |
         pred="$RUNNER_TEMP/frontier-scout-predicate.json"
-        FS_PRED="$pred" python3 - <<'PY'
+        FS_PRED="$pred" python -I - <<'PY'
         import json, os
 
         with open(os.environ["FS_PRED"], "w") as fh:
@@ -234,10 +287,11 @@ runs:
 
     - name: Enforce verdict
       shell: bash
+      working-directory: ${{ runner.temp }}
       env:
         FS_EXIT: ${{ steps.verify.outputs.exit-code }}
       run: |
         if [ "$FS_EXIT" != "0" ]; then
-          echo "::error::frontier-scout: PR scope verification failed (exit $FS_EXIT). See annotations above."
+          echo "::error::frontier-scout: verify-pr did not pass (exit $FS_EXIT; FAIL or UNVERIFIED). See annotations above."
           exit "$FS_EXIT"
         fi

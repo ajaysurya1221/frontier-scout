@@ -9,7 +9,8 @@ agent needs before touching the code.
 Frontier Scout — a **policy compiler + PR scope verifier** for AI coding agents, **Claude
 Code first**. It compiles a typed repo policy (`frontier-scout.policy.json`) into Claude
 Code's **native** controls (settings `permissions` + hooks), the hook writes **action
-receipts**, and a CI verifier checks that a PR's diff stayed within the approved scope.
+receipts**, and a CI verifier checks a PR's diff against the scope declared by the base
+commit's policy. Receipts are unsigned observations: they never authorise a protected change.
 Keyless, offline; the only runtime dependency is `pydantic`. Python 3.11+, setuptools, PyPI.
 
 **Research preview — technically coherent, not market-validated.** No PMF / adoption claim.
@@ -33,18 +34,25 @@ The CLI is `frontier-scout agent <verb>` (+ `doctor`). Bare `frontier-scout` pri
   (`pre_tool_use.py` / `post_tool_use.py` + a **self-contained stdlib** `_fs_guard.py`),
   `policy.lock.json` (sha256 of the policy), a managed MCP allow/deny fragment, and
   `.github/workflows/frontier-scout-verify.yml`.
-- `agent verify-pr [--base <ref>] [--receipts <glob>] [--advisory]` — **fail-closed** PR
-  check: read-only `git diff` vs. receipts + lock. Flags protected-path changes without a
-  receipt, policy drift since compile, stale receipt hashes, and deny-bypasses. Emits
-  `::error::`/`::warning::` GitHub annotations; exit non-zero on violation.
+- `agent verify-pr [--base <ref>] [--receipts <glob>] [--advisory]` — PR scope check:
+  `git diff --name-status -z -M <base>...HEAD` (both rename ends, deletions, mode/binary,
+  NUL-safe names) against the policy + lock read **from the base commit**. FAIL: out-of-scope
+  path, protected path with no receipt, missing/malformed/drifted policy identity,
+  malformed/unbound/stale receipt, deny-bypass. UNVERIFIED (never PASS): no/failed diff, or a
+  protected path backed only by unsigned receipts (`APPROVAL_UNAUTHENTICATED`). Reports
+  `verdict`, `scope` and `approval_provenance` separately with reason codes; emits
+  `::error::`/`::warning::` annotations; exit non-zero unless PASS (advisory: always 0).
 - `agent scan` · `agent policy init|explain` · `agent check "<task>"` (static pre-check,
   executes nothing, exit `0/3/4`) · `agent receipts list|show` · `agent export
   agents-md|pr-checklist` (advisory snippets). `agent export claude` points to `compile`.
 - `doctor` — offline readiness check (policy/lock/settings/hooks/workflow/drift).
 - `action.yml` — composite GitHub Action wrapping `agent verify-pr` for CI (SHA-pinned
-  steps; inputs reach scripts via env only; installs its own checked-out source by default,
+  steps; inputs reach scripts via env only; every step runs from `$RUNNER_TEMP` and every
+  Python call is `python -I`, so no Python is imported from the PR checkout (adversarial
+  test: `tests/test_action_isolation.py`); installs its own checked-out source by default,
   or a pinned PyPI `version`; fails closed when no diff base is resolvable; writes the
-  evidence JSON via `--json-out`, optionally uploaded as an artifact; with `attest: "true"`
+  evidence JSON via `--json-out` and reports the verifier's own `verdict`, `scope` and
+  `approval_provenance`; optionally uploads the JSON as an artifact; with `attest: "true"`
   signs it via `actions/attest` under a custom predicate carrying mode + verdict, and fails
   rather than degrade to unsigned). Consumed as `ajaysurya1221/frontier-scout@vX.Y.Z`.
 
@@ -80,7 +88,8 @@ The CI verify workflow runs **`--advisory`** (warn-only) while onboarding.
   scope verification, not a portable receipt standard — the external Agent Receipts project
   owns that space, so we integrate rather than reinvent.
 - **Static + read-only.** The scan reads file *names*, never secret *contents*. The only
-  subprocess is a read-only `git diff` (verify-pr) / `git rev-parse` (receipt metadata).
+  subprocesses are read-only git calls (`rev-parse`/`diff`/`ls-tree`/`cat-file` in verify-pr;
+  `rev-parse` for receipt metadata).
 - **Keyless and offline by default.** Nothing makes a network call unless a policy opts into
   the `decision_model` section (`models.DecisionModelSpec`): then, and only for Bash calls,
   the hook asks a System One decision endpoint four literal questions *after* the static
@@ -92,7 +101,9 @@ The CI verify workflow runs **`--advisory`** (warn-only) while onboarding.
   pre-registered audit in agent-reliability-ci (`docs/results/jev-calibration`); say so, and
   never present the model as an enforcement boundary.
 - **Fail-closed.** Missing/malformed policy denies by default; dangerous capabilities
-  escalate to approval; a non-empty protected diff with no receipts fails the PR.
+  escalate to approval. `verify-pr` never reports PASS for anything it could not establish,
+  evaluates scope against the base commit's policy, and never treats an unsigned receipt as
+  approval (see `docs/evaluation/verifier-2026-10-06.md`).
 - **Control evidence, not a guarantee.** Local hooks are not a complete enforcement
   boundary — they are deliberately paired with the CI diff verifier. Never overclaim.
 - **Don't rely on optional runtime conveniences.** Frontier Scout does not depend on hook

@@ -2,6 +2,69 @@
 
 ## Unreleased
 
+**Security** — `verify-pr` false acceptance paths (present in 2.1.0 and earlier; defect
+matrix, regression tests and reproduction steps in `docs/evaluation/verifier-2026-10-06.md`)
+- `allowed_file_globs` is now enforced. A changed path that is neither allowed nor protected
+  fails (`SCOPE_OUTSIDE_ALLOWED`). Before, it only warned.
+- Receipts no longer authorise protected changes. Before, any receipt naming a protected file
+  (`ask`, `allow`, `realized`, any approval field) made it pass. Now a protected change is
+  FAIL with no receipt (`PROTECTED_NO_RECEIPT`) and UNVERIFIED with one
+  (`APPROVAL_UNAUTHENTICATED`, "approval provenance not authenticated"). It is never PASS.
+- Unbound receipts (no or empty `policy_hash`), malformed receipts (previously skipped
+  silently), and a lock without a sha256 `policy_sha256` (previously disabled the drift and
+  stale checks) now fail.
+- With `--base`, the policy and lock are read from the base commit, so a PR cannot widen its
+  own scope or bring its own policy. A PR that changes `frontier-scout.policy.json` or
+  `policy.lock.json` is a protected change (`POLICY_CHANGED_IN_PR`). A schema-invalid policy
+  fails (`POLICY_MALFORMED`) instead of silently falling back to the conservative default.
+- Diff collection uses `git diff --name-status -z -M`: both ends of a rename, deletions,
+  mode-only and binary changes, and NUL-delimited names with spaces, tabs, quotes, newlines or
+  non-ASCII characters. Before, `--name-only` reported only the rename destination and quoted
+  unusual names, so they never matched a glob. An option-shaped `--base` such as
+  `--output=…` is rejected before git sees it (`DIFF_BASE_INVALID`). Before, it reached
+  `git diff` as an option and the run passed. Annotation properties and messages are escaped,
+  so a file name cannot start a new workflow-command line.
+- Receipt files changed by the PR are flagged (`RECEIPT_IN_PR`). Static `agent check`
+  receipts are ignored with a warning (`RECEIPT_NOT_ACTION`).
+- A receipt whose `decision` or `verdict` is an array or object is `RECEIPT_MALFORMED` in both
+  modes, never a crash.
+- Finding paths in the evidence JSON and in annotation `file=` properties go through the same
+  scrubber as messages: token-shaped file names are redacted, and an undecodable (non-UTF-8)
+  file-name byte is emitted as a `\xNN` marker, so JSON and stdout emission cannot fail on a
+  file name. Matching still uses the raw name.
+
+**Security** — the Action's execution path (present in v2.1.0 and earlier)
+- `action.yml` ran Python from the candidate checkout's working directory (`python -m pip`,
+  and `python3 -` for the output and attestation helpers), so a PR-root `pip.py` could replace
+  the installation and a `json.py` could rewrite the verdict, exit code and evidence. Every
+  Python call is now `python -I` (isolated: no current or script directory on `sys.path`, no
+  user site, `PYTHON*` variables ignored), every run step uses
+  `working-directory: ${{ runner.temp }}`, the verifier runs as `python -I -m frontier_scout`
+  with the repository passed as an absolute `--repo`, and a stale evidence file is removed
+  before the verifier runs. A relative `repo` or `evidence-path` input is resolved against
+  `$GITHUB_WORKSPACE`, and a relative `receipts` glob against the repository.
+  `tests/test_action_isolation.py` runs the Action's steps against a candidate repository full
+  of marker-writing shadow modules and asserts none of them is imported.
+
+**Changed** (behaviour)
+- `verify-pr` without `--base` is UNVERIFIED (`DIFF_BASE_MISSING`, exit 1 when enforcing).
+  Before, it reported PASS on an empty diff. The CI release preflight now runs it with
+  `--advisory`.
+- Advisory runs keep the real verdict: the summary reads
+  `<VERDICT> (advisory: reported, not enforced)` instead of `PASS`, and the exit code is
+  still 0. `VerifyResult` gains `verdict`, `scope`, `approval_provenance`, `policy_source`,
+  `receipts_in_pr`, `reason_codes` and `findings`. Every finding carries a reason code
+  (`verify.REASON_CODES`). The Action's `verdict` output and step summary use the verifier's
+  verdict and show scope and approval provenance separately.
+- Receipts committed under `frontier-scout-receipts/` are PR content. They must be inside
+  `allowed_file_globs`, or be passed from outside the PR with `--receipts`.
+- The compiled verify workflow pins `frontier-scout==<compiling version>` instead of
+  installing the latest release. The current version is still 2.1.0, so a workflow compiled
+  today pins the defective 2.1.0 verifier; the repaired verifier ships in the next release
+  (no version bump in this change).
+- `verify-pr` runs the read-only git calls `rev-parse`, `ls-tree` and `cat-file` in addition
+  to `diff`.
+
 **Added**
 - **Opt-in decision model inside the hook.** A policy may carry a `decision_model` section
   (`DecisionModelSpec`: provider `typesafe`, pinned `model`, `base_url`, `key_env`,

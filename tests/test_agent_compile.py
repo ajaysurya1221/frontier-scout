@@ -106,3 +106,14 @@ def test_generated_hook_runs_standalone_and_denies(tmp_path):
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
     receipts = list((tmp_path / ".frontier-scout" / "receipts").glob("*.json"))
     assert len(receipts) == 1
+
+
+def test_compiled_workflow_pins_the_compiling_verifier_release(tmp_path):
+    # The verifier that runs in CI is a pinned release, never code from the PR under review.
+    from frontier_scout import __version__
+
+    out = compile_claude(_policy(), repo=str(tmp_path))
+    text = Path(out["workflow"]).read_text()
+    assert f'pip install "frontier-scout=={__version__}"' in text
+    assert "@@FS_VERSION@@" not in text
+    assert "pip install ." not in text

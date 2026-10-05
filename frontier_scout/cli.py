@@ -1,9 +1,10 @@
 """Command line interface for Frontier Scout.
 
 Frontier Scout compiles a typed repo policy into AI coding-agent native controls
-(Claude Code first) and verifies in CI that a PR stayed within the approved scope.
-It **emits** config and **verifies** evidence — the agent and GitHub Actions do the
-enforcing. The CLI is keyless and offline.
+(Claude Code first) and checks in CI that a PR's diff stays inside the policy scope
+declared at the base commit. It **emits** config and **checks** evidence — the agent
+and GitHub Actions do the enforcing. Receipts are unsigned observations, so approvals
+are reported, never authenticated. The CLI is keyless and offline.
 """
 
 from __future__ import annotations
@@ -21,8 +22,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="frontier-scout",
         description=(
             "Compile a repo policy into AI coding-agent native controls (Claude Code "
-            "first) and verify PRs stay within approved scope. Emits config; the agent "
-            "and GitHub Actions enforce it."
+            "first) and check that a PR's diff stays inside the policy scope declared at the "
+            "base commit. Emits config; the agent and GitHub Actions enforce it."
         ),
     )
     parser.add_argument("--version", action="version", version=f"frontier-scout {__version__}")
@@ -113,13 +114,25 @@ def build_parser() -> argparse.ArgumentParser:
 
     agent_verify = agent_sub.add_parser(
         "verify-pr",
-        help="Verify a PR's receipts + diff stayed within the approved policy scope (fail-closed).",
+        help="Check a PR's diff against the base commit's policy scope (approvals are reported, "
+        "not authenticated).",
     )
     agent_verify.add_argument("--repo", default=".", help="Repository root.")
-    agent_verify.add_argument("--base", default=None, help="Base git ref to diff against (e.g. origin/main).")
-    agent_verify.add_argument("--receipts", default=None, help="Glob of receipt JSON files to verify.")
     agent_verify.add_argument(
-        "--advisory", action="store_true", help="Downgrade violations to warnings (always exit 0)."
+        "--base",
+        default=None,
+        help="Trusted base git ref (e.g. origin/main): the diff is <base>...HEAD and the policy + lock "
+        "are read from <base>. Without it nothing is diffed and the result is UNVERIFIED.",
+    )
+    agent_verify.add_argument(
+        "--receipts",
+        default=None,
+        help="Glob of receipt JSON files (unsigned observations: checked, but never treated as approval).",
+    )
+    agent_verify.add_argument(
+        "--advisory",
+        action="store_true",
+        help="Report violations as warnings and always exit 0 (the verdict is still reported).",
     )
     agent_verify.add_argument("--json", action="store_true", help="Emit JSON.")
     agent_verify.add_argument(
@@ -295,7 +308,7 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  {name}: {out_path}")
             print(
                 "Next: commit these, run Claude Code (the hook decides + writes receipts), open a "
-                "PR, and the verifier workflow checks receipts against the diff."
+                "PR, and the verifier workflow checks the diff against the base commit's policy."
             )
             return 0
         if verb == "verify-pr":

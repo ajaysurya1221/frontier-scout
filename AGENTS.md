@@ -3,7 +3,8 @@
 Frontier Scout: a **policy compiler + PR scope verifier** for AI coding agents (**Claude
 Code first**). Compile a typed repo policy into the agent's native controls (settings +
 hooks), the hook writes local action receipts, and a CI verifier checks a PR's diff against
-the approved scope. Local, keyless, offline; the only runtime dependency is `pydantic`. A
+the scope declared by the base commit's policy (receipts are unsigned observations, never
+approval). Local, keyless, offline; the only runtime dependency is `pydantic`. A
 **research preview** (technically coherent, **not** market-validated). Use this file as the
 handoff playbook.
 
@@ -28,7 +29,7 @@ frontier_scout/                # installable CLI package
     lock.py                    #   policy_hash() + policy.lock.json
     hook_runtime.py            #   STDLIB-ONLY decide() + receipt writers (copied into target repos)
     compile.py                 #   compile_claude(): settings + hooks + lock + workflow
-    verify.py                  #   verify_pr(): fail-closed PR check (read-only git diff)
+    verify.py                  #   verify_pr(): diff vs base-commit policy; reason codes; receipts never approve
   exporters/
     claude_config.py           #   managed allowedMcpServers/deniedMcpServers from policy names
     policy_snippets.py         #   advisory CLAUDE.md / AGENTS.md / PR-checklist snippets
@@ -52,8 +53,8 @@ frontier-scout doctor                                 # policy/lock/hooks/workfl
 frontier-scout agent verify-pr --repo . --base origin/main --receipts "frontier-scout-receipts/*.json"
 ```
 
-Everything is keyless and offline. The only subprocess is a read-only `git diff` (verify-pr)
-/ `git rev-parse` (receipt metadata).
+Everything is keyless and offline. The only subprocesses are read-only git calls
+(`rev-parse` / `diff` / `ls-tree` / `cat-file` in verify-pr; `rev-parse` for receipt metadata).
 
 ## This repo dogfoods its own policy
 
@@ -66,7 +67,10 @@ repo are gated by the compiled policy (allow/deny/ask) and write receipts to the
 (policy/lock/hooks). To change it: edit `frontier-scout.policy.json`, re-run
 `frontier-scout agent compile --repo . --out .`, and commit. The CI verify workflow
 (`.github/workflows/frontier-scout-verify.yml`) runs in **`--advisory`** mode (warns, never
-blocks) while onboarding; drop `--advisory` to make it a hard gate.
+blocks). It installs this repository's own source from the pull request, so it cannot serve as
+trusted enforcement; keep it advisory. A hard gate needs a workflow the pull request cannot
+edit (for example a required workflow in an organization ruleset pinned to a trusted ref) that
+installs a released, repaired verifier, as the README describes.
 
 ## Test commands
 
@@ -88,7 +92,11 @@ blocks) while onboarding; drop `--advisory` to make it a hard gate.
   project already owns that space — integrate, don't reinvent).
 - **Static + read-only.** The scan reads file *names*, never secret *contents*.
 - **Fail-closed.** Missing/malformed policy denies by default; dangerous capabilities
-  escalate to approval; a non-empty protected diff with no receipts fails the PR.
+  escalate to approval. `verify-pr` reads the policy + lock from the base commit, fails
+  out-of-scope paths and protected paths with no receipt, and never reports PASS for what it
+  cannot establish. Receipts are unsigned and never authorise a protected change
+  (`APPROVAL_UNAUTHENTICATED` = UNVERIFIED). Every finding has a reason code
+  (`verify.REASON_CODES`, documented in `docs/evaluation/verifier-2026-10-06.md`).
 - **Control evidence, not a guarantee.** Local hooks aren't a complete boundary — they are
   paired with the CI diff verifier. No overclaiming in copy or output.
 - **No reliance on optional runtime conveniences.** Frontier Scout does not depend on hook
