@@ -25,10 +25,12 @@ Shipped today (P0):
 
 ## Next (P1) — build only on validated pull
 
-The next milestone is **design-partner validation**: real PRs gated by `verify-pr` on
-real repos. The gates are pre-registered publicly in [KILL_CRITERIA.md](KILL_CRITERIA.md)
+The gate for this milestone was **design-partner validation**: real PRs gated by
+`verify-pr` on real repos, pre-registered publicly in [KILL_CRITERIA.md](KILL_CRITERIA.md)
 (3 unaffiliated orgs · ≥20 agent PRs/week · 4-week retention · ≥1 unprompted payment
-signal, by day 90). Then, gated by that pull:
+signal, by day 90). Those gates were **not met** at the
+[day-90 evaluation](KILL_CRITERIA.md#day-90-evaluation-2026-09-30), so the items below
+are not commitments — they get built only if someone with a real use case asks:
 
 - **Codex adapter** — compile the same policy to Codex managed `requirements.toml` +
   hooks; CI verifier already covers the diff side.

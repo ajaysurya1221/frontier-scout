@@ -21,8 +21,12 @@ from __future__ import annotations
 import fnmatch
 import hashlib
 import json
+import os
 import re
 import shlex
+import time
+import urllib.error
+import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -89,6 +93,25 @@ def _file_path_of(tool_input: dict[str, Any]) -> str:
         if isinstance(value, str) and value:
             return value
     return ""
+
+
+def repo_relative(path: str, repo: str) -> str:
+    """Normalise a tool-input path to the repo-relative POSIX form ``git diff`` reports.
+
+    Claude Code sends absolute ``file_path`` values, while ``verify-pr`` matches receipts
+    against ``git diff --name-only``, which is repo-relative. Receipts therefore record
+    paths in the latter form. A path outside ``repo`` (or one that cannot be resolved) is
+    returned unchanged rather than dropped, so the verifier simply finds no receipt for it.
+    """
+    if not path:
+        return path
+    try:
+        candidate = Path(path)
+        if not candidate.is_absolute():
+            return Path(os.path.normpath(path)).as_posix()
+        return candidate.resolve().relative_to(Path(repo).resolve()).as_posix()
+    except (ValueError, OSError, RuntimeError):
+        return path
 
 
 # --- Bash command-structure matching --------------------------------------------
@@ -367,6 +390,245 @@ def decide(tool_name: str, tool_input: dict[str, Any], policy: dict[str, Any]) -
     return "ask", f"Tool '{tool_name}' is not classified; approval required (fail-closed)."
 
 
+# --- optional decision model (opt-in; advisory; fail-closed) ----------------------
+# When the policy carries a ``decision_model`` section (see models.DecisionModelSpec), the
+# hook asks a System One decision endpoint about a Bash call AFTER the static decision.
+# The answers can only tighten an allow to ask or an allow/ask to deny, or relax an ask to
+# allow; a static deny stands, and any failure (no key, timeout, bad or wrong-model
+# response) leaves the static decision in force. The key is read from the environment at hook time and is
+# never written. Stdlib only: urllib with a short timeout. The questions below are the
+# contract; keep them literal (the model answers the question as written).
+
+_EFFECT_CRITERIA: dict[str, str] = {
+    "read_only": "only reads or prints information; changes no file, setting, process or remote state",
+    "build_or_test": (
+        "compiles, builds, lints, format-checks or runs tests for the project; may write build artefacts"
+    ),
+    "writes_inside_repo": (
+        "creates or changes files, or local git state, inside the project directory, "
+        "without permanently discarding anything"
+    ),
+    "writes_outside_repo": (
+        "installs packages or changes files or settings outside the project directory, "
+        "without permanently discarding anything"
+    ),
+    "network_egress": "sends requests to, or fetches from, a remote host or service",
+    "destructive": (
+        "permanently deletes, overwrites or discards data, files, git history, branches, "
+        "uncommitted work, or destroys infrastructure"
+    ),
+    "privilege_escalation": (
+        "runs as another user, uses sudo, or changes permissions, owners or system configuration"
+    ),
+    "other": "starts a program or service, changes the shell session, or does not fit the other options",
+}
+
+_MODEL_QUESTIONS: dict[str, Any] = {
+    "effect": {
+        "type": "choice",
+        "instructions": "What is the main effect of running `command` in a software project's shell?",
+        "criteria": _EFFECT_CRITERIA,
+    },
+    "destructive": {
+        "type": "noul",
+        "instructions": (
+            "Does running `command` permanently delete, overwrite or discard data, files, git history, "
+            "branches or uncommitted work, or destroy infrastructure?"
+        ),
+        "criteria": {
+            "true": "yes, it permanently deletes, overwrites, discards or destroys something",
+            "false": "no, nothing is permanently lost",
+        },
+    },
+    "secret_exposure": {
+        "type": "noul",
+        "instructions": (
+            "Does running `command` print, upload, copy or send credentials, API keys, tokens, "
+            "private keys or password files?"
+        ),
+        "criteria": {
+            "true": "yes, credentials, keys, tokens or password files are printed, copied or sent",
+            "false": "no credential, key, token or password file is exposed",
+        },
+    },
+    "privilege": {
+        "type": "noul",
+        "instructions": (
+            "Does running `command` escalate privileges, run as another user, or change permissions, "
+            "owners or system configuration?"
+        ),
+        "criteria": {
+            "true": "yes, it escalates privileges or changes permissions, owners or system configuration",
+            "false": "no, it runs as the current user without changing permissions or system configuration",
+        },
+    },
+}
+_RELAXABLE_EFFECTS = {"read_only", "build_or_test"}
+_RISK_QUESTIONS = ("destructive", "secret_exposure", "privilege")
+_MODEL_DEFAULTS: dict[str, Any] = {
+    "model": "jev-1.13.0",
+    "base_url": "https://api.typesafe.ai",
+    "key_env": "TYPESAFE_API_KEY",
+    "timeout_seconds": 3.0,
+    "relax_ask_to_allow_at": 0.95,
+    "deny_at": 0.9,
+    "ask_at": 0.5,
+}
+
+
+def _spec_value(spec: dict[str, Any], key: str) -> Any:
+    value = spec.get(key)
+    return _MODEL_DEFAULTS[key] if value is None else value
+
+
+def _unit_interval(value: Any) -> float | None:
+    """``value`` as a float in [0, 1], else ``None`` (the API returns rounded floats)."""
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if 0.0 <= number <= 1.0 else None
+
+
+def _parse_answers(payload: Any, model: str) -> dict[str, Any] | None:
+    """Validate the response shape strictly; anything unexpected is ``None`` (fail-closed)."""
+
+    if not isinstance(payload, dict) or payload.get("model") != model:
+        return None
+    answers = payload.get("answers")
+    if not isinstance(answers, dict):
+        return None
+    effect = answers.get("effect")
+    if not isinstance(effect, dict) or effect.get("choice") not in _EFFECT_CRITERIA:
+        return None
+    confidence = _unit_interval(effect.get("confidence"))
+    if confidence is None:
+        return None
+    parsed: dict[str, Any] = {"effect": {"choice": str(effect["choice"]), "confidence": confidence}}
+    for name in _RISK_QUESTIONS:
+        answer = answers.get(name)
+        value = _unit_interval(answer.get("noul")) if isinstance(answer, dict) else None
+        if value is None:
+            return None
+        parsed[name] = value
+    return parsed
+
+
+def ask_decision_model(command: str, spec: dict[str, Any], key: str) -> dict[str, Any] | None:
+    """One request to the decision endpoint; ``None`` on any failure or unexpected answer."""
+
+    model = str(_spec_value(spec, "model"))
+    url = f"{str(_spec_value(spec, 'base_url')).rstrip('/')}/v1/systemone"
+    timeout = float(_spec_value(spec, "timeout_seconds"))
+    body = json.dumps(
+        {"state": {"command": command}, "model": model, "questions": _MODEL_QUESTIONS}
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            "User-Agent": "frontier-scout-hook/1",
+        },
+    )
+    started = time.perf_counter()
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 — https API URL from the policy
+            payload = json.loads(response.read())
+            request_id = response.headers.get("x-typesafe-request-id")
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        return None
+    answers = _parse_answers(payload, model)
+    if answers is None:
+        return None
+    return {
+        "model": model,
+        "request_id": request_id,
+        "latency_ms": round((time.perf_counter() - started) * 1000, 1),
+        "answers": answers,
+    }
+
+
+def combine_with_model(decision: str, answers: dict[str, Any], spec: dict[str, Any]) -> tuple[str, str]:
+    """Apply validated answers to a static ``decision``; return ``(decision, applied)``.
+
+    ``applied`` is one of ``static-deny`` (a deny is never relaxed), ``tightened`` (the model
+    is confident the call is risky: deny), ``tightened-to-ask`` (an allow became an ask because
+    the model rates the call possibly risky), ``relaxed`` (an ask became an allow because the
+    model is confident the call is read-only or build/test and not risky) or ``abstained``.
+    """
+
+    if decision == "deny":
+        return "deny", "static-deny"
+    deny_at = float(_spec_value(spec, "deny_at"))
+    ask_at = float(_spec_value(spec, "ask_at"))
+    relax_at = float(_spec_value(spec, "relax_ask_to_allow_at"))
+    risk = max(float(answers[name]) for name in _RISK_QUESTIONS)
+    if risk >= deny_at:
+        return "deny", "tightened"
+    if decision == "allow" and risk >= ask_at:
+        return "ask", "tightened-to-ask"
+    effect = answers["effect"]
+    if (
+        decision == "ask"
+        and effect["choice"] in _RELAXABLE_EFFECTS
+        and float(effect["confidence"]) >= relax_at
+        and risk <= (1.0 - relax_at) + 1e-9  # tolerance: 1 - 0.8 is not exactly 0.2 in binary
+    ):
+        return "allow", "relaxed"
+    return decision, "abstained"
+
+
+def consult_decision_model(
+    tool_name: str, tool_input: dict[str, Any], policy: dict[str, Any], decision: str
+) -> tuple[str, str | None, dict[str, Any] | None]:
+    """Return ``(decision, note, receipt_block)``; all unchanged/``None`` when not opted in."""
+
+    spec = policy.get("decision_model")
+    if not isinstance(spec, dict) or tool_name != "Bash":
+        return decision, None, None
+    scope = spec.get("scope")
+    if isinstance(scope, list) and tool_name not in scope:
+        return decision, None, None
+    model = str(_spec_value(spec, "model"))
+    key = os.environ.get(str(_spec_value(spec, "key_env")), "")
+    if not key:
+        return decision, None, {"model": model, "applied": "unavailable", "reason": "no key in the environment"}
+    result = ask_decision_model(str(tool_input.get("command", "")), spec, key)
+    if result is None:
+        return (
+            decision,
+            None,
+            {"model": model, "applied": "unavailable", "reason": "no valid answer within the timeout"},
+        )
+    final, applied = combine_with_model(decision, result["answers"], spec)
+    risk = max(float(result["answers"][name]) for name in _RISK_QUESTIONS)
+    effect = result["answers"]["effect"]
+    notes = {
+        "tightened": (
+            f"Decision model rates the call risky (risk {risk:.2f} >= {_spec_value(spec, 'deny_at')}); denied."
+        ),
+        "tightened-to-ask": (
+            f"Decision model rates the call possibly risky (risk {risk:.2f} >= "
+            f"{_spec_value(spec, 'ask_at')}); approval required."
+        ),
+        "relaxed": (
+            f"Decision model is confident the call is {effect['choice']} "
+            f"(confidence {effect['confidence']:.2f}, risk {risk:.2f}); allowed."
+        ),
+    }
+    block = {
+        "model": result["model"],
+        "request_id": result["request_id"],
+        "latency_ms": result["latency_ms"],
+        "answers": result["answers"],
+        "applied": applied,
+    }
+    return final, notes.get(applied), block
+
+
 # --- receipts (raw JSON; schema-compatible with frontier_scout Receipt) ----------
 
 _VERDICT_OF = {"allow": "allow", "ask": "needs_approval", "deny": "block"}
@@ -411,8 +673,22 @@ def handle_pre_tool_use(
 
     tool_name = str(event.get("tool_name", ""))
     tool_input = event.get("tool_input") or {}
-    decision, reason = decide(tool_name, tool_input, policy)
-    files = [_file_path_of(tool_input)] if _file_path_of(tool_input) else []
+    static_decision, reason = decide(tool_name, tool_input, policy)
+    decision, model_note, model_block = consult_decision_model(
+        tool_name, tool_input, policy, static_decision
+    )
+    reasons = [{"severity": "info", "rule_id": f"tool.{static_decision}", "message": scrub(reason)}]
+    if model_note:
+        reason = f"{reason} {model_note}"
+        reasons.append(
+            {
+                "severity": "info",
+                "rule_id": f"decision_model.{(model_block or {}).get('applied', 'abstained')}",
+                "message": scrub(model_note),
+            }
+        )
+    file_path = repo_relative(_file_path_of(tool_input), repo)
+    files = [file_path] if file_path else []
     receipt = {
         "receipt_id": f"{_stamp()}-{_slug(tool_name)}",
         "timestamp": datetime.now(UTC).isoformat(),
@@ -424,12 +700,13 @@ def handle_pre_tool_use(
         "policy_hash": policy_hash,
         "tool_name": tool_name,
         "tool_input_hash": _input_hash(tool_input),
-        "reasons": [{"severity": "info", "rule_id": f"tool.{decision}", "message": scrub(reason)}],
+        "reasons": reasons,
         "files_considered": [scrub(f) for f in files],
         "required_checks": list(policy.get("required_checks", [])),
         "warnings": [],
         "frontier_scout_version": version,
         "realized": None,
+        "decision_model": model_block,
     }
     _write(repo, receipt, phase="pre")
     return {
@@ -453,7 +730,8 @@ def handle_post_tool_use(
     tool_name = str(event.get("tool_name", ""))
     tool_input = event.get("tool_input") or {}
     tool_output = event.get("tool_output")
-    files = [_file_path_of(tool_input)] if _file_path_of(tool_input) else []
+    file_path = repo_relative(_file_path_of(tool_input), repo)
+    files = [file_path] if file_path else []
     realized: dict[str, Any] = {"completed": True}
     if isinstance(tool_output, dict):
         realized["status"] = tool_output.get("status")

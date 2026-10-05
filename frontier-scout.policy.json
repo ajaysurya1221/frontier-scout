@@ -92,5 +92,18 @@
     "protected-path",
     "ci"
   ],
-  "policy_notes": "Dogfood policy for the Frontier Scout repo itself. Allows the normal dev surface (frontier_scout/tests/docs/examples edits; pytest/ruff/mypy/make/git/gh) and the gitnexus MCP server. Protects CI config, secrets, and \u2014 notably \u2014 the policy, lock, and hooks themselves, so an agent can't silently weaken its own guardrails without an approval-gated, receipted action."
+  "policy_notes": "Dogfood policy for the Frontier Scout repo itself. Allows the normal dev surface (frontier_scout/tests/docs/examples edits; pytest/ruff/mypy/make/git/gh) and the gitnexus MCP server. Protects CI config, secrets, and \u2014 notably \u2014 the policy, lock, and hooks themselves, so an agent can't silently weaken its own guardrails without an approval-gated, receipted action.",
+  "decision_model": {
+    "provider": "typesafe",
+    "model": "jev-1.13.0",
+    "base_url": "https://api.typesafe.ai",
+    "key_env": "TYPESAFE_API_KEY",
+    "timeout_seconds": 3.0,
+    "relax_ask_to_allow_at": 0.95,
+    "deny_at": 0.9,
+    "ask_at": 0.5,
+    "scope": [
+      "Bash"
+    ]
+  }
 }

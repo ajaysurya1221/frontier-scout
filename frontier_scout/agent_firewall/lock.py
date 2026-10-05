@@ -29,10 +29,13 @@ LOCK_FILENAME = "policy.lock.json"
 def policy_hash(policy: AgentPolicy | dict[str, Any]) -> str:
     """Return the sha256 of ``policy`` over a canonical (sorted, compact) JSON form.
 
-    Order-independent: a model and its ``model_dump()`` round-trip hash identically.
+    Order-independent: a model and its ``model_dump()`` round-trip hash identically. Top-level
+    ``null`` fields are dropped first, so an optional section that is unset (``decision_model``)
+    hashes the same whether the file omits it or spells it ``null``.
     """
 
     data = policy.model_dump() if isinstance(policy, AgentPolicy) else dict(policy)
+    data = {key: value for key, value in data.items() if value is not None}
     canonical = json.dumps(data, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
