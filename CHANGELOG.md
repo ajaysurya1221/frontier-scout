@@ -18,6 +18,12 @@
   so existing policies and locks are unchanged. `agent policy explain` prints it; `doctor`
   reports whether the key is present. The hook runtime stays stdlib-only.
 
+**Changed**
+- The repository's own dogfood policy opts into the decision model with the shipped
+  defaults (`jev-1.13.0`, relax at 0.95, deny at 0.9, ask at 0.5, Bash only), so sessions
+  here exercise the hook's model path whenever `TYPESAFE_API_KEY` is set and run statically
+  otherwise. `policy.lock.json` is recompiled; the compiled hooks and settings are unchanged.
+
 **Fixed**
 - Receipts written by the compiled hooks now record `files_considered` as repo-relative
   POSIX paths. Claude Code sends absolute `file_path` values, while `verify-pr` matches
