@@ -209,9 +209,13 @@ def conservative_default_policy() -> AgentPolicy:
 
 
 def save_policy(policy: AgentPolicy, path: str) -> None:
-    """Write ``policy`` to ``path`` as pretty JSON with a trailing newline."""
+    """Write ``policy`` to ``path`` as pretty JSON with a trailing newline.
 
-    Path(path).write_text(json.dumps(policy.model_dump(), indent=2) + "\n")
+    Unset optional sections (``decision_model``) are omitted rather than written as ``null``,
+    so a policy that never opted in round-trips byte-for-byte.
+    """
+
+    Path(path).write_text(json.dumps(policy.model_dump(exclude_none=True), indent=2) + "\n")
 
 
 def load_policy(path: str) -> tuple[AgentPolicy, list[str]]:
@@ -267,6 +271,15 @@ def explain_policy(policy: AgentPolicy) -> str:
     lines += _section("MCP server allowlist", policy.mcp_server_allowlist)
     lines += _section("Required checks", policy.required_checks)
     lines += _section("Approval gates", policy.approval_gates)
+    if policy.decision_model is not None:
+        spec = policy.decision_model
+        lines += [
+            "Decision model (opt-in, advisory, fail-closed):",
+            f"  {spec.provider} {spec.model} at {spec.base_url}; key from ${spec.key_env}; "
+            f"timeout {spec.timeout_seconds}s",
+            f"  relax ask -> allow at confidence >= {spec.relax_ask_to_allow_at}; "
+            f"deny at risk >= {spec.deny_at}; scope {', '.join(spec.scope)}",
+        ]
     if policy.policy_notes:
         lines += ["", "Notes:", f"  {policy.policy_notes}"]
     return "\n".join(lines)

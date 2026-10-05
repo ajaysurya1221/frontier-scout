@@ -7,6 +7,7 @@ workflow are present and consistent — the things ``agent compile`` produces.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -59,6 +60,22 @@ def run_doctor(repo: str = ".") -> list[DoctorCheck]:
                 "policy matches lock" if ok else "policy drifted — re-run `agent compile`")
         except Exception:
             add("policy-lock-match", False, "could not compare policy to lock")
+
+    if policy.exists():
+        try:
+            spec = json.loads(policy.read_text()).get("decision_model")
+        except Exception:
+            spec = None
+        if isinstance(spec, dict):
+            key_env = str(spec.get("key_env") or "TYPESAFE_API_KEY")
+            present = bool(os.environ.get(key_env))
+            add(
+                "decision-model",
+                present,
+                f"opt-in decision model {spec.get('model', '?')} configured; ${key_env} "
+                f"{'present' if present else 'absent — the hook stays static-only'}",
+                warn_only=True,
+            )
 
     n = len(list(receipts.glob("*.json"))) if receipts.exists() else 0
     add("receipts", True, f"{n} local receipt(s)")

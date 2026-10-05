@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from outputs._text import scrub_secrets
 
-from .hook_runtime import _path_matches_glob
+from .hook_runtime import _path_matches_glob, repo_relative
 from .lock import default_lock_path, policy_hash, read_lock
 from .policy import default_policy_path, load_policy
 
@@ -154,7 +154,11 @@ def verify_pr(
 
     for path in changed_files:
         protected = any(_path_matches_glob(path, g) for g in policy.protected_file_globs)
-        covering = [r for r in receipts if path in (r.get("files_considered") or [])]
+        covering = [
+            r
+            for r in receipts
+            if path in {repo_relative(str(f), repo) for f in (r.get("files_considered") or [])}
+        ]
         denied = [r for r in covering if r.get("decision") == "deny"]
         if denied:
             msg = f"{path}: changed despite a deny decision (policy bypass)."

@@ -3,13 +3,14 @@
 <img src="https://raw.githubusercontent.com/ajaysurya1221/frontier-scout/main/docs/assets/frontier-scout-banner.png" alt="Frontier Scout — PR scope verifier + policy compiler for AI coding agents (Claude Code first)" width="100%">
 
 <p>
-  <strong>Verify in CI that an AI agent's PR stayed within approved scope — fail-closed, with signed evidence.</strong><br>
+  <strong>Verify in CI that an AI agent's PR stayed within approved scope — fail-closed, with optional Sigstore-attested evidence.</strong><br>
   <sub>A GitHub Action for the verify side · a policy compiler into native Claude Code controls for the authoring side.</sub>
 </p>
 
 <p>
+  <a href="https://github.com/ajaysurya1221/frontier-scout/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/ajaysurya1221/frontier-scout/ci.yml?branch=main&style=flat-square&label=CI"></a>
+  <a href="https://pypi.org/project/frontier-scout/"><img alt="PyPI" src="https://img.shields.io/pypi/v/frontier-scout?style=flat-square"></a>
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square">
-  <img alt="Research preview" src="https://img.shields.io/badge/status-research%20preview-orange?style=flat-square">
   <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green?style=flat-square">
   <img alt="No telemetry" src="https://img.shields.io/badge/telemetry-none-lightgrey?style=flat-square">
 </p>
@@ -25,11 +26,10 @@
 
 </div>
 
-> **Research preview — technically coherent, not market-validated.** No PMF / adoption
-> claim; this project is demand-gated with **public kill criteria** ([KILL_CRITERIA.md](KILL_CRITERIA.md)).
-> Claude Code first (Codex/Cursor/Copilot are roadmap). Frontier Scout **emits** native
-> config and **verifies** evidence — Claude Code and GitHub Actions do the enforcing. Its
-> output is **control evidence, not a guarantee** that no unsafe action occurred.
+Coding agents open PRs faster than humans can review them. Frontier Scout compiles one
+typed repo policy into Claude Code's native permissions and hooks, the hooks write action
+receipts, and a GitHub Action fails the PR when the diff touched protected paths without a
+receipt, when the policy drifted since compile, or when a deny rule was bypassed.
 
 ## The problem
 
@@ -113,6 +113,10 @@ Honesty model, load-bearing:
 | Local action records (receipts written by the agent-side hook) | **Supporting claim** — written on the same machine the agent controls |
 | `UNVERIFIED` (diff not computable) | **Never** rendered as a pass, in either mode |
 
+> **Status:** research preview, maintained; one maintainer; no adoption claims. Claude Code
+> first (Codex/Cursor/Copilot are roadmap, not built). The pre-registered demand gates and
+> their day-90 evaluation are public: [KILL_CRITERIA.md](KILL_CRITERIA.md).
+
 ## Full setup (policy + local hooks)
 
 ```bash
@@ -168,6 +172,38 @@ config — four dimensions plus approval gates:
 Decisions are **fail-closed**: anything not provably safe escalates to `ask`; off-allowlist
 MCP servers and blocked commands hard-`deny`.
 
+### Optional: a decision model inside the hook
+
+Off by default, and the compiled artifacts are identical whether or not you use it. A policy
+may opt in to a System One decision model (TypeSafe's Jev) as a *second opinion* on Bash
+calls, consulted by the hook after the static decision:
+
+```json
+{
+  "decision_model": {
+    "provider": "typesafe",
+    "model": "jev-1.13.0",
+    "key_env": "TYPESAFE_API_KEY",
+    "timeout_seconds": 3.0,
+    "relax_ask_to_allow_at": 0.95,
+    "deny_at": 0.9,
+    "ask_at": 0.5
+  }
+}
+```
+
+The hook asks four literal questions about the command (main effect; destructive; exposes
+secrets; escalates privilege) and may only **tighten** an `allow` to `ask` when the model
+rates the call possibly risky (`ask_at`) or an `allow`/`ask` to `deny` when it is confident
+the call is risky (`deny_at`), or **relax** an `ask` to `allow` when it is confident the call
+is read-only or build/test and not risky. A static `deny` is never relaxed. No key, a
+timeout, a malformed or wrong-model answer, or a low-confidence answer leaves the static
+decision in force, and the receipt says so (`decision_model.applied`: `tightened`,
+`tightened-to-ask`, `relaxed`, `abstained` or `unavailable`). The key is read from the environment at hook time
+and never written. Thresholds are yours to set from your own data; the defaults come from a
+pre-registered calibration audit of the model
+([agent-reliability-ci, `docs/results/jev-calibration`](https://github.com/ajaysurya1221/agent-reliability-ci/tree/main/docs/results/jev-calibration)).
+
 ## CLI
 
 | Command | What it does |
@@ -185,6 +221,10 @@ MCP servers and blocked commands hard-`deny`.
 
 - **Static + read-only.** The scan reads file *names*, never secret *contents*. The only
   subprocess is a read-only `git diff` in `verify-pr`.
+- **Keyless and offline by default.** The compiler, verifier, doctor and hooks make no
+  network call unless a policy opts into the [decision model](#optional-a-decision-model-inside-the-hook),
+  which is advisory and fail-closed: it can never relax a static `deny`, and any failure
+  leaves the static decision in force.
 - **Emit, don't enforce.** Frontier Scout writes native config; Claude Code's hook/permission
   system enforces locally and GitHub Actions enforces in CI.
 - **Fail-closed.** A missing/malformed policy denies by default; every dangerous capability
@@ -215,9 +255,10 @@ exist:
 ## Roadmap
 
 P0 (shipped): the GitHub Action with signed evidence, the Claude compiler + local action
-records, the CI verifier. P1 is **demand-gated** (see [KILL_CRITERIA.md](KILL_CRITERIA.md)):
-platform-evidence ingestion, Codex adapter, scanner findings as policy inputs — built only
-when a named design partner asks. See [ROADMAP.md](ROADMAP.md).
+records, the CI verifier. P1 was **demand-gated** and the gates were not met at the
+[day-90 evaluation](KILL_CRITERIA.md#day-90-evaluation-2026-09-30): platform-evidence
+ingestion, Codex adapter, scanner findings as policy inputs stay unbuilt unless someone
+with a real use case asks. See [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 
