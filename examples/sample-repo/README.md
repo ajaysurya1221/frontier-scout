@@ -2,8 +2,8 @@
 
 A minimal repo that demonstrates the Frontier Scout spine: compile a repo policy
 into **Claude Code native controls**, let the agent run under those controls
-(emitting **receipts**), then **verify the PR** in CI stayed within the approved
-scope. Frontier Scout *emits* config and *verifies* evidence — Claude Code and
+(emitting **receipts**), then **check the PR diff** in CI against the scope the base
+commit's policy declares. Frontier Scout *emits* config and *checks* evidence; Claude Code and
 GitHub Actions do the enforcing. Nothing here executes an agent or an MCP server
 on your behalf.
 
@@ -41,20 +41,25 @@ the sample policy:
 - `rm -rf …` → **deny** (blocked command)
 - an MCP server not named `github` → **deny** (deny-by-default)
 
-## 3. Open a PR — CI verifies the evidence
+## 3. Open a PR — CI checks the diff against the base policy
 
-Commit the receipts you want verified to `frontier-scout-receipts/` (or upload
-them as a CI artifact). The generated workflow runs:
+Receipts are optional supporting observations. If you commit them to
+`frontier-scout-receipts/`, they are part of the PR and must be inside
+`allowed_file_globs`. You can also pass them from outside the PR with `--receipts`. The
+generated workflow runs:
 
 ```bash
 frontier-scout agent verify-pr --repo . --base "origin/main" \
   --receipts "frontier-scout-receipts/*.json"
 ```
 
-It **fails closed**: a protected-path change with no covering receipt, a receipt
-whose `policy_hash` drifted from the lock, or a change that happened despite a
-`deny` decision all block the PR. Output is **control evidence, not a guarantee**
-that no unsafe action occurred.
+The policy and lock are read from the base commit. **FAIL** covers a path outside
+`allowed_file_globs`, a protected-path change with no receipt, a missing, malformed or
+drifted policy or lock, a malformed, unbound or stale receipt, and a change made despite a
+`deny` decision. **UNVERIFIED**, never a pass, covers a protected-path change backed only by
+receipts, since receipts are unsigned and cannot authenticate an approval, and a diff that
+could not be collected. Output is **control evidence, not a guarantee** that no unsafe action
+occurred.
 
 Use `--advisory` to downgrade violations to warnings while a repo is still being
-onboarded.
+onboarded. The verdict is still reported, marked as advisory.

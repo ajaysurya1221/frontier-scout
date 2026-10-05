@@ -50,7 +50,9 @@ jobs:
           cp examples/sample-repo/frontier-scout.policy.json "$tmp/"
           frontier-scout agent compile --repo "$tmp" > /dev/null
           frontier-scout doctor --repo "$tmp"
-          frontier-scout agent verify-pr --repo "$tmp" --json > /dev/null
+          # No --base here: verify-pr reports UNVERIFIED (exit 1 when enforcing), so the
+          # smoke run is advisory; it checks the CLI runs and emits JSON.
+          frontier-scout agent verify-pr --repo "$tmp" --json --advisory > /dev/null
           rm -rf "$tmp"
           python -m build
       - name: Dependency audit

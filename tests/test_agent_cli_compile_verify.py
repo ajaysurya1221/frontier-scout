@@ -50,7 +50,7 @@ def test_export_claude_prints_deprecation_note(tmp_path, capsys):
     assert "agent compile" in capsys.readouterr().out
 
 
-def test_verify_pr_cli_fails_closed_then_passes_with_receipt(tmp_path):
+def test_verify_pr_cli_fails_closed_and_receipt_does_not_authorise(tmp_path, capsys):
     repo = str(tmp_path)
     save_policy(
         AgentPolicy(protected_file_globs=["**/migrations/**"], allowed_file_globs=["src/**"]),
@@ -72,7 +72,8 @@ def test_verify_pr_cli_fails_closed_then_passes_with_receipt(tmp_path):
     # No receipts -> protected change is unproven -> fail-closed.
     assert main(["agent", "verify-pr", "--repo", repo, "--base", base]) == 1
 
-    # Add an approving action receipt (uncommitted; read from the working tree).
+    # Add an "approving" action receipt (uncommitted; read from the working tree). It is an
+    # unsigned, self-reported claim: the verdict moves from FAIL to UNVERIFIED, never PASS.
     ph = read_lock(str(tmp_path / "policy.lock.json"))["policy_sha256"]
     recdir = tmp_path / "frontier-scout-receipts"
     recdir.mkdir()
@@ -81,7 +82,14 @@ def test_verify_pr_cli_fails_closed_then_passes_with_receipt(tmp_path):
         "tool_name": "Edit", "decision": "ask", "verdict": "needs_approval",
         "files_considered": ["app/migrations/0001_init.py"],
     }))
-    assert main(["agent", "verify-pr", "--repo", repo, "--base", base]) == 0
+    capsys.readouterr()
+    assert main(["agent", "verify-pr", "--repo", repo, "--base", base]) == 1
+    out = capsys.readouterr().out
+    assert "UNVERIFIED" in out and "PASS" not in out
+    assert "approval provenance not authenticated" in out
+    # Advisory mode never blocks, but says so.
+    assert main(["agent", "verify-pr", "--repo", repo, "--base", base, "--advisory"]) == 0
+    assert "advisory" in capsys.readouterr().out.lower()
 
 
 def test_verify_pr_cli_json_output(tmp_path, capsys):
@@ -89,10 +97,12 @@ def test_verify_pr_cli_json_output(tmp_path, capsys):
     save_policy(AgentPolicy(allowed_file_globs=["src/**"]), str(tmp_path / "frontier-scout.policy.json"))
     main(["agent", "compile", "--repo", repo])
     capsys.readouterr()  # drain the compile output
+    # No --base: nothing was diffed, so the result is UNVERIFIED (never an empty-diff PASS).
     rc = main(["agent", "verify-pr", "--repo", repo, "--json"])
     payload = json.loads(capsys.readouterr().out)
     assert "ok" in payload and "summary" in payload
-    assert rc == 0
+    assert payload["verdict"] == "unverified" and "DIFF_BASE_MISSING" in payload["reason_codes"]
+    assert rc == 1
 
 
 def test_verify_pr_cli_json_out_writes_file_and_keeps_stdout(tmp_path, capsys):
@@ -130,8 +140,9 @@ def test_verify_pr_cli_json_and_json_out_together(tmp_path, capsys):
     main(["agent", "compile", "--repo", repo])
     capsys.readouterr()  # drain
     out_file = tmp_path / "e.json"
-    rc = main(["agent", "verify-pr", "--repo", repo, "--json", "--json-out", str(out_file)])
+    rc = main(["agent", "verify-pr", "--repo", repo, "--json", "--json-out", str(out_file), "--advisory"])
     stdout_payload = json.loads(capsys.readouterr().out)  # stdout stays pure JSON
     file_payload = json.loads(out_file.read_text())
     assert stdout_payload["ok"] == file_payload["ok"]
-    assert rc == 0
+    assert stdout_payload["advisory"] is True and stdout_payload["verdict"] == "unverified"
+    assert rc == 0  # advisory never blocks

@@ -6,8 +6,9 @@ technically coherent, **not** market-validated. No PMF or adoption claim.
 ## Where we are — policy compiler + PR scope verifier (P0)
 
 Frontier Scout compiles a typed repo policy into an AI coding agent's **native**
-controls (Claude Code first), the agent emits **action receipts**, and CI verifies a
-PR stayed within approved scope. Frontier Scout **emits** config and **verifies**
+controls (Claude Code first), the agent emits **action receipts**, and CI checks a
+PR's diff against the scope declared by the base commit's policy. Receipts are unsigned
+observations and never count as approval. Frontier Scout **emits** config and **checks**
 evidence — Claude Code and GitHub Actions do the enforcing. Keyless, offline, the only
 runtime dependency is `pydantic`.
 
@@ -17,8 +18,11 @@ Shipped today (P0):
   `frontier-scout.policy.json` → `.claude/settings.json` (permissions), `.claude/hooks/`
   (decide allow/deny/ask + write receipts; a self-contained stdlib `_fs_guard.py`),
   `policy.lock.json`, a managed MCP allow/deny fragment, and a verify workflow.
-- `frontier-scout agent verify-pr [--base <ref>] [--receipts <glob>] [--advisory]` — a
-  fail-closed PR check (read-only `git diff` vs. receipts + lock) with GitHub annotations.
+- `frontier-scout agent verify-pr [--base <ref>] [--receipts <glob>] [--advisory]` — a PR
+  scope check (read-only `git diff --name-status -z -M` against the base commit's policy
+  and lock) with reason-coded GitHub annotations. FAIL or UNVERIFIED is never reported as
+  PASS. The 2026-10-06 repair of five false acceptance paths is unreleased; see
+  [docs/evaluation/verifier-2026-10-06.md](docs/evaluation/verifier-2026-10-06.md).
 - `frontier-scout agent scan | policy init|explain | check | receipts` — static repo
   scan, policy authoring, a static task pre-check, and receipt inspection.
 - `frontier-scout doctor` — offline agent-readiness check.
@@ -40,6 +44,10 @@ are not commitments — they get built only if someone with a real use case asks
   ledger.
 - **Scanner findings as policy inputs** — seed protected paths/risk from CodeQL /
   Dependabot / Semgrep output.
+- **Authenticated approval provenance (deferred)** — today a protected-path change is never
+  green, because unsigned receipts cannot show who approved it. Making it green needs an
+  approval record outside the agent's control, for example a verified GitHub review or an
+  attestation by an approver identity, not a receipt format of our own.
 
 ## Later (P2)
 

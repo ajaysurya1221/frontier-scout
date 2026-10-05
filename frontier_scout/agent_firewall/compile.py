@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from frontier_scout import __version__
 from outputs._text import sanitize_sensitive_text
 
 from ..exporters.claude_config import to_managed_config_from_names
@@ -105,7 +106,7 @@ def main() -> int:
 sys.exit(main())
 '''
 
-_WORKFLOW = """# Frontier Scout — verify PR stayed within approved scope (generated).
+_WORKFLOW = """# Frontier Scout — check the PR diff against the base commit's policy scope (generated).
 name: Frontier Scout verify
 on:
   pull_request:
@@ -123,7 +124,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install frontier-scout
+      # Pinned to the release that compiled this file: the verifier that runs is that
+      # release from PyPI, never code from the PR under review.
+      - run: pip install "frontier-scout==@@FS_VERSION@@"
       - run: >-
           frontier-scout agent verify-pr --repo .
           --base "origin/${{ github.base_ref }}"
@@ -219,7 +222,8 @@ def compile_claude(policy: AgentPolicy, *, repo: str, out_dir: str | None = None
         ) + "\n",
     )
     workflow_path = _write_verbatim(
-        out / ".github" / "workflows" / "frontier-scout-verify.yml", _WORKFLOW
+        out / ".github" / "workflows" / "frontier-scout-verify.yml",
+        _WORKFLOW.replace("@@FS_VERSION@@", __version__),
     )
 
     return {

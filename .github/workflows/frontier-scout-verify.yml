@@ -2,7 +2,9 @@
 # Self-hosting note: this repo IS frontier-scout, so it installs from source
 # (`pip install .`) rather than from PyPI, and runs in `--advisory` mode while the
 # repo is onboarding (warns instead of blocking, since not every contributor's PR
-# carries hook-written receipts yet). Drop `--advisory` to make it a hard gate.
+# carries hook-written receipts yet). Keep `--advisory`: this workflow installs the pull
+# request's own source, so it cannot be trusted enforcement; a hard gate needs a workflow the
+# pull request cannot edit (see README, "Release status").
 name: Frontier Scout verify
 on:
   pull_request:
