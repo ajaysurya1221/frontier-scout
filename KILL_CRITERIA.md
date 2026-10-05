@@ -64,3 +64,24 @@ pivot, no sixth identity.
 Incorporate, charge, and re-evaluate scope with the design partners — still under the
 honesty invariants in [AGENTS.md](AGENTS.md) ("emit, don't enforce"; control evidence,
 not a guarantee; fail-closed).
+
+## Day-90 evaluation (2026-09-30)
+
+The evaluation date above (2026-09-08) has passed. The outcome, stated as plainly as the
+gates were:
+
+- **Adoption gates: not met.** 0 external users running the verifier, 0 unaffiliated
+  organizations, 0 stars, 0 payment signals. None of the four gates held, so the bet as
+  written is not validated.
+- **What the project is now:** a maintained reference implementation of the
+  compile → action records → fail-closed CI verify pattern, and a portfolio piece. It is
+  no longer run as a product bet. No adoption, usage, or market claims are made here or
+  anywhere else in this repo.
+- **What "maintained" means:** dependencies kept current, reported bugs fixed, the test
+  suite kept green, a release cut when something changes. It does not mean roadmap
+  commitments — the demand-gated P1 items in [ROADMAP.md](ROADMAP.md) stay unbuilt unless
+  someone with a real use case asks.
+- **Departure from the pre-registered failure outcome:** "What happens on failure" above
+  says the repo is archived. It is kept maintained instead, because a working, tested
+  reference implementation is more useful maintained than archived. That deviation is recorded
+  here; the text above is left exactly as pre-registered.

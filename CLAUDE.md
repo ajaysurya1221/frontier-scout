@@ -41,6 +41,12 @@ The CLI is `frontier-scout agent <verb>` (+ `doctor`). Bare `frontier-scout` pri
   executes nothing, exit `0/3/4`) · `agent receipts list|show` · `agent export
   agents-md|pr-checklist` (advisory snippets). `agent export claude` points to `compile`.
 - `doctor` — offline readiness check (policy/lock/settings/hooks/workflow/drift).
+- `action.yml` — composite GitHub Action wrapping `agent verify-pr` for CI (SHA-pinned
+  steps; inputs reach scripts via env only; installs its own checked-out source by default,
+  or a pinned PyPI `version`; fails closed when no diff base is resolvable; writes the
+  evidence JSON via `--json-out`, optionally uploaded as an artifact; with `attest: "true"`
+  signs it via `actions/attest` under a custom predicate carrying mode + verdict, and fails
+  rather than degrade to unsigned). Consumed as `ajaysurya1221/frontier-scout@vX.Y.Z`.
 
 **Key modules** (`frontier_scout/agent_firewall/`): `models` (`AgentPolicy`, `TaskDecision`,
 `Receipt`) · `policy` (load/generate/save, fail-closed defaults) · `scan` (risk surfaces;
@@ -57,7 +63,10 @@ receipt writers, copied verbatim into a target repo's `_fs_guard.py`) · `compil
 are committed, so sessions here run under the compiled policy (allow/deny/ask + receipts to
 the gitignored `.frontier-scout/receipts/`). Normal dev is allowed; CI config, secrets, and
 the guardrails themselves (policy/lock/hooks) are approval-gated; the `gitnexus` MCP is
-allowlisted (other MCP servers are denied). Change it via edit → `agent compile` → commit.
+allowlisted (other MCP servers are denied). Since 2026-10-05 the policy also opts into the
+`decision_model` section with the shipped defaults: with `TYPESAFE_API_KEY` in the
+environment every Bash call is judged by `jev-1.13.0` after the static decision (tighten to
+ask/deny, relax a read-only or build/test ask); without the key the hook runs statically. Change it via edit → `agent compile` → commit.
 The CI verify workflow runs **`--advisory`** (warn-only) while onboarding.
 
 ## Honesty invariants (load-bearing — keep copy *and* behavior aligned)
@@ -72,6 +81,16 @@ The CI verify workflow runs **`--advisory`** (warn-only) while onboarding.
   owns that space, so we integrate rather than reinvent.
 - **Static + read-only.** The scan reads file *names*, never secret *contents*. The only
   subprocess is a read-only `git diff` (verify-pr) / `git rev-parse` (receipt metadata).
+- **Keyless and offline by default.** Nothing makes a network call unless a policy opts into
+  the `decision_model` section (`models.DecisionModelSpec`): then, and only for Bash calls,
+  the hook asks a System One decision endpoint four literal questions *after* the static
+  decision. The answers can only tighten an allow to ask or an allow/ask to deny, or relax an
+  ask to allow; a static deny is never relaxed; no key, timeout, malformed or wrong-model answer, or low
+  confidence leaves the static decision in force and the receipt records `applied`. The key
+  is read from the environment at hook time and never written. Unset, the section is omitted
+  from saved policies and from the policy hash. Thresholds default to values from the
+  pre-registered audit in agent-reliability-ci (`docs/results/jev-calibration`); say so, and
+  never present the model as an enforcement boundary.
 - **Fail-closed.** Missing/malformed policy denies by default; dangerous capabilities
   escalate to approval; a non-empty protected diff with no receipts fails the PR.
 - **Control evidence, not a guarantee.** Local hooks are not a complete enforcement
@@ -95,8 +114,9 @@ generated hook as a subprocess.
 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q
 ```
 
-- In the local conda setup use `/opt/miniconda3/bin/python` (bare `python` may not be on
-  PATH). The suite is fast and fully offline now (no TUI/LLM/network tests).
+- Use the interpreter of your virtualenv (e.g. `.venv/bin/python -m pytest -q`); bare
+  `python` may not be on PATH. The suite is fast and fully offline now (no TUI/LLM/network
+  tests).
 - `make lint` (ruff), `make type` (mypy `--strict` over `agent_firewall` + `exporters`),
   `make coverage`, `make audit` (pip-audit + bandit), `make demo` (offline compile+doctor
   in a temp dir).
@@ -137,6 +157,10 @@ auto-install; receipts are evidence not proof; don't read `.env.local`.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
+
+> **Optional tooling:** GitNexus is the maintainer's local code-intelligence setup; its MCP
+> server and the `.claude/skills/gitnexus/*/SKILL.md` files referenced below are **not
+> bundled in this repo**, so skip these steps when it is not installed.
 
 This project is indexed by GitNexus as **frontier-scout**. Use the GitNexus MCP tools to
 understand code, assess impact, and navigate safely.
