@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased
+
+**Added**
+- **Opt-in decision model inside the hook.** A policy may carry a `decision_model` section
+  (`DecisionModelSpec`: provider `typesafe`, pinned `model`, `base_url`, `key_env`,
+  `timeout_seconds`, `relax_ask_to_allow_at`, `deny_at`, `ask_at`, `scope`). When present,
+  the PreToolUse hook asks the decision endpoint four literal questions about a Bash call
+  after the static decision and may only tighten an `allow` to `ask` (possibly risky), an
+  `allow`/`ask` to `deny` (confident risk) or relax an `ask` to `allow` (confident read-only
+  or build/test, not risky). A static `deny`
+  is never relaxed; no key, a timeout, a malformed or wrong-model answer or low confidence
+  leaves the static decision in force. Receipts record the model, request id, latency, the
+  parsed answers and `applied` (`tightened` | `tightened-to-ask` | `relaxed` | `abstained` |
+  `unavailable`),
+  never the key. Unset, the section is omitted from saved policies and from the policy hash,
+  so existing policies and locks are unchanged. `agent policy explain` prints it; `doctor`
+  reports whether the key is present. The hook runtime stays stdlib-only.
+
+**Fixed**
+- Receipts written by the compiled hooks now record `files_considered` as repo-relative
+  POSIX paths. Claude Code sends absolute `file_path` values, while `verify-pr` matches
+  receipts against `git diff --name-only`, which is repo-relative, so a receipt written by
+  the real hook could never cover a changed protected path and every such PR failed closed.
+  `verify-pr` also normalises absolute entries in receipts written by earlier hooks. A new
+  end-to-end test runs the real hook with an absolute path against a real git diff.
+
 ## 2.1.0 - 2026-06-10
 
 ### The GitHub Action: verify agent PRs in CI, with signed evidence

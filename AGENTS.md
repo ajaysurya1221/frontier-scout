@@ -71,7 +71,7 @@ blocks) while onboarding; drop `--advisory` to make it a hard gate.
 ## Test commands
 
 - Full suite: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q`
-  (local conda: `/opt/miniconda3/bin/python`).
+  (use the interpreter of your virtualenv; bare `python` may not be on PATH).
 - Lint: `make lint` (ruff over `frontier_scout` + `tests`).
 - Types: `make type` (mypy `--strict` over `agent_firewall` + `exporters`).
 - Coverage: `make coverage`. Audit: `make audit`. Demo: `make demo`.
@@ -149,6 +149,10 @@ beyond the read-only `git` calls, or an auto-install path.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
+
+> **Optional tooling:** GitNexus is the maintainer's local code-intelligence setup; its MCP
+> server and the `.claude/skills/gitnexus/*/SKILL.md` files referenced below are **not
+> bundled in this repo**, so skip these steps when it is not installed.
 
 This project is indexed by GitNexus as **frontier-scout**. Use the GitNexus MCP tools to
 understand code, assess impact, and navigate safely.
