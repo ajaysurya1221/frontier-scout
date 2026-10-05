@@ -63,7 +63,10 @@ receipt writers, copied verbatim into a target repo's `_fs_guard.py`) · `compil
 are committed, so sessions here run under the compiled policy (allow/deny/ask + receipts to
 the gitignored `.frontier-scout/receipts/`). Normal dev is allowed; CI config, secrets, and
 the guardrails themselves (policy/lock/hooks) are approval-gated; the `gitnexus` MCP is
-allowlisted (other MCP servers are denied). Change it via edit → `agent compile` → commit.
+allowlisted (other MCP servers are denied). Since 2026-10-05 the policy also opts into the
+`decision_model` section with the shipped defaults: with `TYPESAFE_API_KEY` in the
+environment every Bash call is judged by `jev-1.13.0` after the static decision (tighten to
+ask/deny, relax a read-only or build/test ask); without the key the hook runs statically. Change it via edit → `agent compile` → commit.
 The CI verify workflow runs **`--advisory`** (warn-only) while onboarding.
 
 ## Honesty invariants (load-bearing — keep copy *and* behavior aligned)
