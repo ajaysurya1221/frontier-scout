@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="560" viewBox="0 0 1600 560" role="img" aria-labelledby="title desc">
+<title id="title">Where frontier-scout sits: the PR diff against the policy on the base branch</title>
+<desc id="desc">Between an agent's pull request and the merge decision: every changed path is checked against the scope declared on the base branch. Inputs: the base commit's frontier-scout.policy.json and policy.lock.json, and the candidate PR diff (git diff --name-status -z -M base...HEAD). Local receipts are an unsigned input: reported, never an approval. In CI, agent verify-pr reads the policy and lock from the base commit and checks every changed path against allowed_file_globs and protected_file_globs. Verdicts: FAIL, UNVERIFIED or PASS; anything unproven is never a pass. Outputs: the verdict and an evidence JSON, with PR annotations and a step summary; exit 0 only on PASS when enforcing. Attestation is optional: with attest: "true" the evidence JSON is signed through Sigstore, which names the workflow that produced it, not the approver. A merge gate must run from a workflow the PR cannot edit. This repository's own PRs run the check in frontier-scout-verify.yml in advisory mode: the verdict is reported and the job exits 0.</desc>
+<rect x="0" y="0" width="1600" height="560" fill="#F4F1EA"/>
+<text x="64" y="72" font-family="Georgia, &#x27;Times New Roman&#x27;, serif" font-size="34" fill="#16211D" font-weight="700">Where frontier-scout sits</text>
+<text x="64" y="108" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="19" fill="#3E3D38">Between an agent's pull request and the merge decision: every changed path is checked against the scope declared on the base branch.</text>
+<rect x="64" y="132" width="420" height="404" rx="12" fill="#ECE8DD"/>
+<text x="84" y="160" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="15" fill="#6B6A65" letter-spacing="0.12em">AGENT PR + BASE BRANCH</text>
+<rect x="524" y="132" width="552" height="404" rx="12" fill="#E9E4D8"/>
+<text x="544" y="160" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="15" fill="#6B6A65" letter-spacing="0.12em">CI</text>
+<rect x="1116" y="132" width="420" height="404" rx="12" fill="#ECE8DD"/>
+<text x="1136" y="160" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="15" fill="#6B6A65" letter-spacing="0.12em">MERGE DECISION</text>
+<path d="M 460 228 L 545 228" fill="none" stroke="#6B6A65" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="556,228 545,234 545,222" fill="#6B6A65"/>
+<path d="M 460 348 L 545 348" fill="none" stroke="#6B6A65" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="556,348 545,354 545,342" fill="#6B6A65"/>
+<path d="M 460 468 L 504 468 L 504 376 L 545 376" fill="none" stroke="#6B6A65" stroke-width="2" stroke-dasharray="7 5" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="556,376 545,382 545,370" fill="#6B6A65"/>
+<path d="M 1044 228 L 1129 228" fill="none" stroke="#8A5A00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="1140,228 1129,234 1129,222" fill="#8A5A00"/>
+<text x="1092" y="218" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="14" fill="#8A5A00" text-anchor="middle">verdict</text>
+<path d="M 1326 276 L 1326 289" fill="none" stroke="#6B6A65" stroke-width="2" stroke-dasharray="7 5" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="1326,300 1320,289 1332,289" fill="#6B6A65"/>
+<path d="M 1044 376 L 1092 376 L 1092 468 L 1129 468" fill="none" stroke="#8A5A00" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="1140,468 1129,474 1129,462" fill="#8A5A00"/>
+<path d="M 800 420 L 800 407" fill="none" stroke="#6B6A65" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polygon points="800,396 806,407 794,407" fill="#6B6A65"/>
+<rect x="88" y="180" width="372" height="96" rx="10" fill="#FFFFFF" stroke="#D9D4C7" stroke-width="1"/>
+<text x="274" y="214" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="21" fill="#16211D" font-weight="700" text-anchor="middle">Base commit</text>
+<text x="274" y="242" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="17" fill="#3E3D38" text-anchor="middle">frontier-scout.policy.json</text>
+<text x="274" y="266" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="17" fill="#3E3D38" text-anchor="middle">+ policy.lock.json</text>
+<rect x="88" y="300" width="372" height="96" rx="10" fill="#FFFFFF" stroke="#D9D4C7" stroke-width="1"/>
+<text x="274" y="334" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="21" fill="#16211D" font-weight="700" text-anchor="middle">Candidate PR diff</text>
+<text x="274" y="362" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="17" fill="#3E3D38" text-anchor="middle">git diff --name-status -z -M</text>
+<text x="274" y="386" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="17" fill="#3E3D38" text-anchor="middle">base...HEAD</text>
+<rect x="88" y="420" width="372" height="96" rx="10" fill="#ECE8DD" stroke="#6B6A65" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="274" y="454" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="21" fill="#16211D" font-weight="700" text-anchor="middle">Local receipts</text>
+<text x="274" y="482" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="18" fill="#3E3D38" text-anchor="middle">unsigned input:</text>
+<text x="274" y="506" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="18" fill="#3E3D38" text-anchor="middle">reported, never an approval</text>
+<rect x="556" y="420" width="488" height="96" rx="10" fill="#FFFFFF" stroke="#D9D4C7" stroke-width="1"/>
+<text x="800" y="454" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="21" fill="#16211D" font-weight="700" text-anchor="middle">This repository's own PRs</text>
+<text x="800" y="482" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="17" fill="#3E3D38" text-anchor="middle">frontier-scout-verify.yml</text>
+<text x="800" y="506" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="18" fill="#3E3D38" text-anchor="middle">advisory: verdict reported, exit 0</text>
+<rect x="1140" y="180" width="372" height="96" rx="10" fill="#FFFFFF" stroke="#D9D4C7" stroke-width="1"/>
+<text x="1326" y="214" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="21" fill="#16211D" font-weight="700" text-anchor="middle">Verdict + evidence JSON</text>
+<text x="1326" y="242" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="18" fill="#3E3D38" text-anchor="middle">PR annotations, step summary</text>
+<text x="1326" y="266" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="18" fill="#3E3D38" text-anchor="middle">exit 0 only on PASS (enforcing)</text>
+<rect x="1140" y="300" width="372" height="96" rx="10" fill="#ECE8DD" stroke="#6B6A65" stroke-width="2" stroke-dasharray="7 5"/>
+<text x="1326" y="334" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="21" fill="#16211D" font-weight="700" text-anchor="middle">Attestation (optional)</text>
+<text x="1326" y="362" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="17" fill="#3E3D38" text-anchor="middle">attest: "true" → Sigstore</text>
+<text x="1326" y="386" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="18" fill="#3E3D38" text-anchor="middle">names the workflow, not the approver</text>
+<rect x="1140" y="420" width="372" height="96" rx="10" fill="#FFFFFF" stroke="#D9D4C7" stroke-width="1"/>
+<text x="1326" y="454" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="21" fill="#16211D" font-weight="700" text-anchor="middle">Merge gate</text>
+<text x="1326" y="482" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="18" fill="#3E3D38" text-anchor="middle">only from a workflow</text>
+<text x="1326" y="506" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="18" fill="#3E3D38" text-anchor="middle">the PR cannot edit</text>
+<rect x="556" y="180" width="488" height="216" rx="12" fill="#16211D" stroke="#8A5A00" stroke-width="2"/>
+<text x="800" y="216" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="24" fill="#E8B14A" font-weight="700" text-anchor="middle">agent verify-pr</text>
+<text x="800" y="250" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="19" fill="#E9E4D8" text-anchor="middle">policy + lock read from the base commit</text>
+<text x="800" y="276" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="19" fill="#E9E4D8" text-anchor="middle">every changed path checked against</text>
+<text x="800" y="302" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="16" fill="#E9E4D8" text-anchor="middle">allowed_file_globs, protected_file_globs</text>
+<text x="654" y="342" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="20" fill="#E9E4D8" font-weight="700"><tspan fill="#F0A48A">FAIL</tspan><tspan fill="#A8A397"> · </tspan><tspan fill="#E8B14A">UNVERIFIED</tspan><tspan fill="#A8A397"> · </tspan><tspan fill="#7FD1A8">PASS</tspan></text>
+<text x="800" y="372" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="17" fill="#A8A397" text-anchor="middle">anything unproven is never a pass</text>
+</svg>

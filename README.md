@@ -1,54 +1,35 @@
-<div align="center">
+# Frontier Scout
 
-<img src="https://raw.githubusercontent.com/ajaysurya1221/frontier-scout/main/docs/assets/frontier-scout-banner.png" alt="Frontier Scout — PR scope verifier + policy compiler for AI coding agents (Claude Code first)" width="100%">
+**Does this PR stay inside its declared scope?**
 
-<p>
-  <strong>Check an agent PR against the scope declared on its base branch. Compile the same policy into Claude Code permissions and hooks.</strong><br>
-  <sub>A GitHub Action for the verify side · a policy compiler into native Claude Code controls for the authoring side.</sub>
-</p>
+Check the diff against the base commit's policy.
+Compile the same policy into Claude Code permissions and hooks.
 
-<p>
-  <a href="https://github.com/ajaysurya1221/frontier-scout/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/ajaysurya1221/frontier-scout/ci.yml?branch=main&style=flat-square&label=CI"></a>
-  <a href="https://pypi.org/project/frontier-scout/"><img alt="PyPI" src="https://img.shields.io/pypi/v/frontier-scout?style=flat-square"></a>
-  <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11%2B-blue?style=flat-square">
-  <img alt="MIT License" src="https://img.shields.io/badge/license-MIT-green?style=flat-square">
-  <img alt="No telemetry" src="https://img.shields.io/badge/telemetry-none-lightgrey?style=flat-square">
-</p>
+**Status:** research preview. Repaired verifier on main; 2.2.0 is not released.
+v2.1.0 has known verification defects. [Release details](#the-existing-release-v210)
 
-<p>
-  <a href="#quickstart-the-github-action">Quickstart</a> ·
-  <a href="#whats-verified-vs-whats-claimed">Verified vs claimed</a> ·
-  <a href="#the-policy">Policy</a> ·
-  <a href="#cli">CLI</a> ·
-  <a href="#safety-model">Safety model</a> ·
-  <a href="KILL_CRITERIA.md">Kill criteria</a>
-</p>
+**Published regression cases** ([matrix](docs/evaluation/verifier-2026-10-06.md)):
+```text
+Outside allowed paths -> FAIL
+Protected path + unsigned receipt -> UNVERIFIED
+```
 
-</div>
+**Used here:** our own PRs exercise the Action in [advisory CI](.github/workflows/frontier-scout-verify.yml).
+The PR can edit that workflow; it is not a trusted merge gate.
 
-Coding agents open PRs faster than humans can review them. Frontier Scout compiles one
-typed repo policy into Claude Code's native permissions and hooks, and the hooks write action
-receipts. A GitHub Action then checks every path in the PR diff against the policy as it
-stands on the base branch. It fails the PR when a path is outside the allowed scope, a
-protected path changed with no receipt, the policy or lock is missing, malformed or drifted,
-or a recorded `deny` was bypassed. It reports **UNVERIFIED**, not a pass, when a protected
-path changed with only unsigned receipts behind it, or when no diff could be computed.
+**Engineering:** [40-test regression matrix](docs/evaluation/verifier-2026-10-06.md) · [Action isolation tests](tests/test_action_isolation.py)
+[Hosted source-install check](.github/workflows/ci.yml) · [Optional attestations](#signed-evidence-optional)
 
-## The problem
+**Boundary:** unsigned receipts cannot authenticate approval. Verified attestations identify a workflow.
 
-Agent pull requests are saturating human review. Teams want agents to keep shipping —
-without handing them unconstrained repo, shell, network, and MCP access, and without
-rubber-stamping diffs nobody can afford to read line by line.
+[Set up the pinned Action](#quickstart-the-github-action) · [Limits](#safety-model)
 
-Code review tools judge the *content* of a change. A separate question is the *mandate*:
-**did this change stay inside what the policy lets the agent touch, and what evidence is there
-of what ran?** Other projects address parts of it too, some with properties this one lacks,
-such as signed scope approval (see the
-[README-level comparison](docs/evaluation/verifier-2026-10-06.md#related-projects-declared-scope-and-evidence-trust)).
-Frontier Scout answers the first part from the base branch's policy and the real diff. It
-reports the second as unsigned observations that can never stand in for an approval. It is a
-PR scope checker for agent PRs, plus a compiler that turns one typed policy into the agent's
-native controls.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ajaysurya1221/frontier-scout/main/docs/assets/hero-dark.svg">
+  <img alt="frontier-scout, PR scope verifier and policy compiler. Did this agent PR stay inside the scope declared on its base branch? One typed policy compiles into Claude Code controls; CI checks every PR diff against it. Anything unproven is never a pass. Evidence card: verify-pr reads the policy and lock from the base commit. A path outside allowed_file_globs gives FAIL (exit 1); a protected path backed only by an unsigned receipt gives UNVERIFIED (exit 1); a change within the declared scope gives PASS (exit 0). Source: examples/demo-walkthrough.md. This repository runs the Action on its own PRs in advisory mode." src="https://raw.githubusercontent.com/ajaysurya1221/frontier-scout/main/docs/assets/hero-light.svg" width="100%">
+</picture>
+
+[![CI](https://img.shields.io/github/actions/workflow/status/ajaysurya1221/frontier-scout/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/ajaysurya1221/frontier-scout/actions/workflows/ci.yml) [![PyPI: last published release](https://img.shields.io/pypi/v/frontier-scout?style=flat-square&label=PyPI%20%28last%20published%29)](https://pypi.org/project/frontier-scout/) [![MIT License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
 ## Quickstart: the GitHub Action
 
@@ -85,6 +66,11 @@ jobs:
           evidence-artifact: "frontier-scout-evidence"
 ```
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/ajaysurya1221/frontier-scout/main/docs/assets/where-dark.svg">
+  <img alt="Where frontier-scout sits, between an agent's pull request and the merge decision. Inputs: the base commit's frontier-scout.policy.json and policy.lock.json, and the candidate PR diff (git diff --name-status -z -M base...HEAD). Local receipts are an unsigned input, reported and never an approval. In CI, agent verify-pr reads the policy and lock from the base commit and checks every changed path against allowed_file_globs and protected_file_globs; the verdict is FAIL, UNVERIFIED or PASS, and anything unproven is never a pass. Outputs: the verdict and an evidence JSON with PR annotations and a step summary, exit 0 only on PASS when enforcing. Attestation is optional: with attest true the evidence JSON is signed through Sigstore, which names the workflow, not the approver. A merge gate must run from a workflow the PR cannot edit. This repository's own PRs run the check in frontier-scout-verify.yml in advisory mode: the verdict is reported and the job exits 0." src="https://raw.githubusercontent.com/ajaysurya1221/frontier-scout/main/docs/assets/where-light.svg" width="100%">
+</picture>
+
 The Action runs `agent verify-pr` against the base branch. The policy and lock come from
 the base commit, so a PR cannot widen its own scope. Every path the PR changes is checked,
 including both ends of a rename, deletions, and mode-only and binary changes. The verdict is
@@ -116,6 +102,12 @@ itself. A check that must gate merges has to run from a workflow the PR cannot e
 example a required workflow in an organization ruleset pinned to a trusted ref. That is a
 prerequisite for gating; installing a repaired release does not by itself turn the
 `pull_request` example above into a gate.
+
+> **Inspect the same workflow this repository runs**
+>
+> On pull requests, the [dogfood workflow](.github/workflows/frontier-scout-verify.yml) runs both the CLI verifier and the composite Action against the base branch. The Action uploads an evidence JSON artifact. Both jobs are advisory: inspect the recorded verdict, because a successful job does not mean the scope verdict passed.
+>
+> A team requiring merge enforcement must place the check in a workflow the candidate PR cannot modify. Local receipts remain unsigned observations.
 
 ### The existing release (v2.1.0)
 
@@ -160,7 +152,8 @@ gh attestation verify frontier-scout-evidence.json --owner <org-or-user> \
 ```
 
 If attestation is requested and cannot be produced, the Action **fails** — it never
-silently degrades to unsigned evidence. (Not available to fork PRs; OIDC.)
+silently degrades to unsigned evidence. (Not available to fork PRs; OIDC.) Attestation is
+off by default, and this repository's own dogfood workflow does not request it.
 
 ## What's verified vs what's claimed
 
@@ -174,6 +167,8 @@ Honesty model, load-bearing:
 | Evidence JSON without attestation | **Supporting claim** |
 | Local action records (receipts written by the agent-side hook) | **Unauthenticated observation.** Written on the same machine the agent controls; never treated as approval; flagged `RECEIPT_IN_PR` when committed in the PR |
 | `UNVERIFIED` (no diff, or a protected change backed only by receipts) | **Never** rendered as a pass, in either mode; non-zero exit when enforcing |
+
+In the [documented README comparison](docs/evaluation/verifier-2026-10-06.md#related-projects-declared-scope-and-evidence-trust), Notari describes signed scope approval; Frontier Scout does not authenticate approval. The comparison is pinned to 2026-10-05 source revisions and does not report execution tests.
 
 > **Status:** research preview, maintained; one maintainer; no adoption claims. Claude Code
 > first (Codex/Cursor/Copilot are roadmap, not built). The pre-registered demand gates and
@@ -306,10 +301,8 @@ establish general permission calibration or native-session enforcement.
   system enforces locally and GitHub Actions enforces in CI.
 - **Fail-closed where it can be.** In the hook, a missing or malformed policy denies by
   default and every dangerous capability escalates to approval. `verify-pr` never passes what
-  it cannot establish: out-of-scope paths, protected paths without a receipt, missing,
-  malformed or drifted policy identity, and malformed, unbound or stale receipts fail. A
-  missing or uncomputable diff, or a protected path backed only by unsigned receipts, is
-  UNVERIFIED. It does not authenticate approvals.
+  it cannot establish (see [the verdicts](#repaired-verifier-220)). It does not authenticate
+  approvals.
 - **Redacted.** Every persisted/emitted string is scrubbed of secret-shaped tokens, including
   file paths in `verify-pr` findings and annotations; undecodable file-name bytes are emitted
   as `\xNN` markers.
@@ -344,8 +337,12 @@ with a real use case asks. See [ROADMAP.md](ROADMAP.md).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md). Tests:
-`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q`. Lint/type: `make lint`, `make type`.
+See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), the design records in
+[`docs/adrs/`](docs/adrs/), [SECURITY.md](SECURITY.md) (threat model, reporting) and the
+[changelog](CHANGELOG.md). Tests: `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -q`.
+Lint/type: `make lint`, `make type`. Figures: `python3 docs/assets/src/make_figures.py --write`.
+
+Maintained by Ajay Surya Senthilrajan, with AI pair-programming recorded in commit trailers. See the tests, design records and release evidence linked here.
 
 ## License
 
