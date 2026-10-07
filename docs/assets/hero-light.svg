@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="520" viewBox="0 0 1600 520" role="img" aria-labelledby="title desc">
+<title id="title">Frontier Scout: did this agent PR stay inside the scope declared on its base branch?</title>
+<desc id="desc">frontier-scout · PR scope verifier · policy compiler. Did this agent PR stay inside the scope declared on its base branch? One typed policy compiles into Claude Code controls; CI checks every PR diff against it. Anything unproven is never a pass. Evidence card, verify-pr - POLICY AND LOCK READ FROM THE BASE COMMIT: path outside allowed_file_globs → FAIL (exit 1); protected path, unsigned receipt only → UNVERIFIED (exit 1); change within declared scope → PASS (exit 0). Sources: examples/demo-walkthrough.md; this repo runs the Action on its own PRs (advisory).</desc>
+<rect x="0" y="0" width="1600" height="520" fill="#F4F1EA"/>
+<text x="72" y="68" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="20" fill="#6B6A65"><tspan fill="#8A5A00" font-weight="600">frontier-scout</tspan> · PR scope verifier · policy compiler</text>
+<text x="72" y="140" font-family="Georgia, &#x27;Times New Roman&#x27;, serif" font-size="60" fill="#16211D" font-weight="700">Did this agent PR</text>
+<text x="72" y="204" font-family="Georgia, &#x27;Times New Roman&#x27;, serif" font-size="60" fill="#16211D" font-weight="700">stay inside the scope</text>
+<text x="72" y="268" font-family="Georgia, &#x27;Times New Roman&#x27;, serif" font-size="60" fill="#16211D" font-weight="700">declared on its</text>
+<text x="72" y="332" font-family="Georgia, &#x27;Times New Roman&#x27;, serif" font-size="60" fill="#16211D" font-weight="700">base branch?</text>
+<text x="72" y="392" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="25" fill="#3E3D38">One typed policy compiles into Claude Code controls;</text>
+<text x="72" y="426" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="25" fill="#3E3D38">CI checks every PR diff against it.</text>
+<text x="72" y="460" font-family="system-ui, -apple-system, &#x27;Segoe UI&#x27;, Helvetica, Arial, sans-serif" font-size="25" fill="#3E3D38">Anything unproven is never a pass.</text>
+<rect x="868" y="56" width="660" height="408" rx="16" fill="#16211D"/>
+<text x="902" y="106" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="15" fill="#A8A397" letter-spacing="0.05em">verify-pr · POLICY AND LOCK READ FROM THE BASE COMMIT</text>
+<text x="902" y="156" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="21" fill="#E9E4D8">path outside allowed_file_globs</text>
+<text x="902" y="188" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="24" fill="#E9E4D8" font-weight="700">→ <tspan fill="#F0A48A">FAIL (exit 1)</tspan></text>
+<text x="902" y="236" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="21" fill="#E9E4D8">protected path, unsigned receipt only</text>
+<text x="902" y="268" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="24" fill="#E9E4D8" font-weight="700">→ <tspan fill="#E8B14A">UNVERIFIED (exit 1)</tspan></text>
+<text x="902" y="316" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="21" fill="#E9E4D8">change within declared scope</text>
+<text x="902" y="348" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="24" fill="#E9E4D8" font-weight="700">→ <tspan fill="#7FD1A8">PASS (exit 0)</tspan></text>
+<text x="902" y="398" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="15" fill="#A8A397">examples/demo-walkthrough.md</text>
+<text x="902" y="420" font-family="ui-monospace, &#x27;SF Mono&#x27;, Menlo, Consolas, &#x27;Liberation Mono&#x27;, monospace" font-size="15" fill="#A8A397">this repo runs the Action on its own PRs (advisory)</text>
+</svg>
