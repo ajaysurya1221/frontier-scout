@@ -132,14 +132,17 @@ Adapted from the [Karpathy coding guidelines](https://github.com/multica-ai/andr
 ## Release
 
 1. Bump `version` in `pyproject.toml` + `frontier_scout/__init__.py`; add a `CHANGELOG.md`
-   `## X.Y.Z - <date>` entry.
+   `## X.Y.Z - <date>` entry. Re-stamp `policy.lock.json` with `write_lock()` only (a full
+   `agent compile` would overwrite the hand-written dogfood verify workflow);
+   `tests/test_dogfood_compile_golden.py` checks its `frontier_scout_version`.
 2. PR → CI (full suite + `detect-secrets --all-files` + CodeQL).
 3. `main` is protected (1 review + `enforce_admins` + conversation-resolution, **squash-only**);
    merge via relax→merge→restore on `required_approving_review_count` (1→0→1; always restore),
    squashing with `gh pr merge --squash --admin`.
-4. Tag `vX.Y.Z` → `release.yml` publishes GitHub Release (draft→publish) + PyPI (trusted
-   publishing, gated by the `pypi` deployment environment — approve the run). The trigger
-   only matches full semver tags (`v[0-9]+.[0-9]+.[0-9]+`).
+4. Tag `vX.Y.Z` → `release.yml` publishes to PyPI (trusted publishing, gated by the `pypi`
+   deployment environment — approve the run), then, only after that job succeeds, the GitHub
+   Release (draft→publish). The trigger only matches full semver tags
+   (`v[0-9]+.[0-9]+.[0-9]+`).
 5. The built wheel must bundle `agent_firewall/hook_runtime.py` (release.yml guards this).
 6. Never reuse a burned version: immutable releases reserve a deleted tag — bump to next patch.
 7. After the release is green, move the floating Action major tag:

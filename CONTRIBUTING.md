@@ -112,14 +112,15 @@ Semantic versioning; releases are **tag-driven** (push a `vX.Y.Z` tag to publish
 AGENTS.md § Release and CLAUDE.md § Release process for the authoritative checklist:
 
 1. Bump `version` in `pyproject.toml` **and** `frontier_scout/__init__.py`; add a
-   `CHANGELOG.md` `## X.Y.Z - <date>` entry.
+   `CHANGELOG.md` `## X.Y.Z - <date>` entry. Re-stamp `policy.lock.json` with `write_lock()`
+   only (a full `agent compile` would overwrite the hand-written dogfood verify workflow).
 2. Open a PR. CI runs the full non-live suite + `detect-secrets --all-files` + CodeQL. Mark
    genuine secret-scan false positives with `# pragma: allowlist secret`.
 3. Merge: `main` is protected (1 review + `enforce_admins` + conversation-resolution,
    squash-only). Use the relax→merge→restore dance on `required_approving_review_count`
    (1 → 0 → 1; always restore), squashing with `gh pr merge --squash --admin`.
-4. Tag `vX.Y.Z` and push it. `release.yml` builds the wheel + sdist, publishes the GitHub
-   Release, and publishes to PyPI (trusted publishing, gated by the `pypi` deployment
-   environment — approve the pending deployment). The wheel must bundle
-   `agent_firewall/hook_runtime.py` (release.yml guards this).
+4. Tag `vX.Y.Z` and push it. `release.yml` builds the wheel + sdist, publishes to PyPI
+   (trusted publishing, gated by the `pypi` deployment environment — approve the pending
+   deployment), and only after that job succeeds publishes the GitHub Release. The wheel
+   must bundle `agent_firewall/hook_runtime.py` (release.yml guards this).
 5. **Never reuse a burned version:** immutable releases reserve a deleted tag — bump instead.

@@ -72,7 +72,10 @@ jobs:
           skip-existing: true
 
   github_release:
-    needs: build
+    # Create the GitHub Release only after the PyPI publish job succeeds. With
+    # skip-existing, success can also mean the version was already on PyPI, so it
+    # does not show that the uploaded files match this build.
+    needs: [build, publish]
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:

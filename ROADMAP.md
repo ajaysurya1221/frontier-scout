@@ -21,7 +21,7 @@ Shipped today (P0):
 - `frontier-scout agent verify-pr [--base <ref>] [--receipts <glob>] [--advisory]` — a PR
   scope check (read-only `git diff --name-status -z -M` against the base commit's policy
   and lock) with reason-coded GitHub annotations. FAIL or UNVERIFIED is never reported as
-  PASS. The 2026-10-06 repair of five false acceptance paths is unreleased; see
+  PASS. The 2026-10-06 repair of five false acceptance paths ships in 2.2.0; see
   [docs/evaluation/verifier-2026-10-06.md](docs/evaluation/verifier-2026-10-06.md).
 - `frontier-scout agent scan | policy init|explain | check | receipts` — static repo
   scan, policy authoring, a static task pre-check, and receipt inspection.

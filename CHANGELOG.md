@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+## 2.2.0 - 2026-10-08
+
+This release repairs the PR scope verifier and the Action. Versions up to and including 2.1.0
+(PyPI and the `@v2.1.0` Action tag) accept PRs they should not; the defect matrix and its
+regression tests are in `docs/evaluation/verifier-2026-10-06.md`.
+
+**What changes when you upgrade**
+- **Protected paths are never green.** `allowed_file_globs` is enforced: a changed path that
+  is neither allowed nor protected fails. A receipt no longer counts as coverage for a
+  protected path, whatever its `decision` or approval fields say: a protected change is FAIL
+  with no receipt and UNVERIFIED with one. A receipt without a `policy_hash` now fails
+  instead of skipping the stale check, and a lock without a sha256 `policy_sha256` fails
+  instead of switching the drift and stale checks off. A PR that was green in 2.1.0 because a
+  receipt named its protected file is now non-green until a human approves it outside the
+  tool.
+- **The policy comes from the base branch.** With `--base`, the policy and lock are read from
+  the base commit, so a PR cannot widen its own scope. Merge the policy and lock before
+  relying on the check: the PR that introduces them reports `POLICY_LOCK_MISSING`. Without
+  `--base` the verdict is UNVERIFIED, not PASS.
+- **Advisory runs report the real verdict.** Advisory mode still exits 0, but the summary,
+  the evidence JSON and the Action's `verdict` output carry the real verdict (FAIL,
+  UNVERIFIED or PASS). UNVERIFIED is never reported as a pass, in either mode.
+- **The Action runs in isolation.** Every step runs from `$RUNNER_TEMP` with `python -I`, so a
+  `pip.py`, `json.py` or `frontier_scout/` in the PR checkout can no longer replace the
+  installer, the verifier or the output helpers.
+- **Regenerate compiled workflows.** A workflow compiled by 2.1.0 or earlier runs
+  `pip install frontier-scout` unpinned, so it picks up 2.2.0 and its stricter verdicts on its
+  next run. Re-run `agent compile` to get the pinned `frontier-scout==2.2.0` install line, and
+  move Action consumers from `@v2.1.0` to `@v2.2.0`.
+- **Still not provided.** Receipts are unsigned and never authorise a change; nothing here
+  authenticates who approved a protected change. On `pull_request` the PR can edit its own
+  workflow, so a merge gate needs a workflow the PR cannot edit.
+
 **Security** — `verify-pr` false acceptance paths (present in 2.1.0 and earlier; defect
 matrix, regression tests and reproduction steps in `docs/evaluation/verifier-2026-10-06.md`)
 - `allowed_file_globs` is now enforced. A changed path that is neither allowed nor protected
@@ -58,10 +91,8 @@ matrix, regression tests and reproduction steps in `docs/evaluation/verifier-202
   verdict and show scope and approval provenance separately.
 - Receipts committed under `frontier-scout-receipts/` are PR content. They must be inside
   `allowed_file_globs`, or be passed from outside the PR with `--receipts`.
-- The compiled verify workflow pins `frontier-scout==<compiling version>` instead of
-  installing the latest release. The current version is still 2.1.0, so a workflow compiled
-  today pins the defective 2.1.0 verifier; the repaired verifier ships in the next release
-  (no version bump in this change).
+- The compiled verify workflow pins `frontier-scout==<compiling version>` (2.2.0 for a
+  workflow compiled by this release) instead of installing the latest release.
 - `verify-pr` runs the read-only git calls `rev-parse`, `ls-tree` and `cat-file` in addition
   to `diff`.
 
@@ -94,6 +125,12 @@ matrix, regression tests and reproduction steps in `docs/evaluation/verifier-202
   the real hook could never cover a changed protected path and every such PR failed closed.
   `verify-pr` also normalises absolute entries in receipts written by earlier hooks. A new
   end-to-end test runs the real hook with an absolute path against a real git diff.
+
+**CI and release**
+- `release.yml` creates the GitHub Release only after the PyPI publish job succeeds.
+- A CI job (`action-source-install`) runs the Action's default install branch, which builds
+  the Action's own source, on a GitHub-hosted runner, with shadow modules in the workspace and
+  the candidate checkout.
 
 ## 2.1.0 - 2026-06-10
 
