@@ -3,7 +3,7 @@
 <img src="https://raw.githubusercontent.com/ajaysurya1221/frontier-scout/main/docs/assets/frontier-scout-banner.png" alt="Frontier Scout — PR scope verifier + policy compiler for AI coding agents (Claude Code first)" width="100%">
 
 <p>
-  <strong>Check in CI that an AI agent's PR diff stays inside the scope your policy declares on the base branch. Anything it cannot establish is never a pass. Evidence can optionally be Sigstore-attested.</strong><br>
+  <strong>Check an agent PR against the scope declared on its base branch. Compile the same policy into Claude Code permissions and hooks.</strong><br>
   <sub>A GitHub Action for the verify side · a policy compiler into native Claude Code controls for the authoring side.</sub>
 </p>
 
@@ -55,12 +55,14 @@ native controls.
 Add the verifier to any repo with a `frontier-scout.policy.json` (one `policy init` away —
 see [full setup](#full-setup-policy--local-hooks)).
 
-> **Release status.** Everything described in this section is **unreleased**: it is on `main`
-> and in no release yet. The current release, **v2.1.0**, behaves differently and has known
-> defects (see [the existing release](#the-existing-release-v210) below). Until a repaired
-> release exists, run the check in advisory mode only; it is not recommended as a merge gate.
+> **Release status.** The repaired verifier and Action described in this section are release
+> **2.2.0**. Until `v2.2.0` is tagged and `frontier-scout==2.2.0` is on PyPI, they are only on
+> `main`, so the example pins a full commit SHA. **v2.1.0** and earlier behave differently and
+> have known defects (see [the existing release](#the-existing-release-v210) below). Keep the
+> `pull_request` example below advisory: the PR can edit that workflow, so it is not a merge
+> gate.
 
-### Unreleased (on `main`)
+### Repaired verifier (2.2.0)
 
 ```yaml
 name: Frontier Scout verify
@@ -76,9 +78,10 @@ jobs:
         with:
           fetch-depth: 0            # the verifier diffs against the base ref
           persist-credentials: false
-      - uses: ajaysurya1221/frontier-scout@<full-commit-sha-on-main>   # no release contains this yet
+      # Becomes ajaysurya1221/frontier-scout@v2.2.0 once v2.2.0 is released.
+      - uses: ajaysurya1221/frontier-scout@a28f27da0ae25492af3c3a9f61cb863543dab791
         with:
-          advisory: "true"          # report only; keep advisory until a repaired release exists
+          advisory: "true"          # report only: a pull_request workflow is editable by the PR
           evidence-artifact: "frontier-scout-evidence"
 ```
 
@@ -111,11 +114,13 @@ the installer, the verifier or the output step.
 On `pull_request`, GitHub runs the workflow file from the PR, so a PR can edit the verify step
 itself. A check that must gate merges has to run from a workflow the PR cannot edit, for
 example a required workflow in an organization ruleset pinned to a trusted ref. That is a
-prerequisite for gating, not a recommendation to gate before a repaired release exists.
+prerequisite for gating; installing a repaired release does not by itself turn the
+`pull_request` example above into a gate.
 
 ### The existing release (v2.1.0)
 
-`ajaysurya1221/frontier-scout@v2.1.0` and `frontier-scout==2.1.0` on PyPI predate the repair:
+`ajaysurya1221/frontier-scout@v2.1.0` and `frontier-scout==2.1.0` on PyPI predate the repair
+that ships in 2.2.0:
 
 - `verify-pr` has five false acceptance paths: unenforced `allowed_file_globs`, any receipt
   counted as approval, unbound receipts, PR-side policy and receipts, and lossy diff parsing.
@@ -131,8 +136,8 @@ keep `advisory: "true"`, do not set `attest: "true"`, and do not run it from
 
 With `attest: "true"`, the evidence JSON is signed via [GitHub artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations)
 (Sigstore) — Frontier Scout deliberately rides GitHub's signing rail rather than inventing
-a receipt protocol. This needs the unreleased Action above: on v2.1.0, PR-supplied Python can
-run before the evidence is signed.
+a receipt protocol. This needs the repaired Action above (2.2.0, or the `main` commit until
+2.2.0 is released): on v2.1.0, PR-supplied Python can run before the evidence is signed.
 
 ```yaml
 permissions:
@@ -140,7 +145,8 @@ permissions:
   id-token: write
   attestations: write
 steps:
-  - uses: ajaysurya1221/frontier-scout@<full-commit-sha-on-main>
+  # Becomes ajaysurya1221/frontier-scout@v2.2.0 once v2.2.0 is released.
+  - uses: ajaysurya1221/frontier-scout@a28f27da0ae25492af3c3a9f61cb863543dab791
     with:
       attest: "true"
       evidence-artifact: "frontier-scout-evidence"
@@ -176,13 +182,18 @@ Honesty model, load-bearing:
 ## Full setup (policy + local hooks)
 
 ```bash
-pip install frontier-scout
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install frontier-scout==2.2.0
 
 cd your-repo
 frontier-scout agent policy init          # conservative frontier-scout.policy.json from a scan
 frontier-scout agent compile --target claude --repo . --out .
 frontier-scout doctor                      # confirm policy/lock/hooks/workflow are in place
 ```
+
+Until 2.2.0 is on PyPI, the repaired verifier is only on `main`: clone this repository and run
+`python -m pip install -e .` in place of the third line.
 
 `compile` writes:
 
@@ -195,9 +206,10 @@ frontier-scout doctor                      # confirm policy/lock/hooks/workflow 
 | `managed-settings.json` | admin/MDM MCP allow/deny fragment |
 | `.github/workflows/frontier-scout-verify.yml` | the PR verifier check |
 
-`pip install frontier-scout` currently installs 2.1.0, whose `verify-pr` has the defects listed
-[above](#the-existing-release-v210); `compile` pins the generated workflow to the installed
-version, so the repaired verifier reaches that workflow with the next release.
+`compile` pins the generated workflow to the version that compiled it
+(`frontier-scout==2.2.0` here). A workflow compiled by 2.1.0 or earlier installs the latest
+release unpinned, so it picks up 2.2.0 and its stricter verdicts on its next run; recompile it
+to pin the version. 2.1.0 itself has the defects listed [above](#the-existing-release-v210).
 
 Run Claude Code normally — the hook gates each tool call and writes redacted local action
 records to `.frontier-scout/receipts/`. The CI verifier then checks the PR diff against the
@@ -211,7 +223,7 @@ frontier-scout agent verify-pr --repo . --base "origin/main" \
   --receipts "frontier-scout-receipts/*.json" --json-out evidence.json
 ```
 
-See [`examples/demo-walkthrough.md`](examples/demo-walkthrough.md) for a 90-second
+See [`examples/demo-walkthrough.md`](examples/demo-walkthrough.md) for a step-by-step
 demo, and [`examples/sample-repo/`](examples/sample-repo/) for the end-to-end
 fixture.
 
@@ -263,9 +275,10 @@ is read-only or build/test and not risky. A static `deny` is never relaxed. No k
 timeout, a malformed or wrong-model answer, or a low-confidence answer leaves the static
 decision in force, and the receipt says so (`decision_model.applied`: `tightened`,
 `tightened-to-ask`, `relaxed`, `abstained` or `unavailable`). The key is read from the environment at hook time
-and never written. Thresholds are yours to set from your own data; the defaults come from a
-pre-registered calibration audit of the model
-([agent-reliability-ci, `docs/results/jev-calibration`](https://github.com/ajaysurya1221/agent-reliability-ci/tree/main/docs/results/jev-calibration)).
+and never written. Thresholds are yours to set from your own data. The default thresholds were
+evaluated on the maintainer-labelled command corpus in
+[`docs/evaluation/decision-model/`](docs/evaluation/decision-model/). Those results do not
+establish general permission calibration or native-session enforcement.
 
 ## CLI
 
@@ -324,7 +337,7 @@ exist:
 ## Roadmap
 
 P0 (shipped): the GitHub Action with signed evidence, the Claude compiler + local action
-records, the CI verifier (its scope-check repair is unreleased; see above). P1 was **demand-gated** and the gates were not met at the
+records, the CI verifier (its scope-check repair ships in 2.2.0; see above). P1 was **demand-gated** and the gates were not met at the
 [day-90 evaluation](KILL_CRITERIA.md#day-90-evaluation-2026-09-30): platform-evidence
 ingestion, Codex adapter, scanner findings as policy inputs stay unbuilt unless someone
 with a real use case asks. See [ROADMAP.md](ROADMAP.md).

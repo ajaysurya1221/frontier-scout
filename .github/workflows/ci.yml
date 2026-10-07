@@ -59,3 +59,61 @@ jobs:
         run: make audit
       - name: Non-live test suite
         run: PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python -m pytest -m "not live" -q
+
+  action-source-install:
+    # Hosted check of the Action's default install branch (empty `version`: pip
+    # installs the action's own source from $GITHUB_ACTION_PATH). As for a consumer,
+    # the action source and the candidate checkout are separate directories. The
+    # workspace root and the candidate root hold marker-writing shadow modules. The
+    # job fails if any shadow is imported, if the installed version differs from the
+    # action source, or if the verdict on an empty diff (base: HEAD) is not pass.
+    # Read-only token, no secrets, no attestation, no artifact upload.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: action-src
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          path: candidate
+          persist-credentials: false
+      - name: Plant shadow modules in the workspace and the candidate
+        working-directory: ${{ runner.temp }}
+        run: |
+          markers="$RUNNER_TEMP/shadow-markers"
+          mkdir -p "$markers"
+          for tag in workspace candidate; do
+            dir="$GITHUB_WORKSPACE"
+            if [ "$tag" = candidate ]; then dir="$GITHUB_WORKSPACE/candidate"; fi
+            for rel in pip.py json.py uuid.py argparse.py subprocess.py pydantic.py \
+                sitecustomize.py usercustomize.py frontier_scout/__init__.py \
+                frontier_scout/__main__.py outputs/__init__.py; do
+              mkdir -p "$dir/$(dirname "$rel")"
+              printf 'open("%s", "w").write("imported")\n' "$markers/${tag}__${rel//\//__}" > "$dir/$rel"
+            done
+          done
+      - name: Run the Action from its own source
+        id: fs
+        uses: ./action-src
+        with:
+          repo: candidate
+          base: HEAD
+      - name: Check the installed version, the verdict and the markers
+        working-directory: ${{ runner.temp }}
+        env:
+          FS_VERDICT: ${{ steps.fs.outputs.verdict }}
+          FS_OK: ${{ steps.fs.outputs.ok }}
+        run: |
+          want="frontier-scout $(sed -n 's/^version = "\(.*\)"$/\1/p' "$GITHUB_WORKSPACE/action-src/pyproject.toml")"
+          got="$(python -I -m frontier_scout --version)"
+          where="$(python -I -c 'import frontier_scout; print(frontier_scout.__file__)')"
+          echo "installed: $got from $where (action source: $want); verdict: $FS_VERDICT"
+          test "$got" = "$want"
+          case "$where" in "$GITHUB_WORKSPACE"/*) echo "::error::imported from the workspace"; exit 1 ;; esac
+          test "$FS_VERDICT" = pass && test "$FS_OK" = true
+          fired="$(ls -A "$RUNNER_TEMP/shadow-markers")"
+          if [ -n "$fired" ]; then echo "::error::shadow modules imported: $fired"; exit 1; fi
+          # Liveness control: an unisolated import from the candidate does run its shadow.
+          (cd "$GITHUB_WORKSPACE/candidate" && python -c 'import json') || true
+          test -e "$RUNNER_TEMP/shadow-markers/candidate__json.py"

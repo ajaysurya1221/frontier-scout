@@ -17,8 +17,9 @@ the shadows do execute there, so the fixtures are live.
 
 The install step runs offline (``PIP_NO_INDEX``) against the already installed
 ``frontier-scout`` version, so it resolves without changing the test environment. The
-``version: ""`` branch (build from ``$GITHUB_ACTION_PATH``) needs a build backend and is
-covered by the static checks in ``tests/test_action_yml.py`` only.
+``version: ""`` branch (build from ``$GITHUB_ACTION_PATH``) needs a build backend, so here it
+is covered by the static checks in ``tests/test_action_yml.py`` only; the
+``action-source-install`` job in ``.github/workflows/ci.yml`` runs it on a GitHub-hosted runner.
 """
 
 from __future__ import annotations

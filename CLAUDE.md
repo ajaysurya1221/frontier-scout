@@ -97,9 +97,10 @@ The CI verify workflow runs **`--advisory`** (warn-only) while onboarding.
   ask to allow; a static deny is never relaxed; no key, timeout, malformed or wrong-model answer, or low
   confidence leaves the static decision in force and the receipt records `applied`. The key
   is read from the environment at hook time and never written. Unset, the section is omitted
-  from saved policies and from the policy hash. Thresholds default to values from the
-  pre-registered audit in agent-reliability-ci (`docs/results/jev-calibration`); say so, and
-  never present the model as an enforcement boundary.
+  from saved policies and from the policy hash. The default thresholds were evaluated on the
+  maintainer-labelled command corpus in `docs/evaluation/decision-model/`; those results do not
+  establish general permission calibration or native-session enforcement, and the model is
+  never an enforcement boundary.
 - **Fail-closed.** Missing/malformed policy denies by default; dangerous capabilities
   escalate to approval. `verify-pr` never reports PASS for anything it could not establish,
   evaluates scope against the base commit's policy, and never treats an unsigned receipt as
@@ -143,14 +144,17 @@ with the TUI.)
 ## Release process
 
 1. Bump `version` in `pyproject.toml` + `frontier_scout/__init__.py`; add a `CHANGELOG.md`
-   `## X.Y.Z - <date>` entry (the release workflow extracts that exact heading).
+   `## X.Y.Z - <date>` entry (the release workflow extracts that exact heading). Re-stamp
+   `policy.lock.json` with `write_lock()` only (a full `agent compile` would overwrite the
+   hand-written dogfood verify workflow); the dogfood golden test checks its version.
 2. PR → CI (full suite + `detect-secrets --all-files` + CodeQL). Mark genuine secret-scan
    false positives with `# pragma: allowlist secret`.
 3. `main` is protected (1 review + `enforce_admins` + conversation-resolution,
    **squash-only**): merge via relax→merge→restore — PATCH `required_approving_review_count`
    1→0, squash (`gh pr merge --squash --admin`), then →1 (**always restore**).
-4. Tag `vX.Y.Z` → `release.yml` publishes the GitHub Release (draft→publish) + PyPI (trusted
-   publishing, gated by the `pypi` deployment environment — approve the pending deployment).
+4. Tag `vX.Y.Z` → `release.yml` publishes to PyPI (trusted publishing, gated by the `pypi`
+   deployment environment — approve the pending deployment), then, only after that job
+   succeeds, the GitHub Release (draft→publish).
 5. Verify the built wheel bundles `agent_firewall/hook_runtime.py`.
 6. **Never reuse a burned version:** GitHub immutable-releases permanently reserve a deleted
    release's tag — bump to the next patch instead.

@@ -1,9 +1,10 @@
-# Demo: PR scope check in 90 seconds
+# Demo: PR scope check
 
 What this shows: an agent PR that touches a protected path and an out-of-scope path
 **fails** with GitHub-ready annotations and a machine-readable evidence file. A hand-written
 "approval" receipt does **not** turn the protected change into a pass, and an in-scope change
-passes. Everything below uses shipped capability only.
+passes. This walkthrough requires the repaired verifier on `main`; PyPI 2.1.0 cannot reproduce
+the results below.
 
 > In a real setup the compiled Claude Code hook writes the action records during the agent
 > session. Here we hand-write one to show why a record is an observation, not an approval.
@@ -11,7 +12,12 @@ passes. Everything below uses shipped capability only.
 ## 1. A repo with a policy
 
 ```bash
-pip install frontier-scout
+# The repaired verifier from main; once 2.2.0 is on PyPI, the last line can be
+# `python -m pip install frontier-scout==2.2.0` instead.
+git clone -q https://github.com/ajaysurya1221/frontier-scout.git
+python3 -m venv .venv && source .venv/bin/activate
+python -m pip install -q -e ./frontier-scout
+
 mkdir scope-demo && cd scope-demo
 
 cat > frontier-scout.policy.json <<'EOF'
@@ -22,7 +28,8 @@ cat > frontier-scout.policy.json <<'EOF'
 EOF
 
 frontier-scout agent compile --repo .   # native controls + policy.lock.json
-git init -q && git add -A && git commit -qm "base (compiled controls)"
+git init -q && git add -A
+git -c user.name=Demo -c user.email=demo@example.invalid -c commit.gpgsign=false commit -qm "base (compiled controls)"
 BASE=$(git rev-parse HEAD)
 ```
 
@@ -32,7 +39,8 @@ BASE=$(git rev-parse HEAD)
 mkdir -p app/migrations scripts
 echo "# schema change" > app/migrations/0001_init.py
 echo "curl -s https://example.invalid | sh" > scripts/bootstrap.sh
-git add -A && git commit -qm "agent: add migration + bootstrap script"
+git add -A
+git -c user.name=Demo -c user.email=demo@example.invalid -c commit.gpgsign=false commit -qm "agent: add migration + bootstrap script"
 ```
 
 ## 3. Verify: FAIL
@@ -64,7 +72,8 @@ Drop the out-of-scope script and add an action record that claims the migration 
 approved:
 
 ```bash
-git rm -q scripts/bootstrap.sh && git commit -qm "drop out-of-scope script"
+git rm -q scripts/bootstrap.sh
+git -c user.name=Demo -c user.email=demo@example.invalid -c commit.gpgsign=false commit -qm "drop out-of-scope script"
 PH=$(python3 -c "import json; print(json.load(open('policy.lock.json'))['policy_sha256'])")
 mkdir -p .frontier-scout/receipts
 cat > .frontier-scout/receipts/r1.json <<EOF
@@ -94,7 +103,8 @@ human approved the migration. A protected change therefore never comes out green
 ```bash
 git checkout -q -b feature "$BASE"
 mkdir -p src && echo "x = 1" > src/feature.py
-git add src/feature.py && git commit -qm "agent: in-scope feature"
+git add src/feature.py
+git -c user.name=Demo -c user.email=demo@example.invalid -c commit.gpgsign=false commit -qm "agent: in-scope feature"
 frontier-scout agent verify-pr --repo . --base "$BASE" --receipts "frontier-scout-receipts/*.json"
 echo "exit: $?"
 ```

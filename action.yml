@@ -57,7 +57,7 @@ inputs:
     default: "."
   version:
     description: >-
-      frontier-scout version to install from PyPI (e.g. "2.1.0"). Empty (default)
+      frontier-scout version to install from PyPI (e.g. "2.2.0"). Empty (default)
       installs the action's own bundled source — the exact code at the pinned ref.
     default: ""
   attest:
