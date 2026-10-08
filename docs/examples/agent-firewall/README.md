@@ -40,8 +40,9 @@ The output is deterministic and offline; no network egress is required.
 - A **local audit trail**: one JSON receipt per decision under `.frontier-scout/receipts/`.
 
 ## What this is NOT
-- **Nothing is executed.** `scan` and `check` run no subprocess, no MCP server, no agent task, no network.
-  (The only subprocess anywhere is a guarded read-only `git rev-parse` to stamp a receipt's branch/commit.)
+- **Nothing is executed.** No agent task or MCP server is executed by this static example, and it makes
+  no network requests. Receipt metadata uses read-only `git rev-parse`; `verify-pr` additionally uses
+  read-only `git diff`, `git ls-tree` and `git cat-file`.
 - **Not runtime enforcement.** A `block` verdict is *advisory output*, not a kill-switch. Frontier Scout
   **emits** policy and evidence; it does **not** enforce anything at runtime. The exported `CLAUDE.policy.md`
   is documentation an agent/human reads, not a control Claude Code obeys.
