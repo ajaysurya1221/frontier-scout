@@ -5,8 +5,8 @@
 Check the diff against the base commit's policy.
 Compile the same policy into Claude Code permissions and hooks.
 
-**Status:** research preview. Repaired verifier on main; 2.2.0 is not released.
-v2.1.0 has known verification defects. [Release details](#the-existing-release-v210)
+**Status:** research preview. 2.2.0 is the current release and repairs the verifier.
+v2.1.0 and earlier have known verification defects. [Release details](#the-previous-release-v210)
 
 **Published regression cases** ([matrix](docs/evaluation/verifier-2026-10-06.md)):
 ```text
@@ -36,12 +36,11 @@ The PR can edit that workflow; it is not a trusted merge gate.
 Add the verifier to any repo with a `frontier-scout.policy.json` (one `policy init` away —
 see [full setup](#full-setup-policy--local-hooks)).
 
-> **Release status.** The repaired verifier and Action described in this section are release
-> **2.2.0**. Until `v2.2.0` is tagged and `frontier-scout==2.2.0` is on PyPI, they are only on
-> `main`, so the example pins a full commit SHA. **v2.1.0** and earlier behave differently and
-> have known defects (see [the existing release](#the-existing-release-v210) below). Keep the
-> `pull_request` example below advisory: the PR can edit that workflow, so it is not a merge
-> gate.
+> **Release status.** The repaired verifier and Action described in this section ship in
+> release **2.2.0** (`ajaysurya1221/frontier-scout@v2.2.0`; `frontier-scout==2.2.0` on PyPI).
+> **v2.1.0** and earlier behave differently and have known defects (see
+> [the previous release](#the-previous-release-v210) below). Keep the `pull_request` example
+> below advisory: the PR can edit that workflow, so it is not a merge gate.
 
 ### Repaired verifier (2.2.0)
 
@@ -59,8 +58,7 @@ jobs:
         with:
           fetch-depth: 0            # the verifier diffs against the base ref
           persist-credentials: false
-      # Becomes ajaysurya1221/frontier-scout@v2.2.0 once v2.2.0 is released.
-      - uses: ajaysurya1221/frontier-scout@a28f27da0ae25492af3c3a9f61cb863543dab791
+      - uses: ajaysurya1221/frontier-scout@v2.2.0
         with:
           advisory: "true"          # report only: a pull_request workflow is editable by the PR
           evidence-artifact: "frontier-scout-evidence"
@@ -109,10 +107,10 @@ prerequisite for gating; installing a repaired release does not by itself turn t
 >
 > A team requiring merge enforcement must place the check in a workflow the candidate PR cannot modify. Local receipts remain unsigned observations.
 
-### The existing release (v2.1.0)
+### The previous release (v2.1.0)
 
 `ajaysurya1221/frontier-scout@v2.1.0` and `frontier-scout==2.1.0` on PyPI predate the repair
-that ships in 2.2.0:
+shipped in 2.2.0:
 
 - `verify-pr` has five false acceptance paths: unenforced `allowed_file_globs`, any receipt
   counted as approval, unbound receipts, PR-side policy and receipts, and lossy diff parsing.
@@ -128,8 +126,7 @@ keep `advisory: "true"`, do not set `attest: "true"`, and do not run it from
 
 With `attest: "true"`, the evidence JSON is signed via [GitHub artifact attestations](https://docs.github.com/en/actions/concepts/security/artifact-attestations)
 (Sigstore) — Frontier Scout deliberately rides GitHub's signing rail rather than inventing
-a receipt protocol. This needs the repaired Action above (2.2.0, or the `main` commit until
-2.2.0 is released): on v2.1.0, PR-supplied Python can run before the evidence is signed.
+a receipt protocol. This needs the repaired Action above (2.2.0 or later): on v2.1.0, PR-supplied Python can run before the evidence is signed.
 
 ```yaml
 permissions:
@@ -137,8 +134,7 @@ permissions:
   id-token: write
   attestations: write
 steps:
-  # Becomes ajaysurya1221/frontier-scout@v2.2.0 once v2.2.0 is released.
-  - uses: ajaysurya1221/frontier-scout@a28f27da0ae25492af3c3a9f61cb863543dab791
+  - uses: ajaysurya1221/frontier-scout@v2.2.0
     with:
       attest: "true"
       evidence-artifact: "frontier-scout-evidence"
@@ -187,9 +183,6 @@ frontier-scout agent compile --target claude --repo . --out .
 frontier-scout doctor                      # confirm policy/lock/hooks/workflow are in place
 ```
 
-Until 2.2.0 is on PyPI, the repaired verifier is only on `main`: clone this repository and run
-`python -m pip install -e .` in place of the third line.
-
 `compile` writes:
 
 | Artifact | Purpose |
@@ -204,7 +197,7 @@ Until 2.2.0 is on PyPI, the repaired verifier is only on `main`: clone this repo
 `compile` pins the generated workflow to the version that compiled it
 (`frontier-scout==2.2.0` here). A workflow compiled by 2.1.0 or earlier installs the latest
 release unpinned, so it picks up 2.2.0 and its stricter verdicts on its next run; recompile it
-to pin the version. 2.1.0 itself has the defects listed [above](#the-existing-release-v210).
+to pin the version. 2.1.0 itself has the defects listed [above](#the-previous-release-v210).
 
 Run Claude Code normally — the hook gates each tool call and writes redacted local action
 records to `.frontier-scout/receipts/`. The CI verifier then checks the PR diff against the
@@ -330,7 +323,7 @@ exist:
 ## Roadmap
 
 P0 (shipped): the GitHub Action with signed evidence, the Claude compiler + local action
-records, the CI verifier (its scope-check repair ships in 2.2.0; see above). P1 was **demand-gated** and the gates were not met at the
+records, the CI verifier (its scope-check repair shipped in 2.2.0; see above). P1 was **demand-gated** and the gates were not met at the
 [day-90 evaluation](KILL_CRITERIA.md#day-90-evaluation-2026-09-30): platform-evidence
 ingestion, Codex adapter, scanner findings as policy inputs stay unbuilt unless someone
 with a real use case asks. See [ROADMAP.md](ROADMAP.md).

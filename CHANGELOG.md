@@ -1,13 +1,5 @@
 # Changelog
 
-## Unreleased
-
-- README leads with the scope question, the release status (2.2.0 unreleased; v2.1.0 has known
-  verification defects), two published regression outcomes and the advisory dogfood workflow.
-  The banner PNGs are replaced by generated SVG figures (`docs/assets/src/make_figures.py`,
-  stdlib only): a hero with the three demo-walkthrough verdicts and a scope-verification
-  diagram. `tests/test_figures.py` fails if a committed figure or its cited source drifts.
-
 ## 2.2.0 - 2026-10-08
 
 This release repairs the PR scope verifier and the Action. Versions up to and including 2.1.0
@@ -137,6 +129,13 @@ matrix, regression tests and reproduction steps in `docs/evaluation/verifier-202
 - A CI job (`action-source-install`) runs the Action's default install branch, which builds
   the Action's own source, on a GitHub-hosted runner, with shadow modules in the workspace and
   the candidate checkout.
+
+**Documentation**
+- README leads with the scope question, the release status (v2.1.0 and earlier have known
+  verification defects), two published regression outcomes and the advisory dogfood workflow.
+  The banner PNGs are replaced by generated SVG figures (`docs/assets/src/make_figures.py`,
+  stdlib only): a hero with the three demo-walkthrough verdicts and a scope-verification
+  diagram. `tests/test_figures.py` fails if a committed figure or its cited source drifts.
 
 ## 2.1.0 - 2026-06-10
 

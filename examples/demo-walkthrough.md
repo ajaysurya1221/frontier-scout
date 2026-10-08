@@ -3,8 +3,8 @@
 What this shows: an agent PR that touches a protected path and an out-of-scope path
 **fails** with GitHub-ready annotations and a machine-readable evidence file. A hand-written
 "approval" receipt does **not** turn the protected change into a pass, and an in-scope change
-passes. This walkthrough requires the repaired verifier on `main`; PyPI 2.1.0 cannot reproduce
-the results below.
+passes. This walkthrough requires frontier-scout 2.2.0; PyPI 2.1.0 cannot reproduce the results
+below.
 
 > In a real setup the compiled Claude Code hook writes the action records during the agent
 > session. Here we hand-write one to show why a record is an observation, not an approval.
@@ -12,11 +12,8 @@ the results below.
 ## 1. A repo with a policy
 
 ```bash
-# The repaired verifier from main; once 2.2.0 is on PyPI, the last line can be
-# `python -m pip install frontier-scout==2.2.0` instead.
-git clone -q https://github.com/ajaysurya1221/frontier-scout.git
 python3 -m venv .venv && source .venv/bin/activate
-python -m pip install -q -e ./frontier-scout
+python -m pip install frontier-scout==2.2.0
 
 mkdir scope-demo && cd scope-demo
 
