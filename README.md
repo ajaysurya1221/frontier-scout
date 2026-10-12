@@ -324,19 +324,21 @@ exist:
 
 Frontier Scout is an independent project with one job: compile a typed repository policy into
 Claude Code's native permissions and hooks, and verify a PR's diff against the scope declared
-by the base commit's policy. Three sibling projects by the same maintainer cover other jobs and
-share no package, import, runtime or signing layer with it or with each other:
+by the base commit's policy. Three sibling projects by the same maintainer cover other jobs,
+each governed by its own README, contracts and limits; this paragraph adds no package, import,
+shared runtime or signing layer between them:
 [Actseal](https://github.com/ajaysurya1221/actseal) qualifies a model's action policy against
 supplied evaluation evidence, [Dorian](https://github.com/ajaysurya1221/dorian) records
 code-claim warrants, and [ARCI](https://github.com/ajaysurya1221/agent-reliability-ci) tests
 preregistered stochastic regression conditions.
 [evalopt](https://github.com/ajaysurya1221/evalopt-graph), the earlier acceptance-kernel
-experiment, has ended standalone feature development; Frontier Scout never depended on or
-imported it and inherits none of its records, states or decisions. None of these projects is a
-successor, conformance target or drop-in for another, and no adoption claim is made. Nothing
-above changes: Frontier Scout stays emit-only and a research preview, signing stays on GitHub
-artifact attestations and Sigstore, and local receipts remain unsigned observations with no
-approval authority.
+experiment, has ended standalone feature development. Frontier Scout does not depend on or
+import it: its `pyproject.toml`, `requirements.txt` and Python sources name no evalopt package
+or module, and it inherits none of evalopt's records, states or decisions. None of these
+projects is a successor, conformance target or drop-in for another, and no adoption claim is
+made. Nothing above changes: Frontier Scout stays emit-only and a research preview, signing
+stays on GitHub artifact attestations and Sigstore, and local receipts remain unsigned
+observations with no approval authority.
 
 ## Roadmap
 
