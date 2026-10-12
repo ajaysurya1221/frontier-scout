@@ -16,7 +16,6 @@
 Who/what produced this change — record what you know (`unknown` is fine):
 
 - Implementer: `<Claude Code | Codex | human | other>`
-- Model alias: `<e.g. claude-opus-4.x | unknown>`
 - Effort setting: `<low | medium | high | unknown>`
 - Permission-mode path: `<e.g. plan -> acceptEdits | bypassPermissions | unknown>`
 - Provider path: `<Anthropic API | Claude Enterprise ZDR | Bedrock | Vertex | Foundry | other | unknown>`

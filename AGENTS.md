@@ -4,7 +4,9 @@ Frontier Scout: a **policy compiler + PR scope verifier** for AI coding agents (
 Code first**). Compile a typed repo policy into the agent's native controls (settings +
 hooks), the hook writes local action receipts, and a CI verifier checks a PR's diff against
 the scope declared by the base commit's policy (receipts are unsigned observations, never
-approval). Local, keyless, offline; the only runtime dependency is `pydantic`. A
+approval). Local, keyless and offline by default (a policy may opt into the
+`decision_model`, which makes a network call from the hook); the only runtime dependency is
+`pydantic`. A
 **research preview** (technically coherent, **not** market-validated). Use this file as the
 handoff playbook.
 
@@ -53,7 +55,8 @@ frontier-scout doctor                                 # policy/lock/hooks/workfl
 frontier-scout agent verify-pr --repo . --base origin/main --receipts "frontier-scout-receipts/*.json"
 ```
 
-Everything is keyless and offline. The only subprocesses are read-only git calls
+Everything is keyless and offline by default (the opt-in `decision_model` is the one network
+call). The only subprocesses are read-only git calls
 (`rev-parse` / `diff` / `ls-tree` / `cat-file` in verify-pr; `rev-parse` for receipt metadata).
 
 ## This repo dogfoods its own policy
@@ -167,8 +170,6 @@ beyond the read-only `git` calls, or an auto-install path.
 
 This project is indexed by GitNexus as **frontier-scout**. Use the GitNexus MCP tools to
 understand code, assess impact, and navigate safely.
-
-> The index is stale after the 2.0.0 deletion sweep — run `npx gitnexus analyze` first.
 
 ## Always Do
 

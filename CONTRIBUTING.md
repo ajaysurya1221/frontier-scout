@@ -6,9 +6,10 @@ Frontier Scout is a **policy compiler + PR scope verifier** for AI coding agents
 Code first): it compiles a typed repo policy into the agent's native controls (settings
 `permissions` + hooks), the hook writes local action receipts, and a CI verifier checks a
 PR's diff against the scope declared by the base commit's policy (receipts are unsigned
-observations, never approval). Keyless and offline; the only runtime dependency is `pydantic`. A
-small-maintainer **research preview** (technically coherent, not market-validated) — make no
-PMF / adoption claim.
+observations, never approval). Keyless and offline by default (a policy may opt into the
+`decision_model`, which makes a network call from the hook); the only runtime dependency is
+`pydantic`. A small-maintainer **research preview** (technically coherent, not
+market-validated) — make no PMF / adoption claim.
 
 Honesty invariants any change must respect:
 

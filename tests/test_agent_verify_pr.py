@@ -136,7 +136,7 @@ def _git_repo(tmp_path):
     return repo, head
 
 
-# --- fail-closed when git diff cannot be computed (Codex P0) ----------------------
+# --- fail-closed when git diff cannot be computed (review P0) ---------------------
 
 def test_git_diff_names_raises_on_bad_base(tmp_path):
     repo, _ = _git_repo(tmp_path)
