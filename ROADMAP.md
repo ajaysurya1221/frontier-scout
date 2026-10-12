@@ -9,8 +9,9 @@ Frontier Scout compiles a typed repo policy into an AI coding agent's **native**
 controls (Claude Code first), the agent emits **action receipts**, and CI checks a
 PR's diff against the scope declared by the base commit's policy. Receipts are unsigned
 observations and never count as approval. Frontier Scout **emits** config and **checks**
-evidence — Claude Code and GitHub Actions do the enforcing. Keyless, offline, the only
-runtime dependency is `pydantic`.
+evidence — Claude Code and GitHub Actions do the enforcing. Keyless and offline by default
+(a policy may opt into the `decision_model`, which makes a network call from the hook); the
+only runtime dependency is `pydantic`.
 
 Shipped today (P0):
 

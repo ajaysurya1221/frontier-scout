@@ -190,7 +190,7 @@ from `pyproject.toml`, still carried the old tagline and that field is baked int
 2.0.0 artifacts. **No product behavior changes** (hooks, verifier, compiler, and CLI are
 unchanged); the dogfood `policy.lock.json` is re-stamped only to record the new version.
 
-## 2.0.0 - 2026-06-07
+## 2.0.0 - 2026-06-09
 
 ### Pivot: policy compiler + PR scope verifier (breaking)
 
@@ -257,7 +257,7 @@ offline; the only runtime dependency is `pydantic`.
   `eval "$(…)"` still is). Pipeline segmentation is quote-aware over the raw command, so
   no-space pipes (`curl …|sh`) are caught; redirect/fork-bomb patterns keep exact-token
   matching. Found via the external-validation proxy run.
-- **`verify-pr` fails closed when it cannot compute the PR diff** (Codex P0). `git_diff_names`
+- **`verify-pr` fails closed when it cannot compute the PR diff** (review finding P0). `git_diff_names`
   now raises `GitDiffError` instead of returning `[]` on a failed/invalid `git diff` (e.g. an
   unfetched base ref), so an invalid base can no longer report `PASS: 0 changed files`.
   Enforcing mode emits a `::error::` and exits non-zero; advisory mode stays non-blocking but
@@ -265,7 +265,12 @@ offline; the only runtime dependency is `pydantic`.
   noticed. A *successful* empty diff is still a valid 0-file `PASS`. The generated workflow
   already uses `fetch-depth: 0` (now asserted by the golden test).
 
-## Unreleased
+## Pre-2.0.0 development (merged after 1.8.1; never released under its own version)
+
+Historical record. The agent commands described below (`agent scan`, `agent policy`,
+`agent check`, `agent receipts`, `agent export`) first shipped in 2.0.0. The sanctioned-packs,
+Mission Control (`tui3`) and `platform/` surfaces mentioned here were removed in 2.0.0 (see
+2.0.0 "Removed").
 
 ### Repo cleanup — pruned parked surfaces and superseded strategy docs
 
@@ -622,7 +627,7 @@ unit tests couldn't catch (stubbed subprocesses don't drive a real
 TUI), the v1.2.1 PR landed seven additional streams before publish:
 
 - **H. Policy.require_trial_for_dangerous_capabilities now fires.**
-  The Codex review surfaced this; live smoke confirmed it. Setting the
+  The review surfaced this; live smoke confirmed it. Setting the
   flag to `false` (internal toolchain where every tool *is* network-
   capable by design) now actually suppresses the `capability.*`
   findings instead of silently being ignored. Unknown-capability and
@@ -673,16 +678,16 @@ TUI), the v1.2.1 PR landed seven additional streams before publish:
   `app.exit(return_code=42)` so the in-TUI reconfigure path the user
   expects after I lands works end-to-end.
 
-The Codex-review release. v1.2.0 was tagged on GitHub but never
-published to PyPI; a colleague's read-only audit (file:line citations
-in `CODEX_REVIEW_FOR_CLAUDE.md`) caught eight issues, one of which
+The review-fix release. v1.2.0 was tagged on GitHub but never
+published to PyPI; a read-only review (with file:line
+citations) caught eight issues, one of which
 contradicted an explicit security claim and three of which silently
 broke advertised flows. v1.2.1 ships the fixes and is the **first PyPI
 release in the v1.2 line** — v1.2.0 stays as the GitHub-only marker.
 
 ### Security fixes
 
-- **Lab hermeticity (Codex #1 · Critical).** Package install
+- **Lab hermeticity (review #1 · Critical).** Package install
   subprocesses (`pip install`, HuggingFace `snapshot_download`, Node)
   no longer inherit the parent process environment. `HOME` points to a
   temp dir; `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GH_TOKEN`,
@@ -695,7 +700,7 @@ release in the v1.2 line** — v1.2.0 stays as the GitHub-only marker.
 
 ### Correctness fixes
 
-- **Policy actually loads (Codex #2 · High).** `~/.frontier-scout/
+- **Policy actually loads (review #2 · High).** `~/.frontier-scout/
   policy.toml` and `<repo>/.frontier-scout/policy.toml` were inert —
   every `evaluate_policy(...)` call site passed no `policy=` arg, so
   `DEFAULT_POLICY` was always used. `evaluate`, `build_dossier`,
@@ -704,7 +709,7 @@ release in the v1.2 line** — v1.2.0 stays as the GitHub-only marker.
   silently ignored) and accepts a `repo` arg for forward compatibility
   with v1.3's per-repo ledger schema.
 
-- **SQLite cascade is real (Codex #4 · Medium-but-load-bearing).**
+- **SQLite cascade is real (review #4 · Medium-but-load-bearing).**
   `ON DELETE CASCADE` was declared on the verdicts table but no
   `PRAGMA foreign_keys = ON` was ever issued, so the cascade was a
   lie. `clear_scans_for_repo` and `clear_all_scans` leaked orphan
@@ -713,14 +718,14 @@ release in the v1.2 line** — v1.2.0 stays as the GitHub-only marker.
   an explicit `DELETE FROM verdicts WHERE scan_id IN (...)` before
   deleting scans — belt and braces.
 
-- **Reports scope to the right repo (Codex #5 · Medium).**
+- **Reports scope to the right repo (review #5 · Medium).**
   `latest_scan()` returned the globally-newest scan with no repo
   filter; the CLI `report` and TUI `action_open_report` happily
   rendered repo B's data while you sat in repo A. Now
   `latest_scan(repo=...)` filters by resolved path; "no scout yet for
   this repo" is a loud message, not a silent demo render.
 
-- **Dep trial receipts stop lying (Codex #6 · Medium).** Non-dry-run
+- **Dep trial receipts stop lying (review #6 · Medium).** Non-dry-run
   trials reported `status = "completed"`, `exit_code = 0` even though
   no test subprocess ever ran. Now: `dry_run=True` → `"prepared"`;
   resolvable test command → executes in the temp dir under the same
@@ -729,7 +734,7 @@ release in the v1.2 line** — v1.2.0 stays as the GitHub-only marker.
 
 ### Operational fixes
 
-- **Scheduled scouts no longer drain API quota (Codex #3 · High).**
+- **Scheduled scouts no longer drain API quota (review #3 · High).**
   `Schedule.live` defaults to `False`; the wizard's automation step
   asks "Run live (uses your API key) or dry-run (free, local)?" and
   persists the choice. `install_cron_runner` materialises
@@ -754,8 +759,8 @@ release in the v1.2 line** — v1.2.0 stays as the GitHub-only marker.
 
 ### Deferred to v1.2.2 / v1.3
 
-- Lockfile-aware dependency intelligence (Codex #7).
-- Model ID / price catalog audit (Codex #8 — needs API).
+- Lockfile-aware dependency intelligence (review #7).
+- Model ID / price catalog audit (review #8 — needs API).
 - Per-repo guard ledger schema migration.
 - `doctor --deep`, sandbox capability ladder, trust-receipt command,
   policy explain command, container/network lab levels.

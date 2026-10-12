@@ -11,7 +11,8 @@ Code first**. It compiles a typed repo policy (`frontier-scout.policy.json`) int
 Code's **native** controls (settings `permissions` + hooks), the hook writes **action
 receipts**, and a CI verifier checks a PR's diff against the scope declared by the base
 commit's policy. Receipts are unsigned observations: they never authorise a protected change.
-Keyless, offline; the only runtime dependency is `pydantic`. Python 3.11+, setuptools, PyPI.
+Keyless and offline by default (a policy may opt into the `decision_model`, which makes a
+network call from the hook); the only runtime dependency is `pydantic`. Python 3.11+, setuptools, PyPI.
 
 **Research preview — technically coherent, not market-validated.** No PMF / adoption claim.
 
@@ -179,8 +180,6 @@ auto-install; receipts are evidence not proof; don't read `.env.local`.
 
 This project is indexed by GitNexus as **frontier-scout**. Use the GitNexus MCP tools to
 understand code, assess impact, and navigate safely.
-
-> The index is stale after the 2.0.0 deletion sweep — run `npx gitnexus analyze` first.
 
 ## Always Do
 

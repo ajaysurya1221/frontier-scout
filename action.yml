@@ -26,7 +26,7 @@ description: >-
   established; protected-path approvals are reported, not authenticated. Emits
   GitHub annotations, a machine-readable evidence JSON, and (optionally) a signed
   attestation of that evidence via GitHub attestations.
-author: "Ajay Surya"
+author: "Ajay Surya Senthilrajan"
 branding:
   icon: "shield"
   color: "blue"
